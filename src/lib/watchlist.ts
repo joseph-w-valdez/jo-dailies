@@ -34,6 +34,7 @@ export interface WatchItem {
   title: string
   kind: WatchKind
   status: WatchStatus
+  order: number
   /** 1-based; used for anime / show */
   season: number
   /** 1-based; used for anime / show */
@@ -57,7 +58,7 @@ export const WATCH_KINDS: { id: WatchKind; label: string }[] = [
 ]
 
 interface WatchStore {
-  version: 4
+  version: 5
   items: WatchItem[]
 }
 
@@ -67,7 +68,10 @@ function isWatchKind(value: unknown): value is WatchKind {
   return value === 'anime' || value === 'show' || value === 'movie'
 }
 
-function normalizeItem(raw: unknown): WatchItem | null {
+export function normalizeWatchItem(
+  raw: unknown,
+  fallbackOrder = 0,
+): WatchItem | null {
   if (!raw || typeof raw !== 'object') return null
   const i = raw as Record<string, unknown>
   if (typeof i.id !== 'string' || typeof i.title !== 'string') return null
@@ -82,11 +86,16 @@ function normalizeItem(raw: unknown): WatchItem | null {
     : i.status === 'completed' || i.watched
       ? 'watching'
       : 'planned'
+  const order =
+    typeof i.order === 'number' && Number.isFinite(i.order)
+      ? i.order
+      : fallbackOrder
   return {
     id: i.id,
     title: i.title,
     kind,
     status,
+    order,
     season,
     episode,
     rating,
@@ -101,7 +110,9 @@ export function loadWatchlist(): WatchItem[] {
     if (!parsed || typeof parsed !== 'object') return []
     const items = (parsed as { items?: unknown }).items
     if (!Array.isArray(items)) return []
-    return items.map(normalizeItem).filter((i): i is WatchItem => i !== null)
+    return items
+      .map((item, index) => normalizeWatchItem(item, index * 1024))
+      .filter((i): i is WatchItem => i !== null)
   } catch {
     return []
   }
@@ -109,7 +120,7 @@ export function loadWatchlist(): WatchItem[] {
 
 export function saveWatchlist(items: WatchItem[]): void {
   try {
-    const store: WatchStore = { version: 4, items }
+    const store: WatchStore = { version: 5, items }
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(store))
   } catch {
     /* ignore quota / private mode */

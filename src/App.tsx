@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { CatWallpaper } from './components/CatWallpaper'
+import { useMemo, useState } from 'react'
+import { CatWallpaper, WALLPAPER_ICONS } from './components/CatWallpaper'
 import { CursorTrail, useCursorTrailSetting } from './components/CursorTrail'
 import { DailyCard } from './components/DailyCard'
 import { DayEditor } from './components/DayEditor'
+import { FirebaseAuthProvider } from './components/FirebaseAuthProvider'
 import { GameFrame } from './components/GameFrame'
 import { MonthCalendar } from './components/MonthCalendar'
 import { ScrollTopButton } from './components/ScrollTopButton'
@@ -10,11 +11,13 @@ import { StreakBar } from './components/StreakBar'
 import { Watchlist } from './components/Watchlist'
 import { GAMES, GAME_COUNT } from './games'
 import { useDailies } from './hooks/useDailies'
+import { useFirebaseAuth } from './hooks/firebaseAuthContext'
 import { useWatchlistSideLayout } from './hooks/useWatchlistSideLayout'
 import { parseKey } from './lib/date'
+import { useSyncStatus } from './lib/syncStatus'
 import type { GameId } from './types'
 
-function App() {
+function Dashboard() {
   const {
     today,
     streaks,
@@ -158,6 +161,99 @@ function App() {
 
       <ScrollTopButton />
     </>
+  )
+}
+
+function AppContent() {
+  const { user, loading, error, signIn, signOut } = useFirebaseAuth()
+  const syncStatus = useSyncStatus()
+  const loginPet = useMemo(
+    () => WALLPAPER_ICONS[Math.floor(Math.random() * WALLPAPER_ICONS.length)]!,
+    [],
+  )
+
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center px-4">
+        <p className="text-sm text-muted">Waking up the watch party…</p>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return (
+      <main className="relative grid min-h-screen place-items-center overflow-hidden px-4">
+        <CatWallpaper />
+        <section className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-6 text-center shadow-2xl shadow-black/40">
+          <img
+            src={loginPet}
+            alt=""
+            className="mx-auto mb-3 size-20 object-contain"
+          />
+          <h1 className="text-xl font-semibold text-white">Jo Dailies</h1>
+          <p className="mt-2 text-sm text-muted">
+            Sign in to keep your dailies and watchlist together.
+          </p>
+          <button
+            type="button"
+            onClick={() => void signIn()}
+            className="mt-5 w-full rounded-xl bg-streak px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+          >
+            Continue with Google
+          </button>
+          {error ? (
+            <p className="mt-3 text-xs text-rose-300" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </section>
+      </main>
+    )
+  }
+
+  return (
+    <>
+      <div className="fixed right-3 top-3 z-50 flex items-center gap-2 rounded-full border border-border bg-surface/90 px-2.5 py-1.5 text-[10px] shadow-lg backdrop-blur">
+        <span
+          className={[
+            'size-1.5 rounded-full',
+            syncStatus === 'synced'
+              ? 'bg-emerald-400'
+              : syncStatus === 'offline'
+                ? 'bg-amber-400'
+                : syncStatus === 'error'
+                  ? 'bg-rose-400'
+                  : 'animate-pulse bg-streak',
+          ].join(' ')}
+        />
+        <span className="text-muted">
+          {syncStatus === 'synced'
+            ? 'synced'
+            : syncStatus === 'offline'
+              ? 'offline · saves queued'
+              : syncStatus === 'error'
+                ? 'sync blocked · check rules'
+                : 'syncing…'}
+        </span>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="text-muted transition hover:text-white"
+          title={`Signed in as ${user.email ?? user.displayName ?? 'Google user'}`}
+        >
+          sign out
+        </button>
+      </div>
+      <Dashboard />
+    </>
+  )
+}
+
+function App() {
+  return (
+    <FirebaseAuthProvider>
+      <AppContent />
+    </FirebaseAuthProvider>
   )
 }
 

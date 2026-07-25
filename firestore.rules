@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.uid in [
+          'REPLACE_WITH_FIRST_UID',
+          'REPLACE_WITH_SECOND_UID'
+        ];
+    }
+
+    match /rooms/jo-and-friend/{document=**} {
+      allow read, write: if isAllowed();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

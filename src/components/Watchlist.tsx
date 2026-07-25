@@ -16,6 +16,14 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  setDoc,
+  writeBatch,
+} from 'firebase/firestore'
+import {
   useEffect,
   useMemo,
   useRef,
@@ -23,6 +31,9 @@ import {
   type CSSProperties,
   type FormEvent,
 } from 'react'
+import { useFirebaseAuth } from '../hooks/firebaseAuthContext'
+import { db, syncRoomId } from '../lib/firebase'
+import { updateSyncSource } from '../lib/syncStatus'
 import {
   isSettled,
   isWatchRating,
@@ -30,6 +41,7 @@ import {
   MAX_RATING,
   needsProgress,
   newWatchId,
+  normalizeWatchItem,
   saveWatchlist,
   WATCH_KINDS,
   WATCH_STATUSES,
@@ -38,6 +50,8 @@ import {
   type WatchRating,
   type WatchStatus,
 } from '../lib/watchlist'
+
+const WATCHLIST_MIGRATION_KEY = 'jo-dailies:firestore-watchlist-migrated:v1'
 
 /** Ribbon styling per status, matching the vibe banner treatment. */
 const STATUS_STYLES: Record<
@@ -240,6 +254,7 @@ function savePanelCollapsed(value: boolean) {
 
 export function Watchlist() {
   const [items, setItems] = useState<WatchItem[]>(() => loadWatchlist())
+  const { user } = useFirebaseAuth()
   const [draft, setDraft] = useState('')
   const [draftKind, setDraftKind] = useState<WatchKind>('anime')
   const [collapsed, setCollapsed] = useState<CollapsedMap>(() => loadCollapsed())
@@ -267,6 +282,69 @@ export function Watchlist() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
+
+  useEffect(() => {
+    if (!user) return
+
+    const watchItemsRef = collection(
+      db,
+      'rooms',
+      syncRoomId,
+      'watchItems',
+    )
+    const hadMigrated =
+      localStorage.getItem(WATCHLIST_MIGRATION_KEY) === '1'
+    const local = loadWatchlist()
+
+    const unsubscribe = onSnapshot(
+      watchItemsRef,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        updateSyncSource('watchlist', {
+          pending: snapshot.metadata.hasPendingWrites,
+          fromCache: snapshot.metadata.fromCache,
+        })
+
+        if (snapshot.empty && !hadMigrated && local.length > 0) return
+
+        const next = snapshot.docs
+          .map((itemDoc, index) =>
+            normalizeWatchItem(
+              { ...itemDoc.data(), id: itemDoc.id },
+              index * 1024,
+            ),
+          )
+          .filter((item): item is WatchItem => item !== null)
+          .sort((a, b) => a.order - b.order)
+        saveWatchlist(next)
+        setItems(next)
+      },
+      (error) => {
+        updateSyncSource('watchlist', {
+          pending: false,
+          fromCache: false,
+          error: true,
+        })
+        console.error('Watchlist sync failed', error)
+      },
+    )
+
+    if (!hadMigrated) {
+      const uploads = local.map((item) =>
+        setDoc(doc(watchItemsRef, item.id), item),
+      )
+      void Promise.all(uploads)
+        .then(() => localStorage.setItem(WATCHLIST_MIGRATION_KEY, '1'))
+        .catch((error: unknown) => {
+          console.error('Could not migrate local watchlist', error)
+        })
+    }
+
+    return () => {
+      unsubscribe()
+      updateSyncSource('watchlist', null)
+    }
+  }, [user])
 
   useEffect(() => {
     saveWatchlist(items)
@@ -353,23 +431,38 @@ export function Watchlist() {
     event.preventDefault()
     const title = draft.trim()
     if (!title) return
-    setItems((prev) => [
-      {
-        id: newWatchId(),
-        title,
-        kind: draftKind,
-        status: 'planned',
-        season: 1,
-        episode: 1,
-        rating: null,
-      },
-      ...prev,
-    ])
+    const item: WatchItem = {
+      id: newWatchId(),
+      title,
+      kind: draftKind,
+      status: 'planned',
+      order:
+        items.length === 0
+          ? 0
+          : Math.min(...items.map((existing) => existing.order)) - 1024,
+      season: 1,
+      episode: 1,
+      rating: null,
+    }
+    setItems((prev) => [item, ...prev])
+    void setDoc(
+      doc(db, 'rooms', syncRoomId, 'watchItems', item.id),
+      item,
+    ).catch((error: unknown) => {
+      console.error('Could not add watchlist item', error)
+    })
     setDraft('')
   }
 
   const patchItem = (id: string, patch: Partial<WatchItem>) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+    void setDoc(
+      doc(db, 'rooms', syncRoomId, 'watchItems', id),
+      patch,
+      { merge: true },
+    ).catch((error: unknown) => {
+      console.error('Could not update watchlist item', error)
+    })
   }
 
   /** Touching progress means it's in flight again. */
@@ -422,6 +515,11 @@ export function Watchlist() {
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id))
+    void deleteDoc(
+      doc(db, 'rooms', syncRoomId, 'watchItems', id),
+    ).catch((error: unknown) => {
+      console.error('Could not remove watchlist item', error)
+    })
     if (pickedId === id) setPickedId(null)
   }
 
@@ -435,7 +533,21 @@ export function Watchlist() {
       const newIndex = kindItems.findIndex((i) => i.id === over.id)
       if (oldIndex < 0 || newIndex < 0) return prev
 
-      const nextKind = arrayMove(kindItems, oldIndex, newIndex)
+      const nextKind = arrayMove(kindItems, oldIndex, newIndex).map(
+        (item, index) => ({ ...item, order: index * 1024 }),
+      )
+      const batch = writeBatch(db)
+      for (const item of nextKind) {
+        batch.set(
+          doc(db, 'rooms', syncRoomId, 'watchItems', item.id),
+          { order: item.order },
+          { merge: true },
+        )
+      }
+      void batch.commit().catch((error: unknown) => {
+        console.error('Could not reorder watchlist', error)
+      })
+
       let cursor = 0
       return prev.map((item) => {
         if (item.kind !== kind) return item
