@@ -146,7 +146,7 @@ function App() {
           <div
             className={
               sideBySide
-                ? 'sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto'
+                ? 'sticky top-8'
                 : ''
             }
           >
