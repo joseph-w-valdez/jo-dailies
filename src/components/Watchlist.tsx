@@ -126,10 +126,8 @@ const ROW_PETS = [
   '/cats/extra-bulba.png',
 ] as const
 
-function petForId(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
-  return ROW_PETS[hash % ROW_PETS.length]!
+function randomPet(): string {
+  return ROW_PETS[Math.floor(Math.random() * ROW_PETS.length)]!
 }
 
 /** Starts a drag from anywhere on the card except interactive controls. */
@@ -247,6 +245,10 @@ export function Watchlist() {
   const [collapsed, setCollapsed] = useState<CollapsedMap>(() => loadCollapsed())
   const [panelCollapsed, setPanelCollapsed] = useState(() => loadPanelCollapsed())
   const [cheer, setCheer] = useState<string | null>(null)
+  const [rowPets, setRowPets] = useState<Record<string, string>>(() => {
+    const initial = loadWatchlist()
+    return Object.fromEntries(initial.map((item) => [item.id, randomPet()]))
+  })
   const [cheerKey, setCheerKey] = useState(0)
   const [sparkleId, setSparkleId] = useState<string | null>(null)
   const [pickedId, setPickedId] = useState<string | null>(null)
@@ -268,6 +270,27 @@ export function Watchlist() {
 
   useEffect(() => {
     saveWatchlist(items)
+  }, [items])
+
+  useEffect(() => {
+    setRowPets((prev) => {
+      const ids = new Set(items.map((i) => i.id))
+      const next = { ...prev }
+      let changed = false
+      for (const item of items) {
+        if (!next[item.id]) {
+          next[item.id] = randomPet()
+          changed = true
+        }
+      }
+      for (const id of Object.keys(next)) {
+        if (!ids.has(id)) {
+          delete next[id]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
   }, [items])
 
   useEffect(() => {
@@ -574,6 +597,7 @@ export function Watchlist() {
                               <SortableWatchRow
                                 key={item.id}
                                 item={item}
+                                pet={rowPets[item.id] ?? ROW_PETS[0]!}
                                 highlighted={pickedId === item.id}
                                 sparkle={sparkleId === item.id}
                                 onStatus={(status) => {
@@ -614,6 +638,7 @@ export function Watchlist() {
 
 interface SortableWatchRowProps {
   item: WatchItem
+  pet: string
   highlighted: boolean
   sparkle: boolean
   onStatus: (status: WatchStatus) => void
@@ -627,6 +652,7 @@ interface SortableWatchRowProps {
 
 function SortableWatchRow({
   item,
+  pet,
   highlighted,
   sparkle,
   onStatus,
@@ -767,7 +793,7 @@ function SortableWatchRow({
       </div>
 
       <img
-        src={petForId(item.id)}
+        src={pet}
         alt=""
         draggable={false}
         className="watchlist-row-pet pointer-events-none absolute right-2 top-7 z-[1] size-7 object-contain drop-shadow-sm"
