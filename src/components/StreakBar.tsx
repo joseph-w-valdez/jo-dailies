@@ -16,7 +16,7 @@ const CALCIFER_QUOTES: Record<CalciferMood, string[]> = {
     'Need a spark…',
     'Don’t leave me dim…',
   ],
-  normal: ['Feed me puzzles!', 'Warm me up!', 'Got a daily?'],
+  normal: ['Feed me puzzles!', 'Warm me up!', 'Got a daily?', 'Remember to say hi to Joha'],
   happy: [
     'Feed me puzzles!',
     'Getting warmer…',
@@ -30,6 +30,7 @@ const CALCIFER_QUOTES: Record<CalciferMood, string[]> = {
     'One spark left!',
     'Almost blazing!',
     'Finish me off!',
+    'Oh my lord!'
   ],
   golden: [
     'I’m blazing!',
