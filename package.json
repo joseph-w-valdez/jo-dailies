@@ -1,7 +1,8 @@
 {
-  "name": "joha-dailies",
+  "name": "jo-dailies",
   "private": true,
   "version": "0.0.0",
+  "description": "Track Jo’s daily puzzles with streaks, a calendar, and a Calcifer buddy.",
   "type": "module",
   "scripts": {
     "dev": "vite",

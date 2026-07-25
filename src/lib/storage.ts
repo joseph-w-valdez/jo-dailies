@@ -1,7 +1,7 @@
 import { GAME_IDS } from '../games'
 import type { DayEntryId, DayLog, Store } from '../types'
 
-export const STORAGE_KEY = 'joha-dailies:v1'
+export const STORAGE_KEY = 'jo-dailies:v1'
 
 export function emptyStore(): Store {
   return { version: 1, days: {} }
