@@ -15,16 +15,189 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react'
+import {
+  isSettled,
+  isWatchRating,
   loadWatchlist,
+  MAX_RATING,
   needsProgress,
   newWatchId,
   saveWatchlist,
   WATCH_KINDS,
+  WATCH_STATUSES,
   type WatchItem,
   type WatchKind,
+  type WatchRating,
+  type WatchStatus,
 } from '../lib/watchlist'
+
+/** Ribbon styling per status, matching the vibe banner treatment. */
+const STATUS_STYLES: Record<
+  WatchStatus,
+  { banner: string; dot: string; accent: string }
+> = {
+  planned: {
+    banner: 'border border-border/80 bg-surface-raised/90 text-muted',
+    dot: 'bg-muted',
+    accent: 'text-muted',
+  },
+  watching: {
+    banner: 'bg-streak text-black',
+    dot: 'bg-streak',
+    accent: 'text-streak',
+  },
+  rewatching: {
+    banner: 'bg-fuchsia-500 text-white',
+    dot: 'bg-fuchsia-500',
+    accent: 'text-fuchsia-500',
+  },
+  onhold: {
+    banner: 'bg-amber-400 text-black',
+    dot: 'bg-amber-400',
+    accent: 'text-amber-400',
+  },
+  dropped: {
+    banner: 'bg-rose-500 text-white',
+    dot: 'bg-rose-500',
+    accent: 'text-rose-500',
+  },
+}
+
+function statusLabel(status: WatchStatus): string {
+  return WATCH_STATUSES.find((s) => s.id === status)?.label ?? status
+}
+
+const RATING_VALUES: WatchRating[] = Array.from(
+  { length: MAX_RATING + 1 },
+  (_, i) => i,
+)
+
+const RATING_VIBES: Record<number, string> = {
+  0: 'skip',
+  1: 'nah',
+  2: 'meh',
+  3: 'mid-',
+  4: 'mid',
+  5: 'okay',
+  6: 'solid',
+  7: 'good',
+  8: 'great',
+  9: 'peak',
+  10: 'masterpiece',
+}
+
+const EPISODE_CHEERS = [
+  'onward!',
+  'binge mode',
+  'one more!',
+  'keep going~',
+  'nice pace',
+  'ep unlocked',
+  'still watching?',
+  'couch locked',
+]
+
+const EMPTY_PETS = [
+  '/cats/cat-3.png',
+  '/cats/cat-6.png',
+  '/cats/cat-8.png',
+  '/cats/extra-sage.png',
+]
+
+const ROW_PETS = [
+  '/cats/cat-1.png',
+  '/cats/cat-2.png',
+  '/cats/cat-3.png',
+  '/cats/cat-4.png',
+  '/cats/cat-5.png',
+  '/cats/cat-6.png',
+  '/cats/cat-7.png',
+  '/cats/cat-8.png',
+  '/cats/cat-9.png',
+  '/cats/extra-sage.png',
+  '/cats/extra-bulba.png',
+] as const
+
+function petForId(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return ROW_PETS[hash % ROW_PETS.length]!
+}
+
+/** Starts a drag from anywhere on the card except interactive controls. */
+class CardPointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent: event }: { nativeEvent: PointerEvent }) => {
+        const target = event.target as HTMLElement | null
+        return !target?.closest('button, input, select, textarea, a, [role="menu"]')
+      },
+    },
+  ]
+}
+
+interface RatingTone {
+  row: string
+  cell: string
+  banner: string
+  accent: string
+}
+
+/** Bad → mid → great: red → orange → yellow → lime → green. */
+const RATING_TONES: RatingTone[] = [
+  {
+    row: 'border-rose-400/40 bg-rose-500/[0.08]',
+    cell: 'bg-rose-500/80 text-white',
+    banner: 'bg-rose-500 text-white',
+    accent: 'text-rose-500',
+  },
+  {
+    row: 'border-orange-400/40 bg-orange-500/[0.08]',
+    cell: 'bg-orange-500/80 text-white',
+    banner: 'bg-orange-500 text-white',
+    accent: 'text-orange-500',
+  },
+  {
+    row: 'border-amber-400/45 bg-amber-500/[0.09]',
+    cell: 'bg-amber-500/80 text-black',
+    banner: 'bg-amber-400 text-black',
+    accent: 'text-amber-400',
+  },
+  {
+    row: 'border-lime-400/40 bg-lime-500/[0.08]',
+    cell: 'bg-lime-500/80 text-black',
+    banner: 'bg-lime-400 text-black',
+    accent: 'text-lime-400',
+  },
+  {
+    row: 'border-emerald-400/45 bg-emerald-500/[0.09]',
+    cell: 'bg-emerald-500/80 text-white',
+    banner: 'bg-emerald-500 text-white',
+    accent: 'text-emerald-500',
+  },
+]
+
+function ratingTone(rating: WatchRating): RatingTone {
+  if (rating <= 2) return RATING_TONES[0]!
+  if (rating <= 4) return RATING_TONES[1]!
+  if (rating <= 6) return RATING_TONES[2]!
+  if (rating <= 8) return RATING_TONES[3]!
+  return RATING_TONES[4]!
+}
+
+function pickCheer(avoid?: string): string {
+  const pool = EPISODE_CHEERS.filter((c) => c !== avoid)
+  return pool[Math.floor(Math.random() * pool.length)] ?? EPISODE_CHEERS[0]!
+}
 
 const COLLAPSE_KEY = 'jo-dailies:watchlist-collapsed:v1'
 const PANEL_COLLAPSE_KEY = 'jo-dailies:watchlist-panel-collapsed:v1'
@@ -73,9 +246,21 @@ export function Watchlist() {
   const [draftKind, setDraftKind] = useState<WatchKind>('anime')
   const [collapsed, setCollapsed] = useState<CollapsedMap>(() => loadCollapsed())
   const [panelCollapsed, setPanelCollapsed] = useState(() => loadPanelCollapsed())
+  const [cheer, setCheer] = useState<string | null>(null)
+  const [cheerKey, setCheerKey] = useState(0)
+  const [sparkleId, setSparkleId] = useState<string | null>(null)
+  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [shuffleKind, setShuffleKind] = useState<WatchKind | 'all'>('all')
+  const lastCheer = useRef<string | undefined>(undefined)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const emptyPet = useMemo(
+    () => EMPTY_PETS[Math.floor(Math.random() * EMPTY_PETS.length)]!,
+    [],
+  )
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(CardPointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -93,7 +278,36 @@ export function Watchlist() {
     savePanelCollapsed(panelCollapsed)
   }, [panelCollapsed])
 
-  const remaining = items.filter((i) => !i.watched).length
+  useEffect(() => {
+    if (!cheer) return
+    const t = window.setTimeout(() => setCheer(null), 1600)
+    return () => window.clearTimeout(t)
+  }, [cheer, cheerKey])
+
+  useEffect(() => {
+    if (!sparkleId) return
+    const t = window.setTimeout(() => setSparkleId(null), 900)
+    return () => window.clearTimeout(t)
+  }, [sparkleId])
+
+  useEffect(() => {
+    if (!pickedId) return
+    const el = listRef.current?.querySelector(
+      `[data-watch-id="${pickedId}"]`,
+    ) as HTMLElement | null
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [pickedId, collapsed])
+
+  const remaining = items.filter((i) => !isSettled(i.status)).length
+  const shufflePool = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          !isSettled(i.status) &&
+          (shuffleKind === 'all' || i.kind === shuffleKind),
+      ),
+    [items, shuffleKind],
+  )
 
   const toggleCollapsed = (kind: WatchKind) => {
     setCollapsed((prev) => ({ ...prev, [kind]: !prev[kind] }))
@@ -106,6 +320,12 @@ export function Watchlist() {
     }))
   }, [items])
 
+  const showCheer = (text: string) => {
+    lastCheer.current = text
+    setCheer(text)
+    setCheerKey((n) => n + 1)
+  }
+
   const addItem = (event: FormEvent) => {
     event.preventDefault()
     const title = draft.trim()
@@ -115,9 +335,10 @@ export function Watchlist() {
         id: newWatchId(),
         title,
         kind: draftKind,
-        watched: false,
+        status: 'planned',
         season: 1,
         episode: 1,
+        rating: null,
       },
       ...prev,
     ])
@@ -126,6 +347,17 @@ export function Watchlist() {
 
   const patchItem = (id: string, patch: Partial<WatchItem>) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+  }
+
+  /** Touching progress means it's in flight again. */
+  const activeStatus = (status: WatchStatus): WatchStatus =>
+    status === 'planned' || status === 'dropped' ? 'watching' : status
+
+  const bumpSeason = (item: WatchItem, delta: number) => {
+    const season = Math.max(1, item.season + delta)
+    if (season === item.season) return
+    patchItem(item.id, { season, status: activeStatus(item.status) })
+    if (delta > 0) showCheer(pickCheer(lastCheer.current))
   }
 
   const bumpEpisode = (item: WatchItem, delta: number) => {
@@ -139,11 +371,35 @@ export function Watchlist() {
         episode = 1
       }
     }
-    patchItem(item.id, { season, episode, watched: false })
+    patchItem(item.id, { season, episode, status: activeStatus(item.status) })
+    if (delta > 0) showCheer(pickCheer(lastCheer.current))
+  }
+
+  const rateItem = (item: WatchItem, rating: WatchRating) => {
+    const next = item.rating === rating ? null : rating
+    patchItem(item.id, { rating: next })
+    if (next !== null && next >= 9) setSparkleId(item.id)
+  }
+
+  const pickWhatNext = () => {
+    if (shufflePool.length === 0) {
+      const label =
+        shuffleKind === 'all'
+          ? 'nothing left!'
+          : `no ${WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase() ?? 'items'} left!`
+      showCheer(label)
+      return
+    }
+    const pick = shufflePool[Math.floor(Math.random() * shufflePool.length)]!
+    setPanelCollapsed(false)
+    setCollapsed((prev) => ({ ...prev, [pick.kind]: false }))
+    setPickedId(pick.id)
+    showCheer(`up next: ${pick.title}`)
   }
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id))
+    if (pickedId === id) setPickedId(null)
   }
 
   const onDragEnd = (event: DragEndEvent, kind: WatchKind) => {
@@ -166,7 +422,7 @@ export function Watchlist() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface-raised p-4">
+    <section className="relative rounded-2xl border border-border bg-surface-raised p-4">
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -182,9 +438,61 @@ export function Watchlist() {
         </span>
       </div>
 
+      {cheer ? (
+        <p
+          key={cheerKey}
+          className="watchlist-cheer pointer-events-none absolute right-3 top-10 z-10 rounded-full border border-border bg-surface px-2.5 py-1 text-[10px] font-medium text-white shadow-lg"
+          role="status"
+        >
+          {cheer}
+        </p>
+      ) : null}
+
       {!panelCollapsed ? (
         <>
-          <p className="mt-1 text-xs text-muted">Stuff to watch with Jo.</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted">Stuff to watch with Jo.</p>
+            {items.length > 0 ? (
+              <div
+                className="inline-flex overflow-hidden rounded-lg border border-border bg-surface"
+                role="group"
+                aria-label="What next"
+              >
+                <label className="sr-only" htmlFor="watchlist-shuffle-kind">
+                  Shuffle category
+                </label>
+                <select
+                  id="watchlist-shuffle-kind"
+                  value={shuffleKind}
+                  onChange={(e) =>
+                    setShuffleKind(e.target.value as WatchKind | 'all')
+                  }
+                  className="border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
+                  title="Category"
+                >
+                  <option value="all">All</option>
+                  {WATCH_KINDS.map((kind) => (
+                    <option key={kind.id} value={kind.id}>
+                      {kind.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={pickWhatNext}
+                  disabled={shufflePool.length === 0}
+                  className="px-2 py-1 text-[10px] font-medium text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                  title={
+                    shuffleKind === 'all'
+                      ? 'Pick something random to watch'
+                      : `Pick a random ${WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase() ?? 'item'}`
+                  }
+                >
+                  What next?
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           <form onSubmit={addItem} className="mt-4 space-y-2">
             <div className="flex gap-1 rounded-xl border border-border bg-surface p-1">
@@ -223,11 +531,18 @@ export function Watchlist() {
           </form>
 
           {items.length === 0 ? (
-            <p className="mt-4 rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted">
-              Nothing queued up yet.
-            </p>
+            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-3 py-6 text-center">
+              <img
+                src={emptyPet}
+                alt=""
+                className="watchlist-peek size-14 object-contain opacity-90"
+                draggable={false}
+              />
+              <p className="text-xs text-muted">Nothing queued up yet.</p>
+              <p className="text-[10px] text-muted/80">Waiting for the next watch party…</p>
+            </div>
           ) : (
-            <div className="mt-4 space-y-4">
+            <div ref={listRef} className="mt-4 space-y-4">
               {grouped.map((group) =>
                 group.items.length === 0 ? null : (
                   <div key={group.id}>
@@ -259,22 +574,26 @@ export function Watchlist() {
                               <SortableWatchRow
                                 key={item.id}
                                 item={item}
-                                onToggle={() =>
-                                  patchItem(item.id, { watched: !item.watched })
-                                }
-                                onBump={(delta) => bumpEpisode(item, delta)}
+                                highlighted={pickedId === item.id}
+                                sparkle={sparkleId === item.id}
+                                onStatus={(status) => {
+                                  patchItem(item.id, { status })
+                                }}
+                                onBumpSeason={(delta) => bumpSeason(item, delta)}
+                                onBumpEpisode={(delta) => bumpEpisode(item, delta)}
                                 onSeason={(season) =>
                                   patchItem(item.id, {
                                     season: Math.max(1, season),
-                                    watched: false,
+                                    status: activeStatus(item.status),
                                   })
                                 }
                                 onEpisode={(episode) =>
                                   patchItem(item.id, {
                                     episode: Math.max(1, episode),
-                                    watched: false,
+                                    status: activeStatus(item.status),
                                   })
                                 }
+                                onRate={(rating) => rateItem(item, rating)}
                                 onRemove={() => removeItem(item.id)}
                               />
                             ))}
@@ -295,26 +614,33 @@ export function Watchlist() {
 
 interface SortableWatchRowProps {
   item: WatchItem
-  onToggle: () => void
-  onBump: (delta: number) => void
+  highlighted: boolean
+  sparkle: boolean
+  onStatus: (status: WatchStatus) => void
+  onBumpSeason: (delta: number) => void
+  onBumpEpisode: (delta: number) => void
   onSeason: (season: number) => void
   onEpisode: (episode: number) => void
+  onRate: (rating: WatchRating) => void
   onRemove: () => void
 }
 
 function SortableWatchRow({
   item,
-  onToggle,
-  onBump,
+  highlighted,
+  sparkle,
+  onStatus,
+  onBumpSeason,
+  onBumpEpisode,
   onSeason,
   onEpisode,
+  onRate,
   onRemove,
 }: SortableWatchRowProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    setActivatorNodeRef,
     transform,
     transition,
     isDragging,
@@ -326,110 +652,295 @@ function SortableWatchRow({
   }
 
   const showProgress = needsProgress(item.kind)
+  const rated = isWatchRating(item.rating)
+  const tone = rated ? ratingTone(item.rating!) : null
+  const vibe =
+    rated && item.rating !== null ? RATING_VIBES[item.rating] : null
+  const [statusOpen, setStatusOpen] = useState(false)
 
   return (
     <li
       ref={setNodeRef}
       style={style}
+      data-watch-id={item.id}
+      {...attributes}
+      {...listeners}
       className={[
-        'rounded-xl border border-border bg-surface hover:border-white/20',
-        isDragging ? 'z-10 opacity-80 shadow-lg shadow-black/30' : '',
+        'group relative cursor-grab touch-none rounded-xl border transition-colors active:cursor-grabbing',
+        tone ? tone.row : 'border-border bg-surface hover:border-white/20',
+        highlighted ? 'watchlist-picked ring-2 ring-golden/70' : '',
+        sparkle ? 'watchlist-rating-sparkle' : '',
+        statusOpen ? 'z-30' : '',
+        isDragging ? 'z-40 opacity-80 shadow-lg shadow-black/30' : '',
       ].join(' ')}
     >
-      <div className="group px-3 py-2.5">
-        <div className="flex items-start gap-2">
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded-md text-muted touch-none active:cursor-grabbing hover:bg-surface-raised hover:text-white"
-            aria-label={`Drag to reorder ${item.title}`}
-            title="Drag to reorder"
-            {...attributes}
-            {...listeners}
-          >
-            <GripIcon />
-          </button>
+      {sparkle ? (
+        <span className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl" aria-hidden="true">
+          <span className="watchlist-spark done-sparkle absolute left-[18%] top-2 text-golden">✦</span>
+          <span className="watchlist-spark done-sparkle absolute left-[52%] top-1 text-emerald-300 [animation-delay:80ms]">✧</span>
+          <span className="watchlist-spark done-sparkle absolute left-[78%] top-3 text-amber-300 [animation-delay:140ms]">✦</span>
+        </span>
+      ) : null}
 
-          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={item.watched}
-              onChange={onToggle}
-              className="mt-0.5 size-4 shrink-0 accent-golden"
-              aria-label={`Mark ${item.title} ${item.watched ? 'unwatched' : 'watched'}`}
-            />
-            <span
+      <div className="flex flex-col gap-[6px] pb-[6px]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 shrink items-start">
+            <div className="shrink-0">
+              <StatusBanner
+                title={item.title}
+                status={item.status}
+                open={statusOpen}
+                onOpenChange={setStatusOpen}
+                onStatus={onStatus}
+              />
+            </div>
+            <MarqueeText
+              text={item.title}
               className={[
-                'min-w-0 break-words text-sm leading-snug',
-                item.watched ? 'text-muted line-through' : 'text-white',
+                'watchlist-title max-w-[14rem] rounded-br-lg px-2 py-[6px] text-[9px] font-bold uppercase leading-none tracking-[0.14em] shadow-sm',
+                isSettled(item.status)
+                  ? 'bg-rose-500/70 text-white line-through decoration-white/35'
+                  : tone
+                    ? tone.banner
+                    : STATUS_STYLES[item.status].banner,
               ].join(' ')}
-              title={item.title}
+            />
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Remove ${item.title}`}
+              className="ml-1 shrink-0 self-center rounded-md px-1 text-muted opacity-0 transition hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
             >
-              {item.title}
-            </span>
-          </label>
+              ×
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove ${item.title}`}
-            className="shrink-0 rounded-md px-1 text-muted opacity-0 transition hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
-          >
-            ×
-          </button>
+          <div className="flex shrink-0 items-start">
+            <span
+              className="flex h-4 w-7 items-center justify-center rounded-b-md text-muted/70"
+              title="Drag to reorder"
+              aria-hidden="true"
+            >
+              <span className="rotate-90">
+                <GripIcon />
+              </span>
+            </span>
+            {vibe && tone ? (
+              <MarqueeText
+                text={vibe}
+                title={`${item.rating}/10 · ${vibe}`}
+                className={[
+                  'pointer-events-none max-w-[9rem] rounded-bl-lg rounded-tr-xl px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] shadow-sm',
+                  tone.banner,
+                ].join(' ')}
+              />
+            ) : null}
+          </div>
         </div>
 
         {showProgress ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
-            <label className="flex items-center gap-1 text-[11px] text-muted">
-              S
-              <NumField
-                value={item.season}
-                ariaLabel={`${item.title} season`}
-                onCommit={onSeason}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-[11px] text-muted">
-              E
-              <NumField
-                value={item.episode}
-                ariaLabel={`${item.title} episode`}
-                onCommit={onEpisode}
-              />
-            </label>
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onBump(-1)}
-                aria-label={`Previous episode of ${item.title}`}
-                className="flex size-6 items-center justify-center rounded-md border border-border text-xs text-muted transition hover:border-white/25 hover:text-white"
-              >
-                −
-              </button>
-              <button
-                type="button"
-                onClick={() => onBump(1)}
-                aria-label={`Next episode of ${item.title}`}
-                className="flex size-6 items-center justify-center rounded-md border border-border text-xs text-muted transition hover:border-white/25 hover:text-white"
-              >
-                +
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 px-2">
+            <ProgressChip
+              label="S"
+              value={item.season}
+              ariaLabel={`${item.title} season`}
+              onCommit={onSeason}
+              onBump={onBumpSeason}
+              banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
+              accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
+            />
+            <ProgressChip
+              label="E"
+              value={item.episode}
+              ariaLabel={`${item.title} episode`}
+              onCommit={onEpisode}
+              onBump={onBumpEpisode}
+              banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
+              accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
+            />
           </div>
         ) : null}
+
+        <div className="relative px-2 pr-10">
+          <RatingBar title={item.title} rating={item.rating} onRate={onRate} />
+        </div>
       </div>
+
+      <img
+        src={petForId(item.id)}
+        alt=""
+        draggable={false}
+        className="watchlist-row-pet pointer-events-none absolute right-2 top-7 z-[1] size-7 object-contain drop-shadow-sm"
+        aria-hidden="true"
+      />
     </li>
   )
 }
 
-function NumField({
+function MarqueeText({
+  text,
+  className,
+  title,
+}: {
+  text: string
+  className?: string
+  title?: string
+}) {
+  const outerRef = useRef<HTMLSpanElement>(null)
+  const innerRef = useRef<HTMLSpanElement>(null)
+  const [overflow, setOverflow] = useState(0)
+
+  useEffect(() => {
+    const outer = outerRef.current
+    const inner = innerRef.current
+    if (!outer || !inner) return
+
+    const measure = () => {
+      const delta = inner.scrollWidth - outer.clientWidth
+      setOverflow(delta > 1 ? delta : 0)
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(outer)
+    ro.observe(inner)
+    return () => ro.disconnect()
+  }, [text])
+
+  return (
+    <span
+      ref={outerRef}
+      title={title ?? text}
+      className={['inline-flex max-w-full overflow-hidden', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <span
+        ref={innerRef}
+        className={overflow > 0 ? 'watchlist-marquee whitespace-nowrap' : 'whitespace-nowrap'}
+        style={
+          overflow > 0
+            ? ({ ['--marquee-distance' as string]: `${overflow}px` } as CSSProperties)
+            : undefined
+        }
+      >
+        {text}
+      </span>
+    </span>
+  )
+}
+
+function StatusBanner({
+  title,
+  status,
+  open,
+  onOpenChange,
+  onStatus,
+}: {
+  title: string
+  status: WatchStatus
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onStatus: (status: WatchStatus) => void
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) onOpenChange(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, onOpenChange])
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${title} status: ${statusLabel(status)}`}
+        title="Change status"
+        className={[
+          'flex items-center justify-center gap-1 whitespace-nowrap rounded-br-none rounded-tl-xl px-2 py-[6px] text-[9px] font-bold uppercase leading-none tracking-[0.14em] shadow-sm transition hover:brightness-110',
+          STATUS_STYLES[status].banner,
+        ].join(' ')}
+      >
+        {statusLabel(status)}
+        <svg viewBox="0 0 10 10" className="size-2" aria-hidden="true">
+          <path
+            d="M2 3.5 L5 6.5 L8 3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div
+          role="menu"
+          className="watchlist-status-menu absolute left-0 top-full z-20 mt-1 min-w-[8.5rem] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 shadow-xl shadow-black/50"
+        >
+          {WATCH_STATUSES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={s.id === status}
+              onClick={() => {
+                onStatus(s.id)
+                onOpenChange(false)
+              }}
+              className={[
+                'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[11px] transition',
+                s.id === status
+                  ? 'bg-white/10 text-white'
+                  : 'text-muted hover:bg-white/5 hover:text-white',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'size-2 shrink-0 rounded-full',
+                  STATUS_STYLES[s.id].dot,
+                ].join(' ')}
+              />
+              {s.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ProgressChip({
+  label,
   value,
   ariaLabel,
   onCommit,
+  onBump,
+  banner,
+  accent,
 }: {
+  label: string
   value: number
   ariaLabel: string
   onCommit: (n: number) => void
+  onBump: (delta: number) => void
+  banner: string
+  accent: string
 }) {
   const [text, setText] = useState(String(value))
 
@@ -443,19 +954,101 @@ function NumField({
   }
 
   return (
-    <input
-      type="text"
-      inputMode="numeric"
-      pattern="[0-9]*"
-      value={text}
-      onChange={(e) => setText(e.target.value.replace(/\D/g, '').slice(0, 3))}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-      }}
+    <div
+      className="inline-flex items-stretch overflow-hidden rounded-lg shadow-sm"
+      role="group"
       aria-label={ariaLabel}
-      className="w-10 rounded-md border border-border bg-surface-raised px-1.5 py-0.5 text-center text-xs tabular-nums text-white focus:border-white/25 focus:outline-none"
-    />
+    >
+      <span
+        className={[
+          'flex items-center px-2 text-[9px] font-bold uppercase leading-none tracking-[0.14em]',
+          banner,
+        ].join(' ')}
+      >
+        {label}
+      </span>
+      <div className="inline-flex items-stretch bg-black/30">
+        <button
+          type="button"
+          onClick={() => onBump(-1)}
+          aria-label={`Decrease ${ariaLabel}`}
+          className={[
+            'flex h-6 w-4 items-center justify-center bg-surface text-[11px] font-bold transition hover:brightness-125',
+            accent,
+          ].join(' ')}
+        >
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={text}
+          onChange={(e) => setText(e.target.value.replace(/\D/g, '').slice(0, 3))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+          aria-label={ariaLabel}
+          className="h-6 w-7 bg-transparent text-center text-[11px] font-bold tabular-nums tracking-wide text-white focus:bg-white/5 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => onBump(1)}
+          aria-label={`Increase ${ariaLabel}`}
+          className={[
+            'flex h-6 w-4 items-center justify-center bg-surface text-[11px] font-bold transition hover:brightness-125',
+            accent,
+          ].join(' ')}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RatingBar({
+  title,
+  rating,
+  onRate,
+}: {
+  title: string
+  rating: WatchRating | null
+  onRate: (rating: WatchRating) => void
+}) {
+  const rated = isWatchRating(rating)
+  const tone = rated ? ratingTone(rating!) : null
+
+  return (
+    <div
+      role="group"
+      aria-label={`${title} rating`}
+      className="flex min-w-0 overflow-hidden rounded-md border border-border"
+    >
+      {RATING_VALUES.map((value) => {
+        const filled = rated && rating! >= value
+        const vibe = RATING_VIBES[value] ?? `${value}/${MAX_RATING}`
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onRate(value)}
+            aria-label={`Rate ${title} ${value} out of ${MAX_RATING} — ${vibe}`}
+            aria-pressed={rating === value}
+            title={`${value} · ${vibe}`}
+            className={[
+              'min-w-0 flex-1 border-r border-border/60 py-1 text-[10px] font-medium tabular-nums transition last:border-r-0',
+              filled && tone
+                ? tone.cell
+                : 'bg-surface-raised text-muted hover:bg-white/10 hover:text-white',
+            ].join(' ')}
+          >
+            {value}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

@@ -69,7 +69,7 @@ function App() {
         className={[
           'relative z-10 mx-auto grid min-h-full w-full max-w-[100rem] gap-6 px-4 py-8 sm:px-6',
           sideBySide
-            ? 'grid-cols-[minmax(0,1fr)_minmax(0,64rem)_minmax(0,1fr)]'
+            ? 'grid-cols-[400px_minmax(0,64rem)] justify-center'
             : 'grid-cols-1',
         ].join(' ')}
       >
@@ -134,12 +134,12 @@ function App() {
           </div>
         </div>
 
-        {/* Bottom when gutter would be <240px; left gutter when there's room. */}
+        {/* A full 400px side column when it fits; otherwise placed below. */}
         <aside
           className={[
             'order-2 w-full',
             sideBySide
-              ? 'col-start-1 row-start-1 max-w-md justify-self-end'
+              ? 'col-start-1 row-start-1'
               : '',
           ].join(' ')}
         >
@@ -154,9 +154,6 @@ function App() {
           </div>
         </aside>
 
-        {sideBySide ? (
-          <div className="col-start-3 row-start-1" aria-hidden="true" />
-        ) : null}
       </div>
 
       <ScrollTopButton />

@@ -161,6 +161,28 @@ input:disabled {
   font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
 }
 
+.watchlist-title {
+  font-family: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.watchlist-marquee {
+  animation: watchlist-marquee 4.5s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes watchlist-marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(calc(-1 * var(--marquee-distance, 0px)));
+  }
+}
+
 .calcifer-buddy:hover .calcifer-wiggle {
   animation: calcifer-wiggle 550ms ease-in-out;
   transform-origin: 50% 85%;
@@ -816,6 +838,104 @@ input:disabled {
   }
 }
 
+.watchlist-cheer {
+  animation: watchlist-cheer-pop 1600ms ease-out forwards;
+}
+
+@keyframes watchlist-cheer-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+
+.watchlist-peek {
+  animation: watchlist-peek 2.8s ease-in-out infinite;
+  transform-origin: 50% 90%;
+}
+
+@keyframes watchlist-peek {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+}
+
+.watchlist-status-menu {
+  animation: watchlist-status-menu-in 140ms ease-out;
+  transform-origin: top left;
+}
+
+@keyframes watchlist-status-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.watchlist-row-pet {
+  animation: watchlist-row-pet-tilt 1.2s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+@keyframes watchlist-row-pet-tilt {
+  0%,
+  100% {
+    transform: rotate(-12deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+.watchlist-picked {
+  animation: watchlist-pick-pulse 900ms ease-out;
+}
+
+@keyframes watchlist-pick-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(251 191 36 / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgb(251 191 36 / 0);
+  }
+}
+
+.watchlist-rating-sparkle {
+  animation: watchlist-rating-glow 900ms ease-out;
+}
+
+@keyframes watchlist-rating-glow {
+  0% {
+    filter: brightness(1);
+  }
+  35% {
+    filter: brightness(1.18);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .calcifer-buddy:hover .calcifer-wiggle,
   .calcifer-idle,
@@ -854,7 +974,14 @@ input:disabled {
   .cat-wallpaper-icon,
   .cat-confetti-bit,
   .cursor-trail-bit,
-  .done-sparkle {
+  .done-sparkle,
+  .watchlist-cheer,
+  .watchlist-peek,
+  .watchlist-row-pet,
+  .watchlist-marquee,
+  .watchlist-status-menu,
+  .watchlist-picked,
+  .watchlist-rating-sparkle {
     animation: none;
   }
 }

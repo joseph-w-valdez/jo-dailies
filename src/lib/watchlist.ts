@@ -1,14 +1,53 @@
 export type WatchKind = 'anime' | 'show' | 'movie'
 
+/** 0–10; null means unrated */
+export type WatchRating = number
+
+export const MAX_RATING = 10
+
+export type WatchStatus =
+  | 'planned'
+  | 'watching'
+  | 'onhold'
+  | 'rewatching'
+  | 'dropped'
+
+export const WATCH_STATUSES: { id: WatchStatus; label: string }[] = [
+  { id: 'planned', label: 'to watch' },
+  { id: 'watching', label: 'watching' },
+  { id: 'rewatching', label: 'rewatching' },
+  { id: 'onhold', label: 'on hold' },
+  { id: 'dropped', label: 'dropped' },
+]
+
+export function isWatchStatus(value: unknown): value is WatchStatus {
+  return WATCH_STATUSES.some((s) => s.id === value)
+}
+
+/** Counts as finished — hidden from "to watch" and shuffle. */
+export function isSettled(status: WatchStatus): boolean {
+  return status === 'dropped'
+}
+
 export interface WatchItem {
   id: string
   title: string
   kind: WatchKind
-  watched: boolean
+  status: WatchStatus
   /** 1-based; used for anime / show */
   season: number
   /** 1-based; used for anime / show */
   episode: number
+  rating: WatchRating | null
+}
+
+export function isWatchRating(value: unknown): value is WatchRating {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= MAX_RATING
+  )
 }
 
 export const WATCH_KINDS: { id: WatchKind; label: string }[] = [
@@ -18,7 +57,7 @@ export const WATCH_KINDS: { id: WatchKind; label: string }[] = [
 ]
 
 interface WatchStore {
-  version: 2
+  version: 4
   items: WatchItem[]
 }
 
@@ -37,13 +76,20 @@ function normalizeItem(raw: unknown): WatchItem | null {
     typeof i.season === 'number' && i.season >= 1 ? Math.floor(i.season) : 1
   const episode =
     typeof i.episode === 'number' && i.episode >= 1 ? Math.floor(i.episode) : 1
+  const rating = isWatchRating(i.rating) ? i.rating : null
+  const status: WatchStatus = isWatchStatus(i.status)
+    ? i.status
+    : i.status === 'completed' || i.watched
+      ? 'watching'
+      : 'planned'
   return {
     id: i.id,
     title: i.title,
     kind,
-    watched: Boolean(i.watched),
+    status,
     season,
     episode,
+    rating,
   }
 }
 
@@ -63,7 +109,7 @@ export function loadWatchlist(): WatchItem[] {
 
 export function saveWatchlist(items: WatchItem[]): void {
   try {
-    const store: WatchStore = { version: 2, items }
+    const store: WatchStore = { version: 4, items }
     localStorage.setItem(WATCHLIST_KEY, JSON.stringify(store))
   } catch {
     /* ignore quota / private mode */
