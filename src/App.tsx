@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { CatWallpaper } from './components/CatWallpaper'
+import { CursorTrail, useCursorTrailSetting } from './components/CursorTrail'
 import { DailyCard } from './components/DailyCard'
 import { DayEditor } from './components/DayEditor'
 import { GameFrame } from './components/GameFrame'
@@ -22,6 +24,7 @@ function App() {
     isDone,
     dayCount,
   } = useDailies()
+  const { trailEnabled, setTrailEnabled } = useCursorTrailSetting()
 
   const todayDate = parseKey(today)
   const [viewYear, setViewYear] = useState(todayDate.getFullYear())
@@ -45,25 +48,27 @@ function App() {
     openAndComplete(gameId)
 
     if (game.embeddable) {
-      // Remount GameFrame so theater + 125% zoom always apply on Open
       setFrameSession((n) => n + 1)
       setFramedGameId(gameId)
       return
     }
 
-    // Chess / Waffle block iframes — pop out and hide any open frame
     openExternal(gameId)
     setFramedGameId(null)
   }
 
   return (
     <>
-      <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
+      <CatWallpaper />
+      <CursorTrail enabled={trailEnabled} />
+      <div className="relative z-10 mx-auto flex min-h-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
         <StreakBar
           streaks={streaks}
           todayGolden={todayGolden}
           todayCount={todayCount}
           gameCount={GAME_COUNT}
+          cursorTrail={trailEnabled}
+          onCursorTrailChange={setTrailEnabled}
         />
 
         <section>

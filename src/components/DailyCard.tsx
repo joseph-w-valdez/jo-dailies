@@ -1,4 +1,4 @@
-import type { KeyboardEvent, MouseEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import type { GameDef } from '../types'
 
 interface DailyCardProps {
@@ -16,6 +16,19 @@ export function DailyCard({
   onOpen,
   onToggle,
 }: DailyCardProps) {
+  const [sparkle, setSparkle] = useState(false)
+  const wasDone = useRef(done)
+
+  useEffect(() => {
+    if (done && !wasDone.current) {
+      setSparkle(true)
+      const timer = window.setTimeout(() => setSparkle(false), 900)
+      wasDone.current = done
+      return () => window.clearTimeout(timer)
+    }
+    wasDone.current = done
+  }, [done])
+
   const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
@@ -35,7 +48,7 @@ export function DailyCard({
       onClick={onOpen}
       onKeyDown={handleCardKeyDown}
       className={[
-        'flex cursor-pointer flex-col gap-4 rounded-2xl border p-4 transition-colors',
+        'relative flex cursor-pointer flex-col gap-4 overflow-hidden rounded-2xl border p-4 transition-colors',
         done
           ? 'border-transparent bg-surface-raised'
           : 'border-border bg-surface',
@@ -56,6 +69,8 @@ export function DailyCard({
       }}
       aria-label={`Open ${game.label}`}
     >
+      {sparkle ? <DoneSparkles accent={game.accent} /> : null}
+
       <div className="flex items-start justify-between gap-3">
         <div>
           <div
@@ -93,5 +108,34 @@ export function DailyCard({
         {active ? 'Playing' : 'Open'}
       </div>
     </article>
+  )
+}
+
+function DoneSparkles({ accent }: { accent: string }) {
+  const bits = [
+    { left: '18%', top: '22%', delay: '0ms', kind: 'star' },
+    { left: '72%', top: '18%', delay: '60ms', kind: 'heart' },
+    { left: '58%', top: '58%', delay: '120ms', kind: 'star' },
+    { left: '28%', top: '68%', delay: '90ms', kind: 'heart' },
+    { left: '84%', top: '42%', delay: '40ms', kind: 'star' },
+  ] as const
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20" aria-hidden="true">
+      {bits.map((b, i) => (
+        <span
+          key={i}
+          className="done-sparkle absolute text-sm"
+          style={{
+            left: b.left,
+            top: b.top,
+            color: accent,
+            animationDelay: b.delay,
+          }}
+        >
+          {b.kind === 'heart' ? '♥' : '✦'}
+        </span>
+      ))}
+    </div>
   )
 }

@@ -18,7 +18,11 @@ body,
 
 body {
   margin: 0;
-  background: #0b1220;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(251, 191, 36, 0.06), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 85% 20%, rgba(125, 211, 252, 0.05), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 90%, rgba(249, 168, 212, 0.05), transparent 55%),
+    #0b1220;
   color: #f3f4f6;
   font-family:
     Inter,
@@ -30,6 +34,110 @@ body {
     Helvetica,
     Arial,
     sans-serif;
+}
+
+.cat-floater {
+  will-change: transform;
+}
+
+.cat-wallpaper-icon {
+  display: block;
+  cursor: default;
+  transition: opacity 160ms ease;
+}
+
+.cat-wallpaper-icon:hover {
+  opacity: 0.55 !important;
+  animation: cat-icon-wiggle 450ms ease-in-out;
+}
+
+@keyframes cat-drift-right {
+  from {
+    transform: translate3d(-20vw, 0, 0);
+  }
+  to {
+    transform: translate3d(110vw, var(--cat-drift, 12px), 0);
+  }
+}
+
+@keyframes cat-drift-left {
+  from {
+    transform: translate3d(110vw, 0, 0);
+  }
+  to {
+    transform: translate3d(-20vw, var(--cat-drift, 12px), 0);
+  }
+}
+
+@keyframes cat-icon-wiggle {
+  0%,
+  100% {
+    transform: rotate(var(--cat-rot, 0deg)) scale(1);
+  }
+  30% {
+    transform: rotate(calc(var(--cat-rot, 0deg) - 14deg)) scale(1.18);
+  }
+  60% {
+    transform: rotate(calc(var(--cat-rot, 0deg) + 12deg)) scale(1.12);
+  }
+}
+
+.cat-confetti-bit {
+  animation-name: cat-confetti-fall;
+  animation-timing-function: cubic-bezier(0.22, 0.8, 0.36, 1);
+  animation-fill-mode: forwards;
+  opacity: 0.85;
+  will-change: transform, opacity;
+}
+
+@keyframes cat-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -10vh, 0) rotate(var(--cat-rot, 0deg)) scale(0.4);
+  }
+  12% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--cat-fall-x, 40px), 110vh, 0)
+      rotate(calc(var(--cat-rot, 0deg) + 160deg)) scale(0.85);
+  }
+}
+
+.cursor-trail-bit {
+  animation: cursor-trail-fade 520ms ease-out forwards;
+  opacity: 0.55;
+}
+
+@keyframes cursor-trail-fade {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.7) rotate(-8deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15) rotate(12deg) translateY(-10px);
+  }
+}
+
+.done-sparkle {
+  animation: done-sparkle 900ms ease-out forwards;
+}
+
+@keyframes done-sparkle {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.4) rotate(-20deg);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0) scale(1.15) rotate(8deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.8) rotate(25deg);
+  }
 }
 
 button,
@@ -741,7 +849,12 @@ input:disabled {
   .calcifer-burst-heart,
   .calcifer-burst-sparks .calcifer-spark,
   .calcifer-quote,
-  .calcifer-tear-stream {
+  .calcifer-tear-stream,
+  .cat-floater,
+  .cat-wallpaper-icon,
+  .cat-confetti-bit,
+  .cursor-trail-bit,
+  .done-sparkle {
     animation: none;
   }
 }

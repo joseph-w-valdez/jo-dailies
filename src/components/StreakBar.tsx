@@ -221,6 +221,8 @@ interface StreakBarProps {
   todayGolden: boolean
   todayCount: number
   gameCount: number
+  cursorTrail: boolean
+  onCursorTrailChange: (enabled: boolean) => void
 }
 
 export function StreakBar({
@@ -228,6 +230,8 @@ export function StreakBar({
   todayGolden,
   todayCount,
   gameCount,
+  cursorTrail,
+  onCursorTrailChange,
 }: StreakBarProps) {
   const [celebrating, setCelebrating] = useState(false)
   const wasGolden = useRef(todayGolden)
@@ -323,33 +327,45 @@ export function StreakBar({
           </div>
         </div>
 
-        <div
-          className={[
-            'flex shrink-0 items-center gap-3 self-start rounded-full border px-3 py-2 sm:self-auto',
-            todayGolden
-              ? 'border-golden/50 bg-golden/10 text-golden'
-              : 'border-border bg-surface/70 text-white',
-          ].join(' ')}
-          aria-label={`Today ${todayCount} of ${gameCount}${todayGolden ? ', golden' : ''}`}
-        >
-          <span className="text-xs font-medium tabular-nums">
-            Today {todayCount}/{gameCount}
-          </span>
-          <span className="flex gap-1" aria-hidden="true">
-            {Array.from({ length: gameCount }, (_, index) => (
-              <span
-                key={index}
-                className={[
-                  'size-1.5 rounded-full transition-colors',
-                  index < todayCount
-                    ? todayGolden
-                      ? 'bg-golden'
-                      : 'bg-streak'
-                    : 'bg-border',
-                ].join(' ')}
-              />
-            ))}
-          </span>
+        <div className="flex shrink-0 flex-col items-stretch gap-2 self-start sm:items-end sm:self-auto">
+          <div
+            className={[
+              'flex items-center gap-3 rounded-full border px-3 py-2',
+              todayGolden
+                ? 'border-golden/50 bg-golden/10 text-golden'
+                : 'border-border bg-surface/70 text-white',
+            ].join(' ')}
+            aria-label={`Today ${todayCount} of ${gameCount}${todayGolden ? ', golden' : ''}`}
+          >
+            <span className="text-xs font-medium tabular-nums">
+              Today {todayCount}/{gameCount}
+            </span>
+            <span className="flex gap-1" aria-hidden="true">
+              {Array.from({ length: gameCount }, (_, index) => (
+                <span
+                  key={index}
+                  className={[
+                    'size-1.5 rounded-full transition-colors',
+                    index < todayCount
+                      ? todayGolden
+                        ? 'bg-golden'
+                        : 'bg-streak'
+                      : 'bg-border',
+                  ].join(' ')}
+                />
+              ))}
+            </span>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 self-end rounded-full border border-border bg-surface/70 px-3 py-1.5 text-[11px] text-muted hover:border-white/20 hover:text-white">
+            <input
+              type="checkbox"
+              checked={cursorTrail}
+              onChange={(e) => onCursorTrailChange(e.target.checked)}
+              className="size-3.5 accent-golden"
+            />
+            Cursor trail
+          </label>
         </div>
       </div>
 
