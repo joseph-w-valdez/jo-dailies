@@ -14,6 +14,7 @@ import { Watchlist } from './components/Watchlist'
 import { GAMES, GAME_COUNT } from './games'
 import { useDailies } from './hooks/useDailies'
 import { useFirebaseAuth } from './hooks/firebaseAuthContext'
+import { useSharedTheme } from './hooks/useSharedTheme'
 import { useShellLayout } from './hooks/useShellLayout'
 import { parseKey } from './lib/date'
 import { pickLoadingFlavor } from './lib/loadingFlavor'
@@ -33,6 +34,7 @@ function Dashboard() {
     dayCount,
   } = useDailies()
   const { trailEnabled, setTrailEnabled } = useCursorTrailSetting()
+  const { theme, setTheme } = useSharedTheme()
   const { shellRef, leftBySide, rightBySide } = useShellLayout()
 
   const todayDate = parseKey(today)
@@ -99,7 +101,7 @@ function Dashboard() {
       >
         <div
           className={[
-            'pointer-events-none order-1 flex min-w-0 flex-col gap-6 [&>*]:pointer-events-auto',
+            'pointer-events-none order-1 relative z-20 flex min-w-0 flex-col gap-6 [&>*]:pointer-events-auto',
             leftBySide ? 'col-start-2 row-start-1' : '',
           ].join(' ')}
         >
@@ -108,6 +110,8 @@ function Dashboard() {
             todayGolden={todayGolden}
             todayCount={todayCount}
             gameCount={GAME_COUNT}
+            theme={theme}
+            onThemeChange={setTheme}
             cursorTrail={trailEnabled}
             onCursorTrailChange={setTrailEnabled}
           />
@@ -162,7 +166,7 @@ function Dashboard() {
 
         <aside
           className={[
-            'pointer-events-none order-2 w-full [&>*]:pointer-events-auto',
+            'pointer-events-none order-2 relative z-10 w-full [&>*]:pointer-events-auto',
             leftBySide ? 'col-start-1 row-start-1' : '',
           ].join(' ')}
         >

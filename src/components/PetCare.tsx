@@ -866,7 +866,7 @@ function RoomWindow({ sky }: { sky: RoomSky }) {
   return (
     <div
       className={[
-        "pet-care-window pointer-events-none absolute left-[8%] top-[9%] z-[1] h-[25%] w-[30%] overflow-hidden rounded-xl border-4 border-white/15 shadow-inner",
+        "pet-care-window pointer-events-none absolute left-[8%] top-[9%] z-[1] h-[25%] w-[30%] overflow-hidden rounded-xl border-4 shadow-inner",
         sky.isNight ? "pet-care-window-night" : "pet-care-window-day",
       ].join(" ")}
       style={skyStyle}
@@ -885,8 +885,8 @@ function RoomWindow({ sky }: { sky: RoomSky }) {
           <span className="pet-care-sun absolute size-[24%] rounded-full" />
         )}
       </div>
-      <span className="absolute inset-y-0 left-1/2 z-[1] w-1 -translate-x-1/2 bg-white/15" />
-      <span className="absolute inset-x-0 top-1/2 z-[1] h-1 -translate-y-1/2 bg-white/15" />
+      <span className="pet-care-window-muntin absolute inset-y-0 left-1/2 z-[1] w-1 -translate-x-1/2" />
+      <span className="pet-care-window-muntin absolute inset-x-0 top-1/2 z-[1] h-1 -translate-y-1/2" />
       <span className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-br from-white/20 via-transparent to-black/10" />
     </div>
   );

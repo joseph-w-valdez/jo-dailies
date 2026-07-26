@@ -10,6 +10,12 @@
       content="Track Jo’s daily puzzles with streaks, a calendar, and a Calcifer buddy."
     />
     <title>Jo Dailies</title>
+    <script>
+      try {
+        var t = localStorage.getItem('jo-dailies:theme')
+        if (t && t !== 'blue') document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { appHour } from '../lib/date'
+import { THEMES, type ThemeId } from '../lib/themes'
 import type { Streaks } from '../types'
 import {
   CALCIFER_BURST_MS,
@@ -306,6 +307,8 @@ interface StreakBarProps {
   todayGolden: boolean
   todayCount: number
   gameCount: number
+  theme: ThemeId
+  onThemeChange: (theme: ThemeId) => void
   cursorTrail: boolean
   onCursorTrailChange: (enabled: boolean) => void
 }
@@ -315,6 +318,8 @@ export function StreakBar({
   todayGolden,
   todayCount,
   gameCount,
+  theme,
+  onThemeChange,
   cursorTrail,
   onCursorTrailChange,
 }: StreakBarProps) {
@@ -416,7 +421,7 @@ export function StreakBar({
             </button>
             <span
               key={calciferSays}
-              className="pointer-events-none absolute -right-2 -top-3 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 text-[9px] font-medium text-muted shadow-lg transition-transform group-hover:-translate-y-0.5 calcifer-quote"
+              className="pointer-events-none absolute -right-2 -top-3 z-30 whitespace-nowrap rounded-full border border-border bg-surface px-2 py-0.5 text-[9px] font-medium text-muted shadow-lg transition-transform group-hover:-translate-y-0.5 calcifer-quote"
             >
               {calciferSays}
             </span>
@@ -467,15 +472,42 @@ export function StreakBar({
             </span>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 self-end rounded-full border border-border bg-surface/70 px-3 py-1.5 text-[11px] text-muted hover:border-white/20 hover:text-white">
-            <input
-              type="checkbox"
-              checked={cursorTrail}
-              onChange={(e) => onCursorTrailChange(e.target.checked)}
-              className="size-3.5 accent-golden"
-            />
-            Cursor trail
-          </label>
+          <div className="flex flex-wrap items-center justify-end gap-2 self-end">
+            <label className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-surface/70 px-2.5 py-1.5 text-[11px] text-muted hover:border-white/20 hover:text-white">
+              <span
+                className="size-2.5 shrink-0 rounded-full ring-1 ring-white/25"
+                style={{
+                  backgroundColor:
+                    THEMES.find((t) => t.id === theme)?.swatch ?? THEMES[0]!.swatch,
+                }}
+                aria-hidden="true"
+              />
+              <span className="sr-only">Theme</span>
+              <select
+                value={theme}
+                onChange={(e) => onThemeChange(e.target.value as ThemeId)}
+                className="max-w-[6.5rem] border-0 bg-transparent py-0 pl-0 pr-1 text-[11px] text-muted [color-scheme:dark] focus:outline-none"
+                title="Theme color"
+                aria-label="Theme color"
+              >
+                {THEMES.map((t) => (
+                  <option key={t.id} value={t.id} className="bg-surface text-white">
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-[11px] text-muted hover:border-white/20 hover:text-white">
+              <input
+                type="checkbox"
+                checked={cursorTrail}
+                onChange={(e) => onCursorTrailChange(e.target.checked)}
+                className="size-3.5 accent-golden"
+              />
+              Cursor trail
+            </label>
+          </div>
         </div>
       </div>
 
