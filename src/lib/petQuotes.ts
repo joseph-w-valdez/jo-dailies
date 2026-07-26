@@ -273,7 +273,7 @@ const VALORANT_QUOTES = [
   'This Jett is throwing',
   "I AM NOT just your bottom frag!",
   "I AM NOT just your healer!",
-  "meowmeowmeowmeownowmeowmeowmeow",
+  "meow meow meow meow meow now meow meow meow meow",
   "Pick up the OP!",
   "Ooooh! A Sheriff!",
   "Can you get me my lucky Phantom?",
