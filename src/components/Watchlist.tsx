@@ -267,7 +267,10 @@ export function Watchlist() {
   const [cheerKey, setCheerKey] = useState(0)
   const [sparkleId, setSparkleId] = useState<string | null>(null)
   const [pickedId, setPickedId] = useState<string | null>(null)
+  const [pickedTitle, setPickedTitle] = useState<string | null>(null)
+  const [pickedKey, setPickedKey] = useState(0)
   const [shuffleKind, setShuffleKind] = useState<WatchKind | 'all'>('all')
+  const [shuffleStatus, setShuffleStatus] = useState<WatchStatus | 'all'>('all')
   const lastCheer = useRef<string | undefined>(undefined)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -392,22 +395,34 @@ export function Watchlist() {
   }, [sparkleId])
 
   useEffect(() => {
+    if (!pickedId || !pickedTitle) return
+    const t = window.setTimeout(() => {
+      setPickedId(null)
+      setPickedTitle(null)
+    }, 60_000)
+    return () => window.clearTimeout(t)
+  }, [pickedId, pickedTitle, pickedKey])
+
+  useEffect(() => {
     if (!pickedId) return
     const el = listRef.current?.querySelector(
       `[data-watch-id="${pickedId}"]`,
     ) as HTMLElement | null
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [pickedId, collapsed])
+  }, [pickedId, pickedKey, collapsed])
 
   const remaining = items.filter((i) => !isSettled(i.status)).length
   const shufflePool = useMemo(
     () =>
-      items.filter(
-        (i) =>
-          !isSettled(i.status) &&
-          (shuffleKind === 'all' || i.kind === shuffleKind),
-      ),
-    [items, shuffleKind],
+      items.filter((i) => {
+        const kindOk = shuffleKind === 'all' || i.kind === shuffleKind
+        const statusOk =
+          shuffleStatus === 'all'
+            ? !isSettled(i.status)
+            : i.status === shuffleStatus
+        return kindOk && statusOk
+      }),
+    [items, shuffleKind, shuffleStatus],
   )
 
   const toggleCollapsed = (kind: WatchKind) => {
@@ -499,18 +514,28 @@ export function Watchlist() {
 
   const pickWhatNext = () => {
     if (shufflePool.length === 0) {
-      const label =
+      const kindLabel =
         shuffleKind === 'all'
+          ? null
+          : WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase()
+      const statusLabelText =
+        shuffleStatus === 'all'
+          ? null
+          : statusLabel(shuffleStatus).toLowerCase()
+      const parts = [kindLabel, statusLabelText].filter(Boolean)
+      showCheer(
+        parts.length === 0
           ? 'nothing left!'
-          : `no ${WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase() ?? 'items'} left!`
-      showCheer(label)
+          : `no ${parts.join(' · ')} left!`,
+      )
       return
     }
     const pick = shufflePool[Math.floor(Math.random() * shufflePool.length)]!
     setPanelCollapsed(false)
     setCollapsed((prev) => ({ ...prev, [pick.kind]: false }))
     setPickedId(pick.id)
-    showCheer(`up next: ${pick.title}`)
+    setPickedTitle(pick.title)
+    setPickedKey((n) => n + 1)
   }
 
   const removeItem = (id: string) => {
@@ -520,7 +545,10 @@ export function Watchlist() {
     ).catch((error: unknown) => {
       console.error('Could not remove watchlist item', error)
     })
-    if (pickedId === id) setPickedId(null)
+    if (pickedId === id) {
+      setPickedId(null)
+      setPickedTitle(null)
+    }
   }
 
   const onDragEnd = (event: DragEndEvent, kind: WatchKind) => {
@@ -588,43 +616,70 @@ export function Watchlist() {
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted">Stuff to watch with Jo.</p>
             {items.length > 0 ? (
-              <div
-                className="inline-flex overflow-hidden rounded-lg border border-border bg-surface"
-                role="group"
-                aria-label="What next"
-              >
-                <label className="sr-only" htmlFor="watchlist-shuffle-kind">
-                  Shuffle category
-                </label>
-                <select
-                  id="watchlist-shuffle-kind"
-                  value={shuffleKind}
-                  onChange={(e) =>
-                    setShuffleKind(e.target.value as WatchKind | 'all')
-                  }
-                  className="border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
-                  title="Category"
+              <div className="relative flex min-w-0 max-w-full flex-col items-end">
+                {pickedTitle ? (
+                  <p
+                    key={pickedKey}
+                    className="watchlist-pick-banner absolute bottom-full left-0 z-[1] mb-0 max-w-full truncate rounded-b-none rounded-t-lg border border-b-0 border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-white shadow-lg"
+                    role="status"
+                    title={pickedTitle}
+                  >
+                    up next: <span className="font-bold">{pickedTitle}</span>
+                  </p>
+                ) : null}
+                <div
+                  className="inline-flex overflow-hidden rounded-lg border border-border bg-surface"
+                  role="group"
+                  aria-label="What next"
                 >
-                  <option value="all">All</option>
-                  {WATCH_KINDS.map((kind) => (
-                    <option key={kind.id} value={kind.id}>
-                      {kind.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={pickWhatNext}
-                  disabled={shufflePool.length === 0}
-                  className="px-2 py-1 text-[10px] font-medium text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40"
-                  title={
-                    shuffleKind === 'all'
-                      ? 'Pick something random to watch'
-                      : `Pick a random ${WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase() ?? 'item'}`
-                  }
-                >
-                  What next?
-                </button>
+                  <label className="sr-only" htmlFor="watchlist-shuffle-kind">
+                    Shuffle category
+                  </label>
+                  <select
+                    id="watchlist-shuffle-kind"
+                    value={shuffleKind}
+                    onChange={(e) =>
+                      setShuffleKind(e.target.value as WatchKind | 'all')
+                    }
+                    className="border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
+                    title="Category"
+                  >
+                    <option value="all">All</option>
+                    {WATCH_KINDS.map((kind) => (
+                      <option key={kind.id} value={kind.id}>
+                        {kind.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="sr-only" htmlFor="watchlist-shuffle-status">
+                    Shuffle status
+                  </label>
+                  <select
+                    id="watchlist-shuffle-status"
+                    value={shuffleStatus}
+                    onChange={(e) =>
+                      setShuffleStatus(e.target.value as WatchStatus | 'all')
+                    }
+                    className="max-w-[6.5rem] border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
+                    title="Status"
+                  >
+                    <option value="all">Any status</option>
+                    {WATCH_STATUSES.map((status) => (
+                      <option key={status.id} value={status.id}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={pickWhatNext}
+                    disabled={shufflePool.length === 0}
+                    className="px-2 py-1 text-[10px] font-medium text-muted transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                    title="Pick something random to watch"
+                  >
+                    What next?
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
