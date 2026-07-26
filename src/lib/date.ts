@@ -32,6 +32,20 @@ export function daysUntil(dateKey: string, now = new Date()): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000)
 }
 
+/** Milliseconds until the next local midnight (clamped to at least 1s). */
+export function msUntilNextLocalMidnight(now = new Date()): number {
+  const next = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    0,
+  )
+  return Math.max(1000, next.getTime() - now.getTime())
+}
+
 /** Sunday-start month grid of local date keys (null = padding cell). */
 export function monthGrid(year: number, month: number): (string | null)[] {
   const first = new Date(year, month, 1)

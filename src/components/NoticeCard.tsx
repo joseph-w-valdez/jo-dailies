@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { msUntilNextLocalMidnight } from '../lib/date'
 import {
   NOTICE_CARD_HEIGHT_PX,
   NOTICE_SIDE_PX,
@@ -26,10 +27,28 @@ export function NoticeCard({
       setCountdown(null)
       return
     }
-    const tick = () => setCountdown(noticeCountdownLabel(date))
-    tick()
-    const id = window.setInterval(tick, 60_000)
-    return () => window.clearInterval(id)
+
+    let timeoutId = 0
+
+    const refresh = () => {
+      setCountdown(noticeCountdownLabel(date))
+      timeoutId = window.setTimeout(refresh, msUntilNextLocalMidnight())
+    }
+
+    refresh()
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        window.clearTimeout(timeoutId)
+        refresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [date])
 
   return (

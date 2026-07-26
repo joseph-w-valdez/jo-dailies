@@ -876,6 +876,164 @@ input:disabled {
   }
 }
 
+.pet-care-room {
+  background:
+    radial-gradient(circle at 78% 18%, rgba(251, 191, 36, 0.12), transparent 24%),
+    linear-gradient(to bottom, rgba(56, 189, 248, 0.08) 0 62%, transparent 62%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 1px 12.5%
+    ),
+    linear-gradient(to bottom, #162235 0 62%, #111827 62%);
+}
+
+.pet-care-room::after {
+  position: absolute;
+  inset: 62% 0 0;
+  content: '';
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 12.4%,
+      rgba(255, 255, 255, 0.035) 12.4% 12.6%
+    ),
+    linear-gradient(rgba(255, 255, 255, 0.035), transparent);
+  transform: perspective(280px) rotateX(48deg);
+  transform-origin: top;
+}
+
+.pet-care-sky {
+  background: linear-gradient(
+    180deg,
+    var(--pet-sky-top) 0%,
+    var(--pet-sky-bottom) 100%
+  );
+  transition: background 1.2s ease;
+}
+
+.pet-care-sun {
+  left: var(--pet-celestial-x);
+  top: var(--pet-celestial-y);
+  translate: -50% -50%;
+  background:
+    radial-gradient(circle at 35% 35%, #fff7c2 0%, #fbbf24 45%, #f59e0b 100%);
+  box-shadow:
+    0 0 18px var(--pet-celestial-glow),
+    0 0 36px rgba(251, 191, 36, 0.35);
+  transition:
+    left 1.2s ease,
+    top 1.2s ease;
+}
+
+.pet-care-moon {
+  left: var(--pet-celestial-x);
+  top: var(--pet-celestial-y);
+  translate: -50% -50%;
+  background:
+    radial-gradient(circle at 32% 30%, #f8fafc 0%, #e2e8f0 55%, #94a3b8 100%);
+  box-shadow:
+    0 0 16px var(--pet-celestial-glow),
+    0 0 28px rgba(148, 163, 184, 0.35);
+  transition:
+    left 1.2s ease,
+    top 1.2s ease;
+}
+
+.pet-care-moon::after {
+  position: absolute;
+  inset: 18% 0 0 28%;
+  content: '';
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.pet-care-star {
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+  animation: pet-care-twinkle 2.8s ease-in-out infinite;
+}
+
+.pet-care-star:nth-child(2) {
+  animation-delay: 0.7s;
+}
+
+.pet-care-star:nth-child(3) {
+  animation-delay: 1.4s;
+}
+
+@keyframes pet-care-twinkle {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pet-care-sprite {
+  transform-origin: 50% 90%;
+}
+
+.pet-care-happy {
+  animation: pet-care-bounce 1.4s ease-in-out infinite;
+}
+
+.pet-care-hungry {
+  animation: pet-care-wobble 1.1s ease-in-out infinite;
+  filter: saturate(0.85);
+}
+
+.pet-care-dirty {
+  animation: pet-care-shake 1.6s ease-in-out infinite;
+  filter: contrast(0.9) brightness(0.92);
+}
+
+.pet-care-neglected {
+  animation: pet-care-wobble 0.9s ease-in-out infinite;
+  filter: grayscale(0.35) brightness(0.85);
+}
+
+.pet-care-dead {
+  filter: grayscale(1) brightness(0.7);
+  opacity: 0.75;
+  transform: rotate(-8deg);
+}
+
+@keyframes pet-care-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pet-care-wobble {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes pet-care-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateX(-2px) rotate(-2deg);
+  }
+  75% {
+    transform: translateX(2px) rotate(2deg);
+  }
+}
+
 .watchlist-peek {
   animation: watchlist-peek 2.8s ease-in-out infinite;
   transform-origin: 50% 90%;
@@ -997,7 +1155,11 @@ input:disabled {
   .watchlist-marquee,
   .watchlist-status-menu,
   .watchlist-picked,
-  .watchlist-rating-sparkle {
+  .watchlist-rating-sparkle,
+  .pet-care-happy,
+  .pet-care-hungry,
+  .pet-care-dirty,
+  .pet-care-neglected {
     animation: none;
   }
 }

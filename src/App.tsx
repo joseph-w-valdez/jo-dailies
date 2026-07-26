@@ -7,6 +7,7 @@ import { FirebaseAuthProvider } from './components/FirebaseAuthProvider'
 import { GameFrame } from './components/GameFrame'
 import { MonthCalendar } from './components/MonthCalendar'
 import { NoticeRail } from './components/NoticeRail'
+import { PetCare } from './components/PetCare'
 import { ScrollTopButton } from './components/ScrollTopButton'
 import { StreakBar } from './components/StreakBar'
 import { Watchlist } from './components/Watchlist'
@@ -140,6 +141,8 @@ function Dashboard() {
               onToggle={(entryId) => toggle(selectedKey, entryId)}
             />
           </div>
+
+          <PetCare />
         </div>
 
         <aside
