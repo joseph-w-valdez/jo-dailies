@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -26,6 +27,7 @@ import {
   type PetMood,
   type SharedPet,
 } from "../lib/pet";
+import { petQuote, type PetQuoteNeeds } from "../lib/petQuotes";
 import { getRoomSky, type RoomSky } from "../lib/petRoomSky";
 
 const PANEL_COLLAPSE_KEY = 'jo-dailies:pet-panel-collapsed:v1'
@@ -159,12 +161,16 @@ function WanderingPet({
   mood,
   index,
   count,
+  quoteNeeds,
+  valorantStoreDone,
 }: {
   src: string;
   name: string;
   mood: PetMood;
   index: number;
   count: number;
+  quoteNeeds: PetQuoteNeeds;
+  valorantStoreDone: boolean;
 }) {
   // Spread pets out a bit horizontally on their initial position
   const initialX = count > 1 ? 12 + (index / Math.max(1, count - 1)) * 56 : 39;
@@ -215,19 +221,86 @@ function WanderingPet({
   const style = {
     left: `${position.x}%`,
     top: `${position.y}%`,
-    transform: `scaleX(${position.direction})`,
     transitionDuration: `${position.duration}ms`,
     zIndex: 3 + Math.round(position.y),
   } satisfies CSSProperties;
 
   const width = count >= 3 ? "w-[19%]" : count === 2 ? "w-[21%]" : "w-[23%]";
 
+  // One explicit cycle: show → fade → next. No shared interval + hide race.
+  const QUOTE_SHOW_MS = 5_000;
+  const QUOTE_FADE_MS = 700;
+  const QUOTE_GAP_MS = 1_500; // blank air after fade before the next line
+  const [quote, setQuote] = useState(() =>
+    petQuote(src, quoteNeeds, undefined, 'room', valorantStoreDone),
+  );
+  const [quoteShown, setQuoteShown] = useState(true);
+  const [quoteKey, setQuoteKey] = useState(0);
+  const quoteRef = useRef(quote);
+  quoteRef.current = quote;
+  const needsRef = useRef(quoteNeeds);
+  needsRef.current = quoteNeeds;
+  const valorantDoneRef = useRef(valorantStoreDone);
+  valorantDoneRef.current = valorantStoreDone;
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = 0;
+
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    const cycle = async () => {
+      // Stagger pets so they don't all speak in lockstep.
+      await wait(index * 400);
+      while (!cancelled) {
+        setQuote(
+          petQuote(
+            src,
+            needsRef.current,
+            quoteRef.current,
+            'room',
+            valorantDoneRef.current,
+          ),
+        );
+        setQuoteKey((k) => k + 1);
+        setQuoteShown(true);
+        await wait(QUOTE_SHOW_MS);
+        if (cancelled) break;
+        setQuoteShown(false);
+        await wait(QUOTE_FADE_MS + QUOTE_GAP_MS);
+      }
+    };
+
+    void cycle();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [src, index, valorantStoreDone]);
+
   return (
     <div
-      className={`pointer-events-none absolute ${width} transition-[left,top,transform] ease-in-out`}
+      className={`pointer-events-none absolute ${width} transition-[left,top] ease-in-out`}
       style={style}
     >
-      <div className="relative">
+      <span
+        key={quoteKey}
+        className="pet-care-quote pointer-events-none absolute -right-1 z-[2] w-max max-w-[10.5rem] rounded-full border border-border bg-surface px-2.5 py-1 text-center text-[11px] font-medium leading-snug text-muted shadow-lg"
+        style={{
+          bottom: 'calc(88% + 10px)',
+          opacity: quoteShown ? 1 : 0,
+          transition: `opacity ${QUOTE_FADE_MS}ms ease-out`,
+        }}
+      >
+        {quote}
+      </span>
+      <div
+        className="relative"
+        style={{ transform: `scaleX(${position.direction})` }}
+      >
         <span className="absolute bottom-0 left-1/2 h-[12%] w-[70%] -translate-x-1/2 rounded-full bg-black/25 blur-sm" />
         <img
           src={src}
@@ -243,9 +316,49 @@ function WanderingPet({
   );
 }
 
+const PUFF_COLOR = '#facc15'
+
+interface PuffParticle {
+  left: number
+  top: number
+  dx: number
+  dy: number
+  delay: number
+  size: number
+  color: string
+}
+
+/** Dense fine powder: tiny motes spawn across the whole piece and fly outward fast. */
+function makePuffParticles(count: number): PuffParticle[] {
+  return Array.from({ length: count }, () => {
+    // Spawn anywhere over the piece, biased toward the edges for a puff feel.
+    const angle = Math.random() * Math.PI * 2
+    const spawnR = 20 + Math.sqrt(Math.random()) * 32
+    const left = 50 + Math.cos(angle) * spawnR
+    const top = 50 + Math.sin(angle) * spawnR
+    // Fly radially outward from center.
+    const nx = (left - 50) / 50
+    const ny = (top - 50) / 50
+    const norm = Math.max(0.15, Math.hypot(nx, ny))
+    const dist = 55 + Math.random() * 75
+    return {
+      left,
+      top,
+      dx: (nx / norm) * dist,
+      dy: (ny / norm) * dist,
+      // Tight stagger so the powder erupts as dense fast bursts.
+      delay: Math.random() * 1150,
+      size: 1 + Math.random() * 2,
+      color: PUFF_COLOR,
+    }
+  })
+}
+
 function DraggableFurniture({
   item,
   selected,
+  placePuff,
+  onPuffDone,
   onSelect,
   onMove,
   onFlip,
@@ -254,6 +367,8 @@ function DraggableFurniture({
 }: {
   item: PlacedFurniture
   selected: boolean
+  placePuff?: boolean
+  onPuffDone?: () => void
   onSelect: () => void
   onMove: (x: number, y: number) => void
   onFlip: () => void
@@ -269,6 +384,11 @@ function DraggableFurniture({
   const [scale, setScale] = useState(item.scale)
   const scaleRef = useRef(scale)
   const [dragging, setDragging] = useState(false)
+  const [puffPlaying, setPuffPlaying] = useState(false)
+  const puffParticles = useMemo(
+    () => (placePuff ? makePuffParticles(320) : []),
+    [placePuff],
+  )
   const dragRef = useRef<{
     pointerId: number
     offsetX: number
@@ -315,6 +435,31 @@ function DraggableFurniture({
     if (resizeRef.current) return
     setScale(item.scale)
   }, [item.scale])
+
+  // Play the placement puff only once the piece is actually on screen.
+  useEffect(() => {
+    if (!placePuff) return
+    const el = elRef.current
+    if (!el) return
+    let timer: number | undefined
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        io.disconnect()
+        setPuffPlaying(true)
+        timer = window.setTimeout(() => {
+          setPuffPlaying(false)
+          onPuffDone?.()
+        }, 1700)
+      },
+      { threshold: 0.4 },
+    )
+    io.observe(el)
+    return () => {
+      io.disconnect()
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [placePuff, onPuffDone])
 
   if (!asset) return null
 
@@ -424,6 +569,30 @@ function DraggableFurniture({
           transform: `rotate(${rotation}deg) scaleX(${item.flipped ? -1 : 1})`,
         }}
       />
+      {puffPlaying ? (
+        <span
+          className="furniture-place-puff pointer-events-none absolute inset-0 z-[4]"
+          aria-hidden="true"
+        >
+          {puffParticles.map((p, i) => (
+            <span
+              key={i}
+              className="furniture-puff-bit"
+              style={{
+                left: `${p.left}%`,
+                top: `${p.top}%`,
+                width: `${p.size}px`,
+                height: `${p.size}px`,
+                margin: `-${p.size / 2}px`,
+                background: p.color,
+                animationDelay: `${p.delay}ms`,
+                ['--px' as string]: `${p.dx}px`,
+                ['--py' as string]: `${p.dy}px`,
+              }}
+            />
+          ))}
+        </span>
+      ) : null}
       {showDelete ? (
         <button
           type="button"
@@ -1094,7 +1263,11 @@ function DeadPetCard({
   );
 }
 
-export function PetCare() {
+export function PetCare({
+  valorantStoreDone = false,
+}: {
+  valorantStoreDone?: boolean
+}) {
   const {
     pets,
     furniture,
@@ -1117,6 +1290,7 @@ export function PetCare() {
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(
     null,
   );
+  const [placePuffId, setPlacePuffId] = useState<string | null>(null);
   const [panelCollapsed, setPanelCollapsed] = useState(() =>
     loadPanelCollapsed(),
   );
@@ -1137,6 +1311,14 @@ export function PetCare() {
     }
   }, [furniture, selectedFurnitureId]);
 
+  const handleAddFurniture = (assetId: string) => {
+    const id = placeFurniture(assetId);
+    if (id) {
+      setPlacePuffId(id);
+      setSelectedFurnitureId(id);
+    }
+  };
+
   return (
     <section className="rounded-2xl border border-border bg-surface-raised p-4">
       <div className="flex items-center justify-between gap-2">
@@ -1148,7 +1330,7 @@ export function PetCare() {
         >
           <ChevronIcon open={!panelCollapsed} />
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-            Shared pets
+            Catomagotchi
           </h2>
         </button>
         <span className="shrink-0 text-[11px] text-muted tabular-nums">
@@ -1168,6 +1350,8 @@ export function PetCare() {
                 key={item.id}
                 item={item}
                 selected={selectedFurnitureId === item.id}
+                placePuff={placePuffId === item.id}
+                onPuffDone={() => setPlacePuffId(null)}
                 onSelect={() => setSelectedFurnitureId(item.id)}
                 onMove={(x, y) => relocateFurniture(item.id, x, y)}
                 onFlip={() => mirrorFurniture(item.id)}
@@ -1188,6 +1372,12 @@ export function PetCare() {
                 mood={petMood(pet, today)}
                 index={index}
                 count={alivePets.length}
+                quoteNeeds={{
+                  hungry: pet.lastFedOn !== today,
+                  dirty: pet.lastCleanedOn !== today,
+                  bored: pet.lastPlayedOn !== today,
+                }}
+                valorantStoreDone={valorantStoreDone}
               />
             ))}
           </div>
@@ -1207,7 +1397,7 @@ export function PetCare() {
 
           <FurnitureFooter
             furniture={furniture}
-            onAdd={placeFurniture}
+            onAdd={handleAddFurniture}
           />
 
           {deadPets.map((pet) => (

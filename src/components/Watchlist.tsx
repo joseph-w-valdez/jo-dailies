@@ -4,6 +4,7 @@ import {
   PointerSensor,
   closestCenter,
   type DragEndEvent,
+  useDndContext,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -24,7 +25,10 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import {
+  memo,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -87,6 +91,11 @@ const STATUS_STYLES: Record<
 
 function statusLabel(status: WatchStatus): string {
   return WATCH_STATUSES.find((s) => s.id === status)?.label ?? status
+}
+
+/** Touching progress means it's in flight again. */
+function activeStatus(status: WatchStatus): WatchStatus {
+  return status === 'planned' || status === 'dropped' ? 'watching' : status
 }
 
 const RATING_VALUES: WatchRating[] = Array.from(
@@ -269,10 +278,13 @@ export function Watchlist() {
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [pickedTitle, setPickedTitle] = useState<string | null>(null)
   const [pickedKey, setPickedKey] = useState(0)
-  const [shuffleKind, setShuffleKind] = useState<WatchKind | 'all'>('all')
-  const [shuffleStatus, setShuffleStatus] = useState<WatchStatus | 'all'>('all')
+  const [filterKind, setFilterKind] = useState<WatchKind | 'all'>('all')
+  const [filterStatus, setFilterStatus] = useState<WatchStatus | 'all'>('all')
   const lastCheer = useRef<string | undefined>(undefined)
   const listRef = useRef<HTMLDivElement>(null)
+  // Mirrors pickedId so removeItem can stay referentially stable for memoized rows.
+  const pickedIdRef = useRef<string | null>(null)
+  pickedIdRef.current = pickedId
 
   const emptyPet = useMemo(
     () => EMPTY_PETS[Math.floor(Math.random() * EMPTY_PETS.length)]!,
@@ -412,17 +424,28 @@ export function Watchlist() {
   }, [pickedId, pickedKey, collapsed])
 
   const remaining = items.filter((i) => !isSettled(i.status)).length
+  const filtersActive = filterKind !== 'all' || filterStatus !== 'all'
+
+  /** Viewing filter — "any status" shows everything, settled included. */
+  const matchesFilter = useCallback(
+    (item: WatchItem) =>
+      (filterKind === 'all' || item.kind === filterKind) &&
+      (filterStatus === 'all' || item.status === filterStatus),
+    [filterKind, filterStatus],
+  )
+
+  // Shuffle keeps its old bias: "any status" still skips done/dropped.
   const shufflePool = useMemo(
     () =>
       items.filter((i) => {
-        const kindOk = shuffleKind === 'all' || i.kind === shuffleKind
+        const kindOk = filterKind === 'all' || i.kind === filterKind
         const statusOk =
-          shuffleStatus === 'all'
+          filterStatus === 'all'
             ? !isSettled(i.status)
-            : i.status === shuffleStatus
+            : i.status === filterStatus
         return kindOk && statusOk
       }),
-    [items, shuffleKind, shuffleStatus],
+    [items, filterKind, filterStatus],
   )
 
   const toggleCollapsed = (kind: WatchKind) => {
@@ -432,15 +455,17 @@ export function Watchlist() {
   const grouped = useMemo(() => {
     return WATCH_KINDS.map((kind) => ({
       ...kind,
-      items: items.filter((i) => i.kind === kind.id),
+      items: items.filter((i) => i.kind === kind.id && matchesFilter(i)),
     }))
-  }, [items])
+  }, [items, matchesFilter])
 
-  const showCheer = (text: string) => {
+  const visibleCount = grouped.reduce((sum, group) => sum + group.items.length, 0)
+
+  const showCheer = useCallback((text: string) => {
     lastCheer.current = text
     setCheer(text)
     setCheerKey((n) => n + 1)
-  }
+  }, [])
 
   const addItem = (event: FormEvent) => {
     event.preventDefault()
@@ -469,7 +494,7 @@ export function Watchlist() {
     setDraft('')
   }
 
-  const patchItem = (id: string, patch: Partial<WatchItem>) => {
+  const patchItem = useCallback((id: string, patch: Partial<WatchItem>) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
     void setDoc(
       doc(db, 'rooms', syncRoomId, 'watchItems', id),
@@ -478,50 +503,82 @@ export function Watchlist() {
     ).catch((error: unknown) => {
       console.error('Could not update watchlist item', error)
     })
-  }
+  }, [])
 
-  /** Touching progress means it's in flight again. */
-  const activeStatus = (status: WatchStatus): WatchStatus =>
-    status === 'planned' || status === 'dropped' ? 'watching' : status
+  const bumpSeason = useCallback(
+    (item: WatchItem, delta: number) => {
+      const season = Math.max(1, item.season + delta)
+      if (season === item.season) return
+      patchItem(item.id, { season, status: activeStatus(item.status) })
+      if (delta > 0) showCheer(pickCheer(lastCheer.current))
+    },
+    [patchItem, showCheer],
+  )
 
-  const bumpSeason = (item: WatchItem, delta: number) => {
-    const season = Math.max(1, item.season + delta)
-    if (season === item.season) return
-    patchItem(item.id, { season, status: activeStatus(item.status) })
-    if (delta > 0) showCheer(pickCheer(lastCheer.current))
-  }
-
-  const bumpEpisode = (item: WatchItem, delta: number) => {
-    let season = item.season
-    let episode = item.episode + delta
-    if (episode < 1) {
-      if (season > 1) {
-        season -= 1
-        episode = 1
-      } else {
-        episode = 1
+  const bumpEpisode = useCallback(
+    (item: WatchItem, delta: number) => {
+      let season = item.season
+      let episode = item.episode + delta
+      if (episode < 1) {
+        if (season > 1) {
+          season -= 1
+          episode = 1
+        } else {
+          episode = 1
+        }
       }
-    }
-    patchItem(item.id, { season, episode, status: activeStatus(item.status) })
-    if (delta > 0) showCheer(pickCheer(lastCheer.current))
-  }
+      patchItem(item.id, { season, episode, status: activeStatus(item.status) })
+      if (delta > 0) showCheer(pickCheer(lastCheer.current))
+    },
+    [patchItem, showCheer],
+  )
 
-  const rateItem = (item: WatchItem, rating: WatchRating) => {
-    const next = item.rating === rating ? null : rating
-    patchItem(item.id, { rating: next })
-    if (next !== null && next >= 9) setSparkleId(item.id)
-  }
+  const rateItem = useCallback(
+    (item: WatchItem, rating: WatchRating) => {
+      const next = item.rating === rating ? null : rating
+      patchItem(item.id, { rating: next })
+      if (next !== null && next >= 9) setSparkleId(item.id)
+    },
+    [patchItem],
+  )
+
+  const setItemStatus = useCallback(
+    (item: WatchItem, status: WatchStatus) => {
+      patchItem(item.id, { status })
+    },
+    [patchItem],
+  )
+
+  const setItemSeason = useCallback(
+    (item: WatchItem, season: number) => {
+      patchItem(item.id, {
+        season: Math.max(1, season),
+        status: activeStatus(item.status),
+      })
+    },
+    [patchItem],
+  )
+
+  const setItemEpisode = useCallback(
+    (item: WatchItem, episode: number) => {
+      patchItem(item.id, {
+        episode: Math.max(1, episode),
+        status: activeStatus(item.status),
+      })
+    },
+    [patchItem],
+  )
 
   const pickWhatNext = () => {
     if (shufflePool.length === 0) {
       const kindLabel =
-        shuffleKind === 'all'
+        filterKind === 'all'
           ? null
-          : WATCH_KINDS.find((k) => k.id === shuffleKind)?.label.toLowerCase()
+          : WATCH_KINDS.find((k) => k.id === filterKind)?.label.toLowerCase()
       const statusLabelText =
-        shuffleStatus === 'all'
+        filterStatus === 'all'
           ? null
-          : statusLabel(shuffleStatus).toLowerCase()
+          : statusLabel(filterStatus).toLowerCase()
       const parts = [kindLabel, statusLabelText].filter(Boolean)
       showCheer(
         parts.length === 0
@@ -538,18 +595,25 @@ export function Watchlist() {
     setPickedKey((n) => n + 1)
   }
 
-  const removeItem = (id: string) => {
+  const removeItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id))
     void deleteDoc(
       doc(db, 'rooms', syncRoomId, 'watchItems', id),
     ).catch((error: unknown) => {
       console.error('Could not remove watchlist item', error)
     })
-    if (pickedId === id) {
+    if (pickedIdRef.current === id) {
       setPickedId(null)
       setPickedTitle(null)
     }
-  }
+  }, [])
+
+  const removeRow = useCallback(
+    (item: WatchItem) => {
+      removeItem(item.id)
+    },
+    [removeItem],
+  )
 
   const onDragEnd = (event: DragEndEvent, kind: WatchKind) => {
     const { active, over } = event
@@ -557,13 +621,27 @@ export function Watchlist() {
 
     setItems((prev) => {
       const kindItems = prev.filter((i) => i.kind === kind)
-      const oldIndex = kindItems.findIndex((i) => i.id === active.id)
-      const newIndex = kindItems.findIndex((i) => i.id === over.id)
+
+      // Only visible rows can be dragged; filtered-out rows keep their slots.
+      const visibleSlots: number[] = []
+      kindItems.forEach((item, index) => {
+        if (matchesFilter(item)) visibleSlots.push(index)
+      })
+      const visible = visibleSlots.map((slot) => kindItems[slot]!)
+      const oldIndex = visible.findIndex((i) => i.id === active.id)
+      const newIndex = visible.findIndex((i) => i.id === over.id)
       if (oldIndex < 0 || newIndex < 0) return prev
 
-      const nextKind = arrayMove(kindItems, oldIndex, newIndex).map(
-        (item, index) => ({ ...item, order: index * 1024 }),
-      )
+      const movedVisible = arrayMove(visible, oldIndex, newIndex)
+      const reordered = [...kindItems]
+      visibleSlots.forEach((slot, i) => {
+        reordered[slot] = movedVisible[i]!
+      })
+
+      const nextKind = reordered.map((item, index) => ({
+        ...item,
+        order: index * 1024,
+      }))
       const batch = writeBatch(db)
       for (const item of nextKind) {
         batch.set(
@@ -628,48 +706,83 @@ export function Watchlist() {
                   </p>
                 ) : null}
                 <div
-                  className="inline-flex overflow-hidden rounded-lg border border-border bg-surface"
+                  className={[
+                    'inline-flex overflow-hidden rounded-lg border bg-surface',
+                    filtersActive ? 'border-white/25' : 'border-border',
+                  ].join(' ')}
                   role="group"
-                  aria-label="What next"
+                  aria-label="Filter and shuffle"
                 >
-                  <label className="sr-only" htmlFor="watchlist-shuffle-kind">
-                    Shuffle category
+                  <label className="sr-only" htmlFor="watchlist-filter-kind">
+                    Filter category
                   </label>
                   <select
-                    id="watchlist-shuffle-kind"
-                    value={shuffleKind}
+                    id="watchlist-filter-kind"
+                    value={filterKind}
                     onChange={(e) =>
-                      setShuffleKind(e.target.value as WatchKind | 'all')
+                      setFilterKind(e.target.value as WatchKind | 'all')
                     }
-                    className="border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
-                    title="Category"
+                    className={[
+                      'border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted [color-scheme:dark] focus:outline-none',
+                      filterKind !== 'all' ? 'font-semibold' : '',
+                    ].join(' ')}
+                    title="Filter by category"
                   >
-                    <option value="all">All</option>
+                    <option value="all" className="bg-surface text-white">
+                      All
+                    </option>
                     {WATCH_KINDS.map((kind) => (
-                      <option key={kind.id} value={kind.id}>
+                      <option
+                        key={kind.id}
+                        value={kind.id}
+                        className="bg-surface text-white"
+                      >
                         {kind.label}
                       </option>
                     ))}
                   </select>
-                  <label className="sr-only" htmlFor="watchlist-shuffle-status">
-                    Shuffle status
+                  <label className="sr-only" htmlFor="watchlist-filter-status">
+                    Filter status
                   </label>
                   <select
-                    id="watchlist-shuffle-status"
-                    value={shuffleStatus}
+                    id="watchlist-filter-status"
+                    value={filterStatus}
                     onChange={(e) =>
-                      setShuffleStatus(e.target.value as WatchStatus | 'all')
+                      setFilterStatus(e.target.value as WatchStatus | 'all')
                     }
-                    className="max-w-[6.5rem] border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted focus:outline-none"
-                    title="Status"
+                    className={[
+                      'max-w-[6.5rem] border-0 border-r border-border bg-transparent py-1 pl-2 pr-1 text-[10px] text-muted [color-scheme:dark] focus:outline-none',
+                      filterStatus !== 'all' ? 'font-semibold' : '',
+                    ].join(' ')}
+                    title="Filter by status"
                   >
-                    <option value="all">Any status</option>
+                    <option value="all" className="bg-surface text-white">
+                      Any status
+                    </option>
                     {WATCH_STATUSES.map((status) => (
-                      <option key={status.id} value={status.id}>
+                      <option
+                        key={status.id}
+                        value={status.id}
+                        className="bg-surface text-white"
+                      >
                         {status.label}
                       </option>
                     ))}
                   </select>
+                  {filtersActive ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterKind('all')
+                        setFilterStatus('all')
+                      }}
+                      className="border-r border-border px-1.5 py-1 text-[11px] leading-none text-muted transition hover:bg-white/5 hover:text-white"
+                      title="Clear filters"
+                      aria-label="Clear filters"
+                    >
+                      ×
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={pickWhatNext}
@@ -731,6 +844,20 @@ export function Watchlist() {
               <p className="text-xs text-muted">Nothing queued up yet.</p>
               <p className="text-[10px] text-muted/80">Waiting for the next watch party…</p>
             </div>
+          ) : visibleCount === 0 ? (
+            <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-3 py-6 text-center">
+              <p className="text-xs text-muted">Nothing matches this filter.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterKind('all')
+                  setFilterStatus('all')
+                }}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-white transition hover:border-white/25"
+              >
+                Clear filters
+              </button>
+            </div>
           ) : (
             <div ref={listRef} className="mt-4 space-y-4">
               {grouped.map((group) =>
@@ -759,14 +886,7 @@ export function Watchlist() {
                           items={group.items.map((i) => i.id)}
                           strategy={verticalListSortingStrategy}
                         >
-                          <ul
-                            className={[
-                              'watchlist-kind-list space-y-2',
-                              group.id === 'movie'
-                                ? 'watchlist-kind-list--movie'
-                                : 'watchlist-kind-list--series',
-                            ].join(' ')}
-                          >
+                          <ul className="watchlist-kind-list space-y-2">
                             {group.items.map((item) => (
                               <SortableWatchRow
                                 key={item.id}
@@ -774,25 +894,13 @@ export function Watchlist() {
                                 pet={rowPets[item.id] ?? ROW_PETS[0]!}
                                 highlighted={pickedId === item.id}
                                 sparkle={sparkleId === item.id}
-                                onStatus={(status) => {
-                                  patchItem(item.id, { status })
-                                }}
-                                onBumpSeason={(delta) => bumpSeason(item, delta)}
-                                onBumpEpisode={(delta) => bumpEpisode(item, delta)}
-                                onSeason={(season) =>
-                                  patchItem(item.id, {
-                                    season: Math.max(1, season),
-                                    status: activeStatus(item.status),
-                                  })
-                                }
-                                onEpisode={(episode) =>
-                                  patchItem(item.id, {
-                                    episode: Math.max(1, episode),
-                                    status: activeStatus(item.status),
-                                  })
-                                }
-                                onRate={(rating) => rateItem(item, rating)}
-                                onRemove={() => removeItem(item.id)}
+                                onStatus={setItemStatus}
+                                onBumpSeason={bumpSeason}
+                                onBumpEpisode={bumpEpisode}
+                                onSeason={setItemSeason}
+                                onEpisode={setItemEpisode}
+                                onRate={rateItem}
+                                onRemove={removeRow}
                               />
                             ))}
                           </ul>
@@ -810,21 +918,25 @@ export function Watchlist() {
   )
 }
 
+/**
+ * Handlers take the item so the parent can hand down referentially stable
+ * callbacks — otherwise every keystroke in the add field re-renders every row.
+ */
 interface SortableWatchRowProps {
   item: WatchItem
   pet: string
   highlighted: boolean
   sparkle: boolean
-  onStatus: (status: WatchStatus) => void
-  onBumpSeason: (delta: number) => void
-  onBumpEpisode: (delta: number) => void
-  onSeason: (season: number) => void
-  onEpisode: (episode: number) => void
-  onRate: (rating: WatchRating) => void
-  onRemove: () => void
+  onStatus: (item: WatchItem, status: WatchStatus) => void
+  onBumpSeason: (item: WatchItem, delta: number) => void
+  onBumpEpisode: (item: WatchItem, delta: number) => void
+  onSeason: (item: WatchItem, season: number) => void
+  onEpisode: (item: WatchItem, episode: number) => void
+  onRate: (item: WatchItem, rating: WatchRating) => void
+  onRemove: (item: WatchItem) => void
 }
 
-function SortableWatchRow({
+const SortableWatchRow = memo(function SortableWatchRow({
   item,
   pet,
   highlighted,
@@ -857,6 +969,49 @@ function SortableWatchRow({
   const vibe =
     rated && item.rating !== null ? RATING_VIBES[item.rating] : null
   const [statusOpen, setStatusOpen] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
+  useEffect(() => {
+    if (!confirmRemove) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmRemove(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmRemove])
+
+  const handleStatus = useCallback(
+    (status: WatchStatus) => onStatus(item, status),
+    [onStatus, item],
+  )
+  const handleBumpSeason = useCallback(
+    (delta: number) => onBumpSeason(item, delta),
+    [onBumpSeason, item],
+  )
+  const handleBumpEpisode = useCallback(
+    (delta: number) => onBumpEpisode(item, delta),
+    [onBumpEpisode, item],
+  )
+  const handleSeason = useCallback(
+    (season: number) => onSeason(item, season),
+    [onSeason, item],
+  )
+  const handleEpisode = useCallback(
+    (episode: number) => onEpisode(item, episode),
+    [onEpisode, item],
+  )
+  const handleRate = useCallback(
+    (rating: WatchRating) => onRate(item, rating),
+    [onRate, item],
+  )
+
+  // Skip style/layout/paint for offscreen rows, but not while something needs
+  // to escape the card's bounds (menu, pick ring) — paint containment clips it.
+  // Also stay measurable during a drag so dnd-kit gets real rects, not the
+  // contain-intrinsic-size placeholder.
+  const { active: dragActive } = useDndContext()
+  const canSkipOffscreen =
+    !statusOpen && !confirmRemove && !highlighted && !isDragging && !dragActive
 
   return (
     <li
@@ -867,10 +1022,11 @@ function SortableWatchRow({
       {...listeners}
       className={[
         'group relative cursor-grab touch-none rounded-xl border transition-colors active:cursor-grabbing',
+        canSkipOffscreen ? 'watchlist-card-lazy' : '',
         tone ? tone.row : 'border-border bg-surface hover:border-white/20',
         highlighted ? 'watchlist-picked ring-2 ring-golden/70' : '',
         sparkle ? 'watchlist-rating-sparkle' : '',
-        statusOpen ? 'z-30' : '',
+        statusOpen || confirmRemove ? 'z-30' : '',
         isDragging ? 'z-40 opacity-80 shadow-lg shadow-black/30' : '',
       ].join(' ')}
     >
@@ -891,13 +1047,14 @@ function SortableWatchRow({
                 status={item.status}
                 open={statusOpen}
                 onOpenChange={setStatusOpen}
-                onStatus={onStatus}
+                onStatus={handleStatus}
               />
             </div>
             <MarqueeText
               text={item.title}
+              maxWidth="11rem"
               className={[
-                'watchlist-title max-w-[14rem] rounded-br-lg px-2 py-[6px] text-[9px] font-bold uppercase leading-none tracking-[0.14em] shadow-sm',
+                'watchlist-title shrink-0 rounded-br-lg px-2 py-[6px] text-[9px] font-bold uppercase leading-none tracking-[0.14em] shadow-sm',
                 isSettled(item.status)
                   ? 'bg-rose-500/70 text-white line-through decoration-white/35'
                   : tone
@@ -905,32 +1062,16 @@ function SortableWatchRow({
                     : STATUS_STYLES[item.status].banner,
               ].join(' ')}
             />
-            <button
-              type="button"
-              onClick={onRemove}
-              aria-label={`Remove ${item.title}`}
-              className="ml-1 shrink-0 self-center rounded-md px-1 text-muted opacity-0 transition hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              ×
-            </button>
           </div>
 
           <div className="flex shrink-0 items-start">
-            <span
-              className="flex h-4 w-7 items-center justify-center rounded-b-md text-muted/70"
-              title="Drag to reorder"
-              aria-hidden="true"
-            >
-              <span className="rotate-90">
-                <GripIcon />
-              </span>
-            </span>
             {vibe && tone ? (
               <MarqueeText
                 text={vibe}
                 title={`${item.rating}/10 · ${vibe}`}
+                maxWidth="7.5rem"
                 className={[
-                  'pointer-events-none max-w-[9rem] rounded-bl-lg rounded-tr-xl px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] shadow-sm',
+                  'pointer-events-none rounded-bl-lg rounded-tr-xl px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] shadow-sm',
                   tone.banner,
                 ].join(' ')}
               />
@@ -938,33 +1079,71 @@ function SortableWatchRow({
           </div>
         </div>
 
-        {showProgress ? (
-          <div className="flex flex-wrap items-center gap-2 px-2">
-            <ProgressChip
-              label="S"
-              value={item.season}
-              ariaLabel={`${item.title} season`}
-              onCommit={onSeason}
-              onBump={onBumpSeason}
-              banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
-              accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
-            />
-            <ProgressChip
-              label="E"
-              value={item.episode}
-              ariaLabel={`${item.title} episode`}
-              onCommit={onEpisode}
-              onBump={onBumpEpisode}
-              banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
-              accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
-            />
-          </div>
-        ) : null}
+        {/* Always reserve the S/E row height so movie cards match series
+            layout (pet + remove chip don't collide with the rating bar). */}
+        <div className="flex min-h-6 flex-wrap items-center gap-2 px-2">
+          {showProgress ? (
+            <>
+              <ProgressChip
+                label="S"
+                value={item.season}
+                ariaLabel={`${item.title} season`}
+                onCommit={handleSeason}
+                onBump={handleBumpSeason}
+                banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
+                accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
+              />
+              <ProgressChip
+                label="E"
+                value={item.episode}
+                ariaLabel={`${item.title} episode`}
+                onCommit={handleEpisode}
+                onBump={handleBumpEpisode}
+                banner={tone?.banner ?? STATUS_STYLES[item.status].banner}
+                accent={tone?.accent ?? STATUS_STYLES[item.status].accent}
+              />
+            </>
+          ) : null}
+        </div>
 
         <div className="relative px-2 pr-10">
-          <RatingBar title={item.title} rating={item.rating} onRate={onRate} />
+          <RatingBar title={item.title} rating={item.rating} onRate={handleRate} />
         </div>
       </div>
+
+      {confirmRemove ? (
+        <div className="absolute inset-x-0 bottom-0 z-[3] flex items-center gap-1.5 rounded-b-xl bg-black/85 px-2 py-1.5 backdrop-blur-sm">
+          <span className="mr-auto text-[10px] font-medium text-white/85">
+            Are you sure?
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmRemove(false)
+              onRemove(item)
+            }}
+            className="rounded-md bg-rose-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white transition hover:bg-rose-400"
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmRemove(false)}
+            className="rounded-md px-2 py-0.5 text-[10px] font-medium text-muted transition hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirmRemove(true)}
+          aria-label={`Remove ${item.title}`}
+          className="absolute bottom-0 right-0 z-[2] flex h-6 w-6 items-center justify-center rounded-br-xl rounded-tl-md bg-rose-500 text-sm leading-none text-white transition hover:bg-rose-400"
+        >
+          ×
+        </button>
+      )}
 
       <img
         src={pet}
@@ -975,57 +1154,174 @@ function SortableWatchRow({
       />
     </li>
   )
+})
+
+/**
+ * Marquee sizing shared across every label: one resize listener for the whole
+ * list, a cached root font size, and canvas text metrics so measuring never
+ * touches the DOM (the old per-instance probe forced a reflow per card).
+ */
+const marqueeSubscribers = new Set<() => void>()
+let marqueeResizeFrame = 0
+let cachedRootFontPx = 0
+
+function flushMarqueeSubscribers() {
+  marqueeResizeFrame = 0
+  cachedRootFontPx = 0
+  for (const notify of marqueeSubscribers) notify()
 }
 
+function onMarqueeResize() {
+  if (marqueeResizeFrame) return
+  marqueeResizeFrame = requestAnimationFrame(flushMarqueeSubscribers)
+}
+
+function subscribeMarqueeResize(notify: () => void): () => void {
+  if (marqueeSubscribers.size === 0) {
+    window.addEventListener('resize', onMarqueeResize)
+  }
+  marqueeSubscribers.add(notify)
+  return () => {
+    marqueeSubscribers.delete(notify)
+    if (marqueeSubscribers.size === 0) {
+      window.removeEventListener('resize', onMarqueeResize)
+      if (marqueeResizeFrame) {
+        cancelAnimationFrame(marqueeResizeFrame)
+        marqueeResizeFrame = 0
+      }
+    }
+  }
+}
+
+function rootFontPx(): number {
+  if (!cachedRootFontPx) {
+    const n = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    )
+    cachedRootFontPx = Number.isFinite(n) && n > 0 ? n : 16
+  }
+  return cachedRootFontPx
+}
+
+function remToPx(value: string): number {
+  const n = Number.parseFloat(value)
+  if (!Number.isFinite(n)) return 0
+  return value.endsWith('rem') ? n * rootFontPx() : n
+}
+
+let textMetricsCtx: CanvasRenderingContext2D | null | undefined
+
+function measureTextPx(
+  text: string,
+  font: string,
+  letterSpacing: string,
+): number {
+  if (textMetricsCtx === undefined) {
+    textMetricsCtx = document.createElement('canvas').getContext('2d')
+  }
+  if (!textMetricsCtx) return 0
+
+  textMetricsCtx.font = font
+  const spacing = Number.parseFloat(letterSpacing)
+  const hasSpacing = Number.isFinite(spacing) && spacing !== 0
+  // letterSpacing on canvas is Chromium-only; elsewhere add it back by hand.
+  const supportsSpacing = 'letterSpacing' in textMetricsCtx
+  if (supportsSpacing) {
+    textMetricsCtx.letterSpacing = hasSpacing ? letterSpacing : '0px'
+  }
+  const extra = hasSpacing && !supportsSpacing ? spacing * text.length : 0
+  return textMetricsCtx.measureText(text).width + extra
+}
+
+/**
+ * Classic ticker marquee: duplicate the label and scroll with translateX(-50%).
+ * Overflow is decided only from single-line text vs the CSS max-width budget —
+ * never from the live box (shrink-wrap ≈ text width, and a duplicated strip
+ * always "overflows", which is what kept FROM / CODE GEASS stuck scrolling).
+ */
 function MarqueeText({
   text,
   className,
   title,
+  maxWidth,
 }: {
   text: string
   className?: string
   title?: string
+  maxWidth: string
 }) {
-  const outerRef = useRef<HTMLSpanElement>(null)
-  const innerRef = useRef<HTMLSpanElement>(null)
-  const [overflow, setOverflow] = useState(0)
+  const rootRef = useRef<HTMLSpanElement>(null)
+  const [active, setActive] = useState(false)
 
-  useEffect(() => {
-    const outer = outerRef.current
-    const inner = innerRef.current
-    if (!outer || !inner) return
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root) return
 
-    const measure = () => {
-      const delta = inner.scrollWidth - outer.clientWidth
-      setOverflow(delta > 1 ? delta : 0)
+    // Read style once per mount; only the rem budget can change on resize.
+    const cs = getComputedStyle(root)
+    const chrome =
+      (Number.parseFloat(cs.paddingLeft) || 0) +
+      (Number.parseFloat(cs.paddingRight) || 0) +
+      (Number.parseFloat(cs.borderLeftWidth) || 0) +
+      (Number.parseFloat(cs.borderRightWidth) || 0)
+    const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+    const letterSpacing = cs.letterSpacing
+    const rendered =
+      cs.textTransform === 'uppercase'
+        ? text.toUpperCase()
+        : cs.textTransform === 'lowercase'
+          ? text.toLowerCase()
+          : text
+
+    const apply = () => {
+      const budget = remToPx(maxWidth) - chrome
+      if (!(budget > 0)) {
+        setActive(false)
+        return
+      }
+      // Require a clear overflow so subpixels can't flip short labels on.
+      setActive(measureTextPx(rendered, font, letterSpacing) > budget + 8)
     }
 
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(outer)
-    ro.observe(inner)
-    return () => ro.disconnect()
-  }, [text])
+    apply()
+    let cancelled = false
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) apply()
+    })
+    const unsubscribe = subscribeMarqueeResize(apply)
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [text, maxWidth, className])
 
   return (
     <span
-      ref={outerRef}
+      ref={rootRef}
       title={title ?? text}
-      className={['inline-flex max-w-full overflow-hidden', className]
-        .filter(Boolean)
-        .join(' ')}
+      className={className}
+      style={{
+        display: 'inline-block',
+        boxSizing: 'border-box',
+        flexShrink: 0,
+        // Shrink-wrap short labels; long ones hit maxWidth and can marquee.
+        width: 'fit-content',
+        maxWidth,
+        overflow: 'hidden',
+        verticalAlign: 'top',
+        whiteSpace: 'nowrap',
+      }}
     >
-      <span
-        ref={innerRef}
-        className={overflow > 0 ? 'watchlist-marquee whitespace-nowrap' : 'whitespace-nowrap'}
-        style={
-          overflow > 0
-            ? ({ ['--marquee-distance' as string]: `${overflow}px` } as CSSProperties)
-            : undefined
-        }
-      >
-        {text}
-      </span>
+      {active ? (
+        <span className="watchlist-marquee-strip">
+          <span className="watchlist-marquee-chunk">{text}</span>
+          <span className="watchlist-marquee-chunk" aria-hidden="true">
+            {text}
+          </span>
+        </span>
+      ) : (
+        text
+      )}
     </span>
   )
 }
@@ -1249,19 +1545,6 @@ function RatingBar({
         )
       })}
     </div>
-  )
-}
-
-function GripIcon() {
-  return (
-    <svg viewBox="0 0 12 12" className="size-3.5" aria-hidden="true">
-      <circle cx="3.5" cy="2.5" r="1" fill="currentColor" />
-      <circle cx="8.5" cy="2.5" r="1" fill="currentColor" />
-      <circle cx="3.5" cy="6" r="1" fill="currentColor" />
-      <circle cx="8.5" cy="6" r="1" fill="currentColor" />
-      <circle cx="3.5" cy="9.5" r="1" fill="currentColor" />
-      <circle cx="8.5" cy="9.5" r="1" fill="currentColor" />
-    </svg>
   )
 }
 

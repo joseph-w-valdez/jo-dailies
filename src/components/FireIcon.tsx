@@ -25,6 +25,16 @@ export type CalciferBurst =
   | 'sparks'
   | 'wiggle'
   | 'spinTip'
+  | 'sneeze'
+  | 'hiccup'
+  | 'napNod'
+  | 'lookAround'
+  | 'waveTip'
+  | 'emberRain'
+  | 'steamPuff'
+  | 'contentSigh'
+  | 'spin720'
+  | 'halo'
 
 export const CALCIFER_BURST_MS: Record<CalciferBurst, number> = {
   none: 0,
@@ -48,6 +58,16 @@ export const CALCIFER_BURST_MS: Record<CalciferBurst, number> = {
   sparks: 1000,
   wiggle: 550,
   spinTip: 680,
+  sneeze: 720,
+  hiccup: 480,
+  napNod: 1400,
+  lookAround: 900,
+  waveTip: 620,
+  emberRain: 1100,
+  steamPuff: 900,
+  contentSigh: 780,
+  spin720: 1100,
+  halo: 1000,
 }
 
 interface FireIconProps {
@@ -103,16 +123,26 @@ export function FireIcon({
       : undefined
 
   const flameBurst =
-    burst === 'flick' || burst === 'whoosh' || burst === 'sputter' || burst === 'spinTip'
+    burst === 'flick' ||
+    burst === 'whoosh' ||
+    burst === 'sputter' ||
+    burst === 'spinTip' ||
+    burst === 'waveTip' ||
+    burst === 'sneeze'
       ? `calcifer-burst-${burst}`
       : ''
-  const coreBurst = burst === 'flare' ? 'calcifer-burst-flare' : ''
+  const coreBurst =
+    burst === 'flare' || burst === 'hiccup'
+      ? `calcifer-burst-${burst}`
+      : ''
   const eyesBurst =
     burst === 'blink' ||
     burst === 'shyPeek' ||
     burst === 'sparkle' ||
     burst === 'squint' ||
-    burst === 'surprise'
+    burst === 'surprise' ||
+    burst === 'lookAround' ||
+    burst === 'napNod'
       ? `calcifer-burst-${burst}`
       : ''
   const mouthBurst = talking
@@ -120,7 +150,8 @@ export function FireIcon({
     : burst === 'giggle' ||
         burst === 'pout' ||
         burst === 'smack' ||
-        burst === 'surprise'
+        burst === 'surprise' ||
+        burst === 'contentSigh'
       ? `calcifer-burst-${burst === 'surprise' ? 'surprise-mouth' : burst}`
       : ''
   const cheekBurst =
@@ -129,7 +160,12 @@ export function FireIcon({
     burst === 'bounce' ||
     burst === 'smug' ||
     burst === 'wiggle' ||
-    burst === 'stretch'
+    burst === 'stretch' ||
+    burst === 'hiccup' ||
+    burst === 'sneeze' ||
+    burst === 'contentSigh' ||
+    burst === 'spin720' ||
+    burst === 'napNod'
       ? `calcifer-burst-${burst}`
       : ''
 
@@ -332,6 +368,64 @@ export function FireIcon({
             <circle className="calcifer-spark s1" cx="11" cy="6" r="1.1" />
             <circle className="calcifer-spark s2" cx="21" cy="5.5" r="0.9" />
             <circle className="calcifer-spark s3" cx="16" cy="3.5" r="0.75" />
+          </g>
+        ) : null}
+
+        {burst === 'emberRain' ? (
+          <g className="calcifer-fx calcifer-burst-ember-rain" fill="currentColor">
+            <circle className="calcifer-ember e1" cx="13" cy="5" r="0.85" />
+            <circle className="calcifer-ember e2" cx="17" cy="4" r="0.7" />
+            <circle className="calcifer-ember e3" cx="15" cy="6" r="0.55" />
+          </g>
+        ) : null}
+
+        {burst === 'steamPuff' ? (
+          <ellipse
+            className="calcifer-fx calcifer-burst-steam"
+            cx="16"
+            cy="5"
+            rx="3.2"
+            ry="1.6"
+            fill="#e2e8f0"
+            opacity="0.55"
+          />
+        ) : null}
+
+        {burst === 'napNod' ? (
+          <g
+            className="calcifer-fx calcifer-burst-zzz"
+            fill="#94a3b8"
+            fontSize="4"
+            fontFamily="ui-sans-serif, system-ui, sans-serif"
+          >
+            <text className="calcifer-z z1" x="21" y="8">
+              z
+            </text>
+            <text className="calcifer-z z2" x="23.5" y="5.5">
+              z
+            </text>
+          </g>
+        ) : null}
+
+        {burst === 'halo' ? (
+          <ellipse
+            className="calcifer-fx calcifer-burst-halo"
+            cx="16"
+            cy="16"
+            rx="11"
+            ry="12"
+            fill="none"
+            stroke="#fbbf24"
+            strokeWidth="1.2"
+            opacity="0.7"
+          />
+        ) : null}
+
+        {burst === 'sneeze' ? (
+          <g className="calcifer-fx calcifer-burst-sneeze-puff" fill="currentColor">
+            <circle className="calcifer-spark s1" cx="16" cy="4" r="0.9" />
+            <circle className="calcifer-spark s2" cx="13" cy="5.5" r="0.65" />
+            <circle className="calcifer-spark s3" cx="19" cy="5.5" r="0.65" />
           </g>
         ) : null}
         </g>

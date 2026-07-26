@@ -63,6 +63,12 @@ const BURSTS_AWAKE: CalciferBurst[] = [
   'sparks',
   'wiggle',
   'spinTip',
+  'sneeze',
+  'hiccup',
+  'lookAround',
+  'waveTip',
+  'emberRain',
+  'contentSigh',
 ]
 
 const BURSTS_SLEEPY: CalciferBurst[] = [
@@ -81,7 +87,27 @@ const BURSTS_SLEEPY: CalciferBurst[] = [
   'sparks',
   'wiggle',
   'spinTip',
+  'napNod',
+  'contentSigh',
+  'sneeze',
+  'hiccup',
 ]
+
+const IDLE_AWAKE: CalciferBurst[] = [
+  'blink',
+  'stretch',
+  'sneeze',
+  'hiccup',
+  'lookAround',
+  'waveTip',
+  'contentSigh',
+]
+
+const IDLE_SLEEPY: CalciferBurst[] = ['napNod', 'stretch', 'contentSigh']
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 
 function pickQuote(mood: CalciferMood, avoid?: string): string {
   const pool = CALCIFER_QUOTES[mood]
@@ -99,12 +125,22 @@ function pickQuote(mood: CalciferMood, avoid?: string): string {
 
 function pickRandomBurst(mood: CalciferMood, avoid?: CalciferBurst): CalciferBurst {
   const pool = mood === 'sleepy' ? BURSTS_SLEEPY : BURSTS_AWAKE
-  // Blush is weighted ~40% so it shows up a lot more often.
-  const BLUSH_WEIGHT = Math.max(1, Math.round(pool.length * 0.65))
+  // Blush is weighted ~25% so it shows up more often than the rest.
+  const BLUSH_WEIGHT = Math.max(1, Math.round(pool.length / 3))
   const weighted: CalciferBurst[] = [
     ...pool,
     ...Array.from({ length: BLUSH_WEIGHT }, () => 'blush' as const),
   ]
+
+  // Rare celebratory spin when excited/golden (~10%).
+  if (
+    (mood === 'excited' || mood === 'golden') &&
+    !prefersReducedMotion() &&
+    Math.random() < 0.1
+  ) {
+    return 'spin720'
+  }
+
   let next = weighted[Math.floor(Math.random() * weighted.length)]!
   if (avoid && pool.length > 1) {
     let guard = 0
@@ -114,6 +150,20 @@ function pickRandomBurst(mood: CalciferMood, avoid?: CalciferBurst): CalciferBur
     }
   }
   return next
+}
+
+function pickIdleBurst(mood: CalciferMood): CalciferBurst {
+  const pool = mood === 'sleepy' ? IDLE_SLEEPY : IDLE_AWAKE
+  return pool[Math.floor(Math.random() * pool.length)]!
+}
+
+function pickProgressBurst(reduced: boolean): CalciferBurst {
+  if (reduced) return 'flare'
+  return Math.random() < 0.5 ? 'flare' : 'emberRain'
+}
+
+function pickGoldenBurst(reduced: boolean): CalciferBurst {
+  return reduced ? 'flare' : 'spin720'
 }
 
 /** Rotate tier-appropriate quotes; caller reacts to changes for mouth chirps. */
@@ -155,7 +205,7 @@ function useCalciferQuotes(mood: CalciferMood, progressKey: number): string {
 
 /**
  * Quote change → 1s talk, then a random expressive burst.
- * Click also plays a random burst. No ambient random spam.
+ * Click also plays a random burst. Idle gentle ticks every 20–40s.
  */
 function useCalciferBursts(quote: string, mood: CalciferMood) {
   const [talking, setTalking] = useState(false)
@@ -165,8 +215,10 @@ function useCalciferBursts(quote: string, mood: CalciferMood) {
   const clearBurst = useRef<number | undefined>(undefined)
   const talkTimer = useRef<number | undefined>(undefined)
   const lastBurst = useRef<CalciferBurst>('none')
+  const prevMood = useRef(mood)
 
   const playBurst = useCallback((kind: CalciferBurst) => {
+    if (kind === 'none') return
     if (talkTimer.current) {
       window.clearTimeout(talkTimer.current)
       talkTimer.current = undefined
@@ -206,6 +258,37 @@ function useCalciferBursts(quote: string, mood: CalciferMood) {
     }
   }, [quote, mood, playBurst])
 
+  // Steam puff when leaving sleepy.
+  useEffect(() => {
+    const was = prevMood.current
+    prevMood.current = mood
+    if (was === 'sleepy' && mood !== 'sleepy') {
+      playBurst('steamPuff')
+    }
+  }, [mood, playBurst])
+
+  // Idle ambient ticks.
+  useEffect(() => {
+    if (prefersReducedMotion()) return
+    let cancelled = false
+    let timer: number | undefined
+
+    const schedule = () => {
+      const delay = 20_000 + Math.floor(Math.random() * 20_000)
+      timer = window.setTimeout(() => {
+        if (cancelled) return
+        playBurst(pickIdleBurst(mood))
+        schedule()
+      }, delay)
+    }
+
+    schedule()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [mood, playBurst])
+
   useEffect(
     () => () => {
       if (clearBurst.current) window.clearTimeout(clearBurst.current)
@@ -214,7 +297,7 @@ function useCalciferBursts(quote: string, mood: CalciferMood) {
     [],
   )
 
-  return { talking, burst, burstKey, playRandom }
+  return { talking, burst, burstKey, playRandom, playBurst }
 }
 
 interface StreakBarProps {
@@ -254,10 +337,12 @@ export function StreakBar({
         ? 'excited'
         : 'happy'
   const calciferSays = useCalciferQuotes(calciferMood, todayCount)
-  const { talking, burst, burstKey, playRandom } = useCalciferBursts(
+  const { talking, burst, burstKey, playRandom, playBurst } = useCalciferBursts(
     calciferSays,
     calciferMood,
   )
+  const prevCount = useRef(todayCount)
+  const prevGolden = useRef(todayGolden)
 
   useEffect(() => {
     if (todayGolden && !wasGolden.current) {
@@ -268,6 +353,29 @@ export function StreakBar({
     }
     wasGolden.current = todayGolden
   }, [todayGolden])
+
+  // Progress tick / golden / all-done reactions.
+  useEffect(() => {
+    const reduced = prefersReducedMotion()
+    const countUp = todayCount > prevCount.current
+    const becameGolden = todayGolden && !prevGolden.current
+    prevCount.current = todayCount
+    prevGolden.current = todayGolden
+
+    if (becameGolden) {
+      playBurst(pickGoldenBurst(reduced))
+      const heartTimer = window.setTimeout(() => playBurst('heart'), reduced ? 500 : 1150)
+      return () => window.clearTimeout(heartTimer)
+    }
+
+    if (countUp) {
+      if (todayCount === gameCount && !todayGolden) {
+        playBurst(reduced ? 'flare' : 'bounce')
+      } else {
+        playBurst(pickProgressBurst(reduced))
+      }
+    }
+  }, [todayCount, todayGolden, gameCount, playBurst])
 
   return (
     <section

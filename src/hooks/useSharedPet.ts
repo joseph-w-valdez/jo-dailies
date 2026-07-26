@@ -182,14 +182,17 @@ export function useSharedPet() {
   )
 
   const placeFurniture = useCallback(
-    (assetId: string) => {
-      const next = addFurniture(kennelRef.current.furniture, assetId)
-      if (next === kennelRef.current.furniture) return
+    (assetId: string): string | null => {
+      const prev = kennelRef.current.furniture
+      const next = addFurniture(prev, assetId)
+      if (next === prev) return null
+      const added = next.find((item) => !prev.some((p) => p.id === item.id))
       persist({
         ...kennelRef.current,
         furniture: next,
         updatedAt: Date.now(),
       })
+      return added?.id ?? null
     },
     [persist],
   )

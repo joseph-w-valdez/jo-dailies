@@ -16,6 +16,7 @@ import { useDailies } from './hooks/useDailies'
 import { useFirebaseAuth } from './hooks/firebaseAuthContext'
 import { useShellLayout } from './hooks/useShellLayout'
 import { parseKey } from './lib/date'
+import { pickLoadingFlavor } from './lib/loadingFlavor'
 import { useSyncStatus } from './lib/syncStatus'
 import type { GameId } from './types'
 
@@ -78,13 +79,13 @@ function Dashboard() {
       <div
         ref={shellRef}
         className={[
-          'relative z-10 mx-auto grid min-h-full w-full max-w-[140rem] gap-6 px-4 py-8 sm:px-6',
+          'pointer-events-none relative z-10 mx-auto grid min-h-full w-full max-w-[140rem] gap-6 px-4 py-8 sm:px-6',
           gridClass,
         ].join(' ')}
       >
         <div
           className={[
-            'order-1 flex min-w-0 flex-col gap-6',
+            'pointer-events-none order-1 flex min-w-0 flex-col gap-6 [&>*]:pointer-events-auto',
             leftBySide ? 'col-start-2 row-start-1' : '',
           ].join(' ')}
         >
@@ -142,12 +143,12 @@ function Dashboard() {
             />
           </div>
 
-          <PetCare />
+          <PetCare valorantStoreDone={isDone(today, 'valorant-store')} />
         </div>
 
         <aside
           className={[
-            'order-2 w-full',
+            'pointer-events-none order-2 w-full [&>*]:pointer-events-auto',
             leftBySide ? 'col-start-1 row-start-1' : '',
           ].join(' ')}
         >
@@ -156,7 +157,7 @@ function Dashboard() {
 
         <aside
           className={[
-            'order-3 w-full',
+            'pointer-events-none order-3 w-full [&>*]:pointer-events-auto',
             rightBySide ? 'col-start-3 row-start-1' : '',
           ].join(' ')}
         >
@@ -176,11 +177,12 @@ function AppContent() {
     () => WALLPAPER_ICONS[Math.floor(Math.random() * WALLPAPER_ICONS.length)]!,
     [],
   )
+  const loadingFlavor = useMemo(() => pickLoadingFlavor(), [])
 
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center px-4">
-        <p className="text-sm text-muted">Waking up the watch party…</p>
+        <p className="text-sm text-muted">{loadingFlavor}</p>
       </main>
     )
   }
