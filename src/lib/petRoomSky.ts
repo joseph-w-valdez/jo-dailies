@@ -1,4 +1,6 @@
-/** Local-time sky for the pet room window. */
+import { appHour } from './date'
+
+/** Pacific-time sky for the shared pet room window. */
 export type SkyPhase = 'dawn' | 'day' | 'dusk' | 'night'
 
 export interface RoomSky {
@@ -17,11 +19,11 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 /**
- * Maps local hour to a sun/moon arc across the window.
+ * Maps Pacific hour to a sun/moon arc across the window.
  * Day/dawn/dusk use the sun; night uses the moon on a complementary arc.
  */
 export function getRoomSky(now = new Date()): RoomSky {
-  const hour = now.getHours() + now.getMinutes() / 60
+  const hour = appHour(now)
 
   if (hour >= 5 && hour < 8) {
     const t = (hour - 5) / 3

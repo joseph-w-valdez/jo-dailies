@@ -279,7 +279,14 @@ function WanderingPet({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [src, index, valorantStoreDone]);
+  }, [
+    src,
+    index,
+    valorantStoreDone,
+    quoteNeeds.hungry,
+    quoteNeeds.dirty,
+    quoteNeeds.bored,
+  ]);
 
   return (
     <div

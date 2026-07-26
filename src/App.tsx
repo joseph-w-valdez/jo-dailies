@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CatWallpaper, WALLPAPER_ICONS } from './components/CatWallpaper'
 import { CursorTrail, useCursorTrailSetting } from './components/CursorTrail'
 import { DailyCard } from './components/DailyCard'
@@ -41,6 +41,20 @@ function Dashboard() {
   const [selectedKey, setSelectedKey] = useState(today)
   const [framedGameId, setFramedGameId] = useState<GameId | null>(null)
   const [frameSession, setFrameSession] = useState(0)
+
+  // When the Pacific day rolls over, keep calendar + Edit day on "today" if
+  // that's what you were viewing (including jumping the month when needed).
+  const prevTodayRef = useRef(today)
+  useEffect(() => {
+    if (prevTodayRef.current === today) return
+    const previousToday = prevTodayRef.current
+    prevTodayRef.current = today
+    if (selectedKey !== previousToday) return
+    setSelectedKey(today)
+    const d = parseKey(today)
+    setViewYear(d.getFullYear())
+    setViewMonth(d.getMonth())
+  }, [today, selectedKey])
 
   const framedGame = GAMES.find((g) => g.id === framedGameId) ?? null
 

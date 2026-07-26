@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { msUntilNextLocalMidnight } from '../lib/date'
+import { msUntilNextAppMidnight } from '../lib/date'
 import {
   NOTICE_CARD_HEIGHT_PX,
   NOTICE_SIDE_PX,
@@ -32,7 +32,7 @@ export function NoticeCard({
 
     const refresh = () => {
       setCountdown(noticeCountdownLabel(date))
-      timeoutId = window.setTimeout(refresh, msUntilNextLocalMidnight())
+      timeoutId = window.setTimeout(refresh, msUntilNextAppMidnight())
     }
 
     refresh()

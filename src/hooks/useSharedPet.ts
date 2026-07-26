@@ -1,6 +1,5 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { todayKey } from '../lib/date'
 import { db, syncRoomId } from '../lib/firebase'
 import {
   addFurniture,
@@ -27,6 +26,7 @@ import {
   type SharedPet,
 } from '../lib/pet'
 import { updateSyncSource } from '../lib/syncStatus'
+import { useAppToday } from './useAppToday'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
 function caregiverName(
@@ -44,24 +44,38 @@ export function useSharedPet() {
     applyKennelDeathCheck(loadLocalKennel()),
   )
   const kennelRef = useRef(kennel)
-  const today = todayKey()
+  // Same Pacific day as dailies — feed/clean/play and death share one clock.
+  const today = useAppToday()
 
   useEffect(() => {
     kennelRef.current = kennel
   }, [kennel])
 
-  const persist = useCallback((next: PetKennel) => {
-    const checked = applyKennelDeathCheck(next)
-    kennelRef.current = checked
-    saveLocalKennel(checked)
-    setKennel(checked)
-    void setDoc(doc(db, 'rooms', syncRoomId, 'pet', 'current'), checked).catch(
-      (error: unknown) => {
-        console.error('Could not save pet', error)
-      },
-    )
-    return checked
-  }, [])
+  const persist = useCallback(
+    (next: PetKennel, day = today) => {
+      const checked = applyKennelDeathCheck(next, day)
+      kennelRef.current = checked
+      saveLocalKennel(checked)
+      setKennel(checked)
+      void setDoc(doc(db, 'rooms', syncRoomId, 'pet', 'current'), checked).catch(
+        (error: unknown) => {
+          console.error('Could not save pet', error)
+        },
+      )
+      return checked
+    },
+    [today],
+  )
+
+  // At Pacific midnight (or tab wake), re-check deaths so pets can die
+  // without waiting for a care click. Care button state uses `today` from
+  // useAppToday, which updates on the same shared day clock.
+  useEffect(() => {
+    const before = kennelRef.current
+    const checked = applyKennelDeathCheck(before, today)
+    if (checked === before) return
+    persist(checked, today)
+  }, [today, persist])
 
   useEffect(() => {
     if (!user) return

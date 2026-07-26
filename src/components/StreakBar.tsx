@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { appHour } from '../lib/date'
 import type { Streaks } from '../types'
 import {
   CALCIFER_BURST_MS,
@@ -320,7 +321,7 @@ export function StreakBar({
   const [celebrating, setCelebrating] = useState(false)
   const wasGolden = useRef(todayGolden)
   const remaining = gameCount - todayCount
-  const hour = new Date().getHours()
+  const hour = appHour()
   const greeting =
     hour < 12 ? 'Good morning, Jo' : hour < 18 ? 'Good afternoon, Jo' : 'Good evening, Jo'
   const statusMessage = todayGolden

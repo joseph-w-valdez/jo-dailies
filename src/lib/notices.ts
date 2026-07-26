@@ -9,7 +9,7 @@ export interface NoticeCardData {
   body: string
   /** Display date / when, e.g. "August 12". */
   when?: string
-  /** Local YYYY-MM-DD used for the day countdown. */
+  /** Pacific YYYY-MM-DD used for the day countdown. */
   date?: string
   /** Optional portrait key visual. */
   image?: string

@@ -10,10 +10,10 @@ import { EXTRA_IDS } from '../extras'
 import { GAMES, GAME_IDS } from '../games'
 import { db, syncRoomId } from '../lib/firebase'
 import type { DayEntryId, GameId, Store } from '../types'
-import { todayKey } from '../lib/date'
 import { computeStreaks } from '../lib/streaks'
 import { completedCount, isDone, load, save, setGameDone } from '../lib/storage'
 import { updateSyncSource } from '../lib/syncStatus'
+import { useAppToday } from './useAppToday'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
 const MIGRATION_KEY = 'jo-dailies:firestore-days-migrated:v1'
@@ -23,7 +23,8 @@ export function useDailies() {
   const [store, setStore] = useState<Store>(() => load())
   const storeRef = useRef(store)
   const { user } = useFirebaseAuth()
-  const today = todayKey()
+  // Pacific day — ticks at America/Los_Angeles midnight for every client.
+  const today = useAppToday()
 
   useEffect(() => {
     storeRef.current = store
