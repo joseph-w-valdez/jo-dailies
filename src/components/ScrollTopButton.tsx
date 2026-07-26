@@ -10,7 +10,7 @@ function scrollOffset(): number {
   )
 }
 
-/** Fixed bottom-right button, visible only after scrolling down a bit. */
+/** Fixed bottom-center button, visible only after scrolling down a bit. */
 export function ScrollTopButton() {
   const [visible, setVisible] = useState(false)
 
@@ -32,7 +32,7 @@ export function ScrollTopButton() {
       aria-label="Scroll to top"
       title="Scroll to top"
       className={[
-        'fixed bottom-6 right-6 z-[100] flex size-11 items-center justify-center rounded-full',
+        'fixed bottom-6 left-1/2 z-[100] flex size-16 -translate-x-1/2 items-center justify-center rounded-full',
         'border border-white/20 bg-surface-raised text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)]',
         'transition-all duration-200 hover:border-white/35 hover:bg-surface',
         visible
@@ -40,7 +40,7 @@ export function ScrollTopButton() {
           : 'pointer-events-none translate-y-3 opacity-0',
       ].join(' ')}
     >
-      <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden="true">
+      <svg viewBox="0 0 16 16" className="size-7" fill="none" aria-hidden="true">
         <path
           d="M8 12.5v-9M4 7l4-3.5L12 7"
           stroke="currentColor"

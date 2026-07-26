@@ -25,6 +25,13 @@ export function addDaysKey(key: string, delta: number): string {
   return toKey(addDays(parseKey(key), delta))
 }
 
+/** Whole local calendar days from today until dateKey (negative if past). */
+export function daysUntil(dateKey: string, now = new Date()): number {
+  const target = parseKey(dateKey)
+  const today = parseKey(todayKey(now))
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
 /** Sunday-start month grid of local date keys (null = padding cell). */
 export function monthGrid(year: number, month: number): (string | null)[] {
   const first = new Date(year, month, 1)

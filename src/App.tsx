@@ -6,13 +6,14 @@ import { DayEditor } from './components/DayEditor'
 import { FirebaseAuthProvider } from './components/FirebaseAuthProvider'
 import { GameFrame } from './components/GameFrame'
 import { MonthCalendar } from './components/MonthCalendar'
+import { NoticeRail } from './components/NoticeRail'
 import { ScrollTopButton } from './components/ScrollTopButton'
 import { StreakBar } from './components/StreakBar'
 import { Watchlist } from './components/Watchlist'
 import { GAMES, GAME_COUNT } from './games'
 import { useDailies } from './hooks/useDailies'
 import { useFirebaseAuth } from './hooks/firebaseAuthContext'
-import { useWatchlistSideLayout } from './hooks/useWatchlistSideLayout'
+import { useShellLayout } from './hooks/useShellLayout'
 import { parseKey } from './lib/date'
 import { useSyncStatus } from './lib/syncStatus'
 import type { GameId } from './types'
@@ -30,7 +31,7 @@ function Dashboard() {
     dayCount,
   } = useDailies()
   const { trailEnabled, setTrailEnabled } = useCursorTrailSetting()
-  const { shellRef, sideBySide } = useWatchlistSideLayout()
+  const { shellRef, leftBySide, rightBySide } = useShellLayout()
 
   const todayDate = parseKey(today)
   const [viewYear, setViewYear] = useState(todayDate.getFullYear())
@@ -63,6 +64,12 @@ function Dashboard() {
     setFramedGameId(null)
   }
 
+  const gridClass = rightBySide
+    ? 'grid-cols-[400px_minmax(0,64rem)_480px] justify-center'
+    : leftBySide
+      ? 'grid-cols-[400px_minmax(0,64rem)] justify-center'
+      : 'grid-cols-1'
+
   return (
     <>
       <CatWallpaper />
@@ -70,16 +77,14 @@ function Dashboard() {
       <div
         ref={shellRef}
         className={[
-          'relative z-10 mx-auto grid min-h-full w-full max-w-[100rem] gap-6 px-4 py-8 sm:px-6',
-          sideBySide
-            ? 'grid-cols-[400px_minmax(0,64rem)] justify-center'
-            : 'grid-cols-1',
+          'relative z-10 mx-auto grid min-h-full w-full max-w-[140rem] gap-6 px-4 py-8 sm:px-6',
+          gridClass,
         ].join(' ')}
       >
         <div
           className={[
             'order-1 flex min-w-0 flex-col gap-6',
-            sideBySide ? 'col-start-2 row-start-1' : '',
+            leftBySide ? 'col-start-2 row-start-1' : '',
           ].join(' ')}
         >
           <StreakBar
@@ -137,26 +142,23 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* A full 400px side column when it fits; otherwise placed below. */}
         <aside
           className={[
             'order-2 w-full',
-            sideBySide
-              ? 'col-start-1 row-start-1'
-              : '',
+            leftBySide ? 'col-start-1 row-start-1' : '',
           ].join(' ')}
         >
-          <div
-            className={
-              sideBySide
-                ? 'sticky top-8'
-                : ''
-            }
-          >
-            <Watchlist />
-          </div>
+          <Watchlist />
         </aside>
 
+        <aside
+          className={[
+            'order-3 w-full',
+            rightBySide ? 'col-start-3 row-start-1' : '',
+          ].join(' ')}
+        >
+          <NoticeRail sideBySide={rightBySide} />
+        </aside>
       </div>
 
       <ScrollTopButton />
