@@ -1054,6 +1054,102 @@ input:disabled {
   transform-origin: top left;
 }
 
+/*
+ * Cap each kind list so ~5 anime/show rows fit before scrolling.
+ * Movies share a similar height budget; shorter rows mean more visible items.
+ */
+.watchlist-kind-list {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.4rem;
+}
+
+/* Firefox only — scrollbar-color on Chromium/Edge reintroduces classic end-cap arrows */
+@supports not selector(::-webkit-scrollbar) {
+  .watchlist-kind-list {
+    scrollbar-width: thin;
+    scrollbar-color: #7cb1fb rgba(96, 165, 250, 0.1);
+  }
+}
+
+/* Chromium / Safari / Edge */
+.watchlist-kind-list::-webkit-scrollbar {
+  width: 10px;
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.watchlist-kind-list::-webkit-scrollbar-button {
+  width: 0 !important;
+  height: 0 !important;
+  -webkit-appearance: none;
+  appearance: none;
+  display: none !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-button:single-button,
+.watchlist-kind-list::-webkit-scrollbar-button:double-button,
+.watchlist-kind-list::-webkit-scrollbar-button:vertical:start:decrement,
+.watchlist-kind-list::-webkit-scrollbar-button:vertical:end:increment,
+.watchlist-kind-list::-webkit-scrollbar-button:vertical:start:increment,
+.watchlist-kind-list::-webkit-scrollbar-button:vertical:end:decrement,
+.watchlist-kind-list::-webkit-scrollbar-button:horizontal:start:decrement,
+.watchlist-kind-list::-webkit-scrollbar-button:horizontal:end:increment {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-corner {
+  background: transparent;
+  width: 0;
+  height: 0;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-track {
+  background: rgba(96, 165, 250, 0.1);
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-track-piece {
+  background: transparent;
+  margin: 0;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background-color: #7cb1fb;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 2rem;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-thumb:hover {
+  background-color: #93c5fd;
+}
+
+.watchlist-kind-list::-webkit-scrollbar-thumb:active {
+  background-color: #bfdbfe;
+}
+
+.watchlist-kind-list--series {
+  /* ~5 series rows (title + S/E chips + rating) + gaps */
+  max-height: 31.25rem;
+}
+
+.watchlist-kind-list--movie {
+  /* Same visual budget; ~7–8 movie rows fit without S/E chips */
+  max-height: 31.25rem;
+}
+
 @keyframes watchlist-status-menu-in {
   from {
     opacity: 0;

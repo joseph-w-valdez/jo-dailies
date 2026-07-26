@@ -759,7 +759,14 @@ export function Watchlist() {
                           items={group.items.map((i) => i.id)}
                           strategy={verticalListSortingStrategy}
                         >
-                          <ul className="space-y-2">
+                          <ul
+                            className={[
+                              'watchlist-kind-list space-y-2',
+                              group.id === 'movie'
+                                ? 'watchlist-kind-list--movie'
+                                : 'watchlist-kind-list--series',
+                            ].join(' ')}
+                          >
                             {group.items.map((item) => (
                               <SortableWatchRow
                                 key={item.id}

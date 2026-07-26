@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
-/** Main column target width (Tailwind max-w-5xl / 64rem). */
-const MAIN_MAX_PX = 64 * 16
+/**
+ * Minimum main-column width required before a side rail is allowed beside it.
+ * The main column is `minmax(0, 64rem)`, so it grows up to 64rem when there's
+ * room and shrinks to fit otherwise; we only need to guarantee it stays at
+ * least this wide before pulling a rail alongside it.
+ */
+const MAIN_MIN_PX = 48 * 16
 /** Hard max width for the side watchlist. */
 export const WATCHLIST_SIDE_MAX_PX = 400
 /** Fixed width for the right notice-card column (portrait key visuals). */
@@ -38,11 +43,11 @@ export function useShellLayout(): ShellLayout {
         (Number.parseFloat(styles.paddingLeft) || 0) +
         (Number.parseFloat(styles.paddingRight) || 0)
       const inner = el.clientWidth - padX
-      const leftRequired = WATCHLIST_SIDE_MAX_PX + GAP_PX + MAIN_MAX_PX
+      const leftRequired = WATCHLIST_SIDE_MAX_PX + GAP_PX + MAIN_MIN_PX
       const bothRequired =
         WATCHLIST_SIDE_MAX_PX +
         GAP_PX +
-        MAIN_MAX_PX +
+        MAIN_MIN_PX +
         GAP_PX +
         NOTICE_SIDE_PX
       const left = inner >= leftRequired
