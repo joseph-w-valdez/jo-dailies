@@ -1336,7 +1336,7 @@ export function PetCare({
           className="flex min-w-0 items-center gap-1.5 text-left text-muted transition hover:opacity-90"
         >
           <ChevronIcon open={!panelCollapsed} />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          <h2 className="text-sm font-semibold tracking-wide text-muted">
             Catomagotchi
           </h2>
         </button>
