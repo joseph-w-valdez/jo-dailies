@@ -1,4 +1,4 @@
-import { doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { doc, getDoc, getDocFromServer, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, syncRoomId } from '../lib/firebase'
 import {
@@ -67,15 +67,39 @@ export function useSharedPet() {
     [today],
   )
 
-  // At Pacific midnight (or tab wake), re-check deaths so pets can die
-  // without waiting for a care click. Care button state uses `today` from
-  // useAppToday, which updates on the same shared day clock.
+  // At Pacific midnight (or tab wake), re-check deaths against *remote*
+  // kennel state — never local. A background tab can be hours stale and would
+  // otherwise overwrite a feed/clean the other person already synced.
   useEffect(() => {
-    const before = kennelRef.current
-    const checked = applyKennelDeathCheck(before, today)
-    if (checked === before) return
-    persist(checked, today)
-  }, [today, persist])
+    if (!user) return
+
+    let cancelled = false
+    const petRefDoc = doc(db, 'rooms', syncRoomId, 'pet', 'current')
+
+    void getDocFromServer(petRefDoc)
+      .catch(() => getDoc(petRefDoc))
+      .then((snapshot) => {
+        if (cancelled) return
+        const source = snapshot.exists()
+          ? normalizeKennel(snapshot.data())
+          : kennelRef.current
+        const checked = applyKennelDeathCheck(source, today)
+        if (checked === source) {
+          kennelRef.current = source
+          saveLocalKennel(source)
+          setKennel(source)
+          return
+        }
+        persist(checked, today)
+      })
+      .catch((error: unknown) => {
+        console.error('Could not refresh pets for day rollover', error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [today, persist, user])
 
   useEffect(() => {
     if (!user) return
