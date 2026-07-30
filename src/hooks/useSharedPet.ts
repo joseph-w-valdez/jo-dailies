@@ -1,26 +1,36 @@
-import { doc, getDoc, getDocFromServer, onSnapshot, setDoc } from 'firebase/firestore'
+import {
+  doc,
+  getDocFromServer,
+  onSnapshot,
+  runTransaction,
+} from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, syncRoomId } from '../lib/firebase'
 import {
   addFurniture,
   flipFurniture,
+  MAX_FURNITURE,
   moveFurniture,
   removeFurniture,
   transformFurniture,
   type PlacedFurniture,
 } from '../lib/furniture'
 import {
-  addHatchedPet,
+  addPetToKennel,
   applyKennelDeathCheck,
   cleanPet,
+  explainDeath,
   feedPet,
+  hatchPet,
   loadLocalKennel,
   MAX_PETS,
   normalizeKennel,
   playWithPet,
+  reconcileKennel,
   removePetFromKennel,
   renamePet,
   saveLocalKennel,
+  shouldDie,
   updatePetInKennel,
   type PetKennel,
   type SharedPet,
@@ -28,6 +38,19 @@ import {
 import { updateSyncSource } from '../lib/syncStatus'
 import { useAppToday } from './useAppToday'
 import { useFirebaseAuth } from './firebaseAuthContext'
+
+interface PetConsoleApi {
+  help(): void
+  diagnose(): Promise<unknown[]>
+  revive(petNameOrId: string): Promise<unknown[]>
+  reviveAll(): Promise<unknown[]>
+}
+
+declare global {
+  interface Window {
+    __joPets?: PetConsoleApi
+  }
+}
 
 function caregiverName(
   displayName: string | null | undefined,
@@ -40,66 +63,263 @@ function caregiverName(
 
 export function useSharedPet() {
   const { user } = useFirebaseAuth()
-  const [kennel, setKennel] = useState<PetKennel>(() =>
-    applyKennelDeathCheck(loadLocalKennel()),
-  )
+  // Show the cached kennel as-is. Deaths are only decided from server-confirmed
+  // data, so a stale tab can't render (or later persist) a bogus death.
+  const [kennel, setKennel] = useState<PetKennel>(() => loadLocalKennel())
   const kennelRef = useRef(kennel)
+  const mountedRef = useRef(true)
+  const pendingActionsRef = useRef(0)
+  const actionFailedRef = useRef(false)
   // Same Pacific day as dailies — feed/clean/play and death share one clock.
   const today = useAppToday()
+  const todayRef = useRef(today)
 
   useEffect(() => {
     kennelRef.current = kennel
   }, [kennel])
 
-  const persist = useCallback(
-    (next: PetKennel, day = today) => {
-      const checked = applyKennelDeathCheck(next, day)
-      kennelRef.current = checked
-      saveLocalKennel(checked)
-      setKennel(checked)
-      void setDoc(doc(db, 'rooms', syncRoomId, 'pet', 'current'), checked).catch(
-        (error: unknown) => {
-          console.error('Could not save pet', error)
-        },
-      )
-      return checked
-    },
-    [today],
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      updateSyncSource('pet-action', null)
+    }
+  }, [])
+
+  useEffect(() => {
+    todayRef.current = today
+  }, [today])
+
+  const petDocRef = useCallback(
+    () => doc(db, 'rooms', syncRoomId, 'pet', 'current'),
+    [],
   )
 
-  // At Pacific midnight (or tab wake), re-check deaths against *remote*
-  // kennel state — never local. A background tab can be hours stale and would
-  // otherwise overwrite a feed/clean the other person already synced.
+  const applyLocal = useCallback((next: PetKennel) => {
+    kennelRef.current = next
+    saveLocalKennel(next)
+    setKennel(next)
+  }, [])
+
+  const beginPetAction = useCallback(() => {
+    if (pendingActionsRef.current === 0) actionFailedRef.current = false
+    pendingActionsRef.current += 1
+    updateSyncSource('pet-action', { pending: true, fromCache: false })
+  }, [])
+
+  const finishPetAction = useCallback((succeeded: boolean) => {
+    pendingActionsRef.current = Math.max(0, pendingActionsRef.current - 1)
+    if (!mountedRef.current) return
+    if (!succeeded) actionFailedRef.current = true
+    if (actionFailedRef.current) {
+      updateSyncSource('pet-action', {
+        pending: pendingActionsRef.current > 0,
+        fromCache: false,
+        error: true,
+      })
+    } else if (pendingActionsRef.current > 0) {
+      updateSyncSource('pet-action', { pending: true, fromCache: false })
+    } else {
+      updateSyncSource('pet-action', null)
+    }
+  }, [])
+
+  // Every write re-reads the server doc inside a transaction and re-applies the
+  // change on top of it. We update local state only after server acknowledgement
+  // so an offline/failed action is never presented or cached as successful.
+  const applyPetMutation = useCallback(
+    (mutate: (kennel: PetKennel) => PetKennel) => {
+      beginPetAction()
+      void runTransaction(db, async (tx) => {
+        const ref = petDocRef()
+        const snapshot = await tx.get(ref)
+        const remote = snapshot.exists()
+          ? normalizeKennel(snapshot.data())
+          : kennelRef.current
+        const next = reconcileKennel(remote, mutate(remote))
+        tx.set(ref, next)
+        return next
+      })
+        .then(() => {
+          finishPetAction(true)
+        })
+        .catch((error: unknown) => {
+          finishPetAction(false)
+          console.error('Could not save pet', error)
+        })
+    },
+    [beginPetAction, finishPetAction, petDocRef],
+  )
+
+  // Persist any newly-earned deaths from authoritative server state. Reads and
+  // writes in one transaction, and only writes when a pet actually dies, so
+  // stale tabs and repeated snapshots can't invent or re-trigger deaths.
+  const commitDeaths = useCallback(
+    (day: string) =>
+      runTransaction(db, async (tx) => {
+        const ref = petDocRef()
+        const snapshot = await tx.get(ref)
+        if (!snapshot.exists()) return null
+        const remote = normalizeKennel(snapshot.data())
+        const checked = applyKennelDeathCheck(remote, day)
+        if (checked === remote) return null
+        tx.set(ref, checked)
+        return checked
+      }),
+    [petDocRef],
+  )
+
+  const migrateLocalKennel = useCallback(
+    () =>
+      runTransaction(db, async (tx) => {
+        const ref = petDocRef()
+        const snapshot = await tx.get(ref)
+        if (snapshot.exists()) return normalizeKennel(snapshot.data())
+        const local = loadLocalKennel()
+        if (local.pets.length > 0 || local.furniture.length > 0) {
+          tx.set(ref, local)
+        }
+        return local
+      }),
+    [petDocRef],
+  )
+
+  const petDiagnostics = useCallback(async () => {
+    const snapshot = await getDocFromServer(petDocRef())
+    if (!snapshot.exists()) return []
+    const remote = normalizeKennel(snapshot.data())
+    const day = todayRef.current
+    return remote.pets.map((pet) => {
+      const postMortem = explainDeath(pet)
+      return {
+        id: pet.id,
+        name: pet.name,
+        generation: pet.generation,
+        status: pet.status,
+        bornOn: pet.bornOn,
+        lastFedOn: pet.lastFedOn,
+        lastFedBy: pet.lastFedBy ?? null,
+        lastCleanedOn: pet.lastCleanedOn,
+        lastCleanedBy: pet.lastCleanedBy ?? null,
+        lastPlayedOn: pet.lastPlayedOn,
+        deadOn: pet.deadOn ?? null,
+        // Only meaningful while alive; the rule short-circuits on dead pets.
+        wouldDieToday: pet.status === 'alive' ? shouldDie(pet, day) : null,
+        requiredCareBy: postMortem?.requiredCareBy ?? null,
+        deathWasEarned: postMortem?.deathWasEarned ?? null,
+        diagnosis: postMortem?.summary ?? `Alive as of ${day}.`,
+        appToday: day,
+        updatedAt: new Date(pet.updatedAt).toISOString(),
+      }
+    })
+  }, [petDocRef])
+
+  const revivePets = useCallback(
+    async (petNameOrId?: string) => {
+      const day = todayRef.current
+      const revivedBy = `${caregiverName(user?.displayName, user?.email)} (console)`
+      const query = petNameOrId?.trim().toLocaleLowerCase()
+      // Reviving rewrites the care dates, so keep the post-mortem evidence.
+      const beforeRevive = await petDiagnostics()
+      await runTransaction(db, async (tx) => {
+        const ref = petDocRef()
+        const snapshot = await tx.get(ref)
+        if (!snapshot.exists()) throw new Error('No saved kennel was found.')
+        const remote = normalizeKennel(snapshot.data())
+        let revived = 0
+        const pets = remote.pets.map((pet) => {
+          const matches =
+            !query ||
+            pet.id.toLocaleLowerCase() === query ||
+            pet.name.toLocaleLowerCase() === query
+          if (!matches || pet.status !== 'dead') return pet
+          revived += 1
+          return {
+            ...pet,
+            status: 'alive' as const,
+            deadOn: null,
+            lastFedOn: day,
+            lastFedBy: revivedBy,
+            lastCleanedOn: day,
+            lastCleanedBy: revivedBy,
+            updatedAt: Date.now(),
+          }
+        })
+        if (revived === 0) {
+          throw new Error(
+            query
+              ? `No dead pet matched "${petNameOrId}". Run __joPets.diagnose() to list ids and names.`
+              : 'There are no dead pets to revive.',
+          )
+        }
+        const kennel = { ...remote, pets, updatedAt: Date.now() }
+        tx.set(ref, kennel)
+        return kennel
+      })
+      console.info('State before revive (post-mortem evidence):')
+      console.table(beforeRevive)
+      return petDiagnostics()
+    },
+    [petDiagnostics, petDocRef, user?.displayName, user?.email],
+  )
+
+  // Intentionally absent from the UI. Firestore rules still restrict these
+  // helpers to the two signed-in room members; the console name is not security.
+  useEffect(() => {
+    if (!user) {
+      delete window.__joPets
+      return
+    }
+
+    const api: PetConsoleApi = {
+      help() {
+        console.info(
+          [
+            '__joPets.diagnose()       Read fresh server data, print all pets + death post-mortem',
+            '__joPets.revive("name")   Revive one dead pet by exact name or id',
+            '__joPets.reviveAll()      Revive every dead pet',
+            '__joPets.help()           Show these commands',
+          ].join('\n'),
+        )
+      },
+      async diagnose() {
+        const rows = await petDiagnostics()
+        console.table(rows)
+        return rows
+      },
+      async revive(petNameOrId: string) {
+        const rows = await revivePets(petNameOrId)
+        console.info(`Revived "${petNameOrId}" and counted today as fed + cleaned.`)
+        console.table(rows)
+        return rows
+      },
+      async reviveAll() {
+        const rows = await revivePets()
+        console.info('Revived all dead pets and counted today as fed + cleaned.')
+        console.table(rows)
+        return rows
+      },
+    }
+    window.__joPets = api
+    console.info('Pet console ready. Run __joPets.help() for commands.')
+
+    return () => {
+      if (window.__joPets === api) delete window.__joPets
+    }
+  }, [petDiagnostics, revivePets, user])
+
+  // At Pacific midnight (or tab wake) sweep for deaths against server state.
   useEffect(() => {
     if (!user) return
 
-    let cancelled = false
-    const petRefDoc = doc(db, 'rooms', syncRoomId, 'pet', 'current')
-
-    void getDocFromServer(petRefDoc)
-      .catch(() => getDoc(petRefDoc))
-      .then((snapshot) => {
-        if (cancelled) return
-        const source = snapshot.exists()
-          ? normalizeKennel(snapshot.data())
-          : kennelRef.current
-        const checked = applyKennelDeathCheck(source, today)
-        if (checked === source) {
-          kennelRef.current = source
-          saveLocalKennel(source)
-          setKennel(source)
-          return
-        }
-        persist(checked, today)
-      })
+    void commitDeaths(today)
       .catch((error: unknown) => {
+        // Offline at rollover: leave the pets alone. Whoever reconnects first
+        // with real server data decides, instead of guessing from stale cache.
         console.error('Could not refresh pets for day rollover', error)
       })
 
-    return () => {
-      cancelled = true
-    }
-  }, [today, persist, user])
+  }, [today, commitDeaths, user])
 
   useEffect(() => {
     if (!user) return
@@ -114,34 +334,32 @@ export function useSharedPet() {
           fromCache: snapshot.metadata.fromCache,
         })
 
+        // Cached / not-yet-acknowledged snapshots can be badly out of date —
+        // e.g. a tab that slept through someone else's feed. Never replace our
+        // acknowledged/local state or migrate from an untrusted snapshot.
+        const trustworthy =
+          !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites
+
+        if (!trustworthy) return
+
         if (!snapshot.exists()) {
-          const local = applyKennelDeathCheck(loadLocalKennel())
-          if (local.pets.length > 0 || local.furniture.length > 0) {
-            void setDoc(petRefDoc, local).catch((error: unknown) => {
+          void migrateLocalKennel()
+            .catch((error: unknown) => {
               console.error('Could not migrate local pet', error)
             })
-          }
-          saveLocalKennel(local)
-          kennelRef.current = local
-          setKennel(local)
           return
         }
 
-        const raw = snapshot.data()
-        const remote = applyKennelDeathCheck(normalizeKennel(raw))
-        const before = normalizeKennel(raw)
-        const died = remote.pets.some((pet, i) => {
-          const prior = before.pets[i]
-          return pet.status === 'dead' && prior?.status === 'alive'
-        })
-        if (died) {
-          void setDoc(petRefDoc, remote).catch((error: unknown) => {
+        const remote = normalizeKennel(snapshot.data())
+
+        // Display exactly what the server confirmed. If a death is due, decide
+        // and persist it transactionally; the dead state appears after commit.
+        applyLocal(remote)
+        if (applyKennelDeathCheck(remote, todayRef.current) !== remote) {
+          void commitDeaths(todayRef.current).catch((error: unknown) => {
             console.error('Could not mark pet dead', error)
           })
         }
-        saveLocalKennel(remote)
-        kennelRef.current = remote
-        setKennel(remote)
       },
       (error) => {
         updateSyncSource('pet', {
@@ -156,67 +374,61 @@ export function useSharedPet() {
     return () => {
       unsubscribe()
       updateSyncSource('pet', null)
+      updateSyncSource('pet-action', null)
     }
-  }, [user])
+  }, [user, applyLocal, commitDeaths, migrateLocalKennel])
 
   const by = caregiverName(user?.displayName, user?.email)
 
   const hatch = useCallback(
     (species: string, name: string) => {
-      persist(addHatchedPet(kennelRef.current, species, name, today))
+      const pet = hatchPet(species, name, 0, today)
+      applyPetMutation((k) => addPetToKennel(k, pet))
     },
-    [persist, today],
+    [applyPetMutation, today],
   )
 
   const feed = useCallback(
     (petId: string) => {
-      persist(
-        updatePetInKennel(kennelRef.current, petId, (pet) =>
-          feedPet(pet, by, today),
-        ),
+      applyPetMutation((k) =>
+        updatePetInKennel(k, petId, (pet) => feedPet(pet, by, today)),
       )
     },
-    [by, persist, today],
+    [applyPetMutation, by, today],
   )
 
   const clean = useCallback(
     (petId: string) => {
-      persist(
-        updatePetInKennel(kennelRef.current, petId, (pet) =>
-          cleanPet(pet, by, today),
-        ),
+      applyPetMutation((k) =>
+        updatePetInKennel(k, petId, (pet) => cleanPet(pet, by, today)),
       )
     },
-    [by, persist, today],
+    [applyPetMutation, by, today],
   )
 
   const play = useCallback(
     (petId: string) => {
-      persist(
-        updatePetInKennel(kennelRef.current, petId, (pet) =>
-          playWithPet(pet, by, today),
-        ),
+      applyPetMutation((k) =>
+        updatePetInKennel(k, petId, (pet) => playWithPet(pet, by, today)),
       )
     },
-    [by, persist, today],
+    [applyPetMutation, by, today],
   )
 
   const remove = useCallback(
     (petId: string) => {
-      persist(removePetFromKennel(kennelRef.current, petId))
+      applyPetMutation((k) => removePetFromKennel(k, petId))
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const rename = useCallback(
     (petId: string, name: string) => {
-      persist(
-        updatePetInKennel(kennelRef.current, petId, (pet) =>
-          renamePet(pet, name),
-        ),
+      applyPetMutation((k) =>
+        updatePetInKennel(k, petId, (pet) => renamePet(pet, name)),
       )
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const placeFurniture = useCallback(
@@ -225,68 +437,64 @@ export function useSharedPet() {
       const next = addFurniture(prev, assetId)
       if (next === prev) return null
       const added = next.find((item) => !prev.some((p) => p.id === item.id))
-      persist({
-        ...kennelRef.current,
-        furniture: next,
-        updatedAt: Date.now(),
+      if (!added) return null
+      // Reuse one generated id if Firestore retries the transaction.
+      applyPetMutation((k) => {
+        if (k.furniture.length >= MAX_FURNITURE) return k
+        if (k.furniture.some((item) => item.id === added.id)) return k
+        return {
+          ...k,
+          furniture: [...k.furniture, added],
+          updatedAt: Date.now(),
+        }
       })
-      return added?.id ?? null
+      return added.id
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const deleteFurniture = useCallback(
     (furnitureId: string) => {
-      persist({
-        ...kennelRef.current,
-        furniture: removeFurniture(kennelRef.current.furniture, furnitureId),
+      applyPetMutation((k) => ({
+        ...k,
+        furniture: removeFurniture(k.furniture, furnitureId),
         updatedAt: Date.now(),
-      })
+      }))
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const relocateFurniture = useCallback(
     (furnitureId: string, x: number, y: number) => {
-      persist({
-        ...kennelRef.current,
-        furniture: moveFurniture(
-          kennelRef.current.furniture,
-          furnitureId,
-          x,
-          y,
-        ),
+      applyPetMutation((k) => ({
+        ...k,
+        furniture: moveFurniture(k.furniture, furnitureId, x, y),
         updatedAt: Date.now(),
-      })
+      }))
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const mirrorFurniture = useCallback(
     (furnitureId: string) => {
-      persist({
-        ...kennelRef.current,
-        furniture: flipFurniture(kennelRef.current.furniture, furnitureId),
+      applyPetMutation((k) => ({
+        ...k,
+        furniture: flipFurniture(k.furniture, furnitureId),
         updatedAt: Date.now(),
-      })
+      }))
     },
-    [persist],
+    [applyPetMutation],
   )
 
   const reshapeFurniture = useCallback(
     (furnitureId: string, rotation: number, scale: number) => {
-      persist({
-        ...kennelRef.current,
-        furniture: transformFurniture(
-          kennelRef.current.furniture,
-          furnitureId,
-          rotation,
-          scale,
-        ),
+      applyPetMutation((k) => ({
+        ...k,
+        furniture: transformFurniture(k.furniture, furnitureId, rotation, scale),
         updatedAt: Date.now(),
-      })
+      }))
     },
-    [persist],
+    [applyPetMutation],
   )
 
   return {

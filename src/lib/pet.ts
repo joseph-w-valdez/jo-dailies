@@ -55,6 +55,21 @@ export const PET_SPECIES = [
 
 export const PET_STORAGE_KEY = 'jo-dailies:shared-pet:v2'
 
+function isDayKey(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
 function createPetId(): string {
   return `pet_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
@@ -99,18 +114,23 @@ export function normalizePet(raw: unknown): SharedPet {
     species: isPetSpecies(p.species) ? p.species : PET_SPECIES[0]!,
     name: typeof p.name === 'string' ? p.name.slice(0, 24) : '',
     generation:
-      typeof p.generation === 'number' && p.generation >= 0
+      typeof p.generation === 'number' &&
+      Number.isFinite(p.generation) &&
+      p.generation >= 0
         ? Math.floor(p.generation)
         : 0,
-    bornOn: typeof p.bornOn === 'string' ? p.bornOn : todayKey(),
-    lastFedOn: typeof p.lastFedOn === 'string' ? p.lastFedOn : null,
-    lastCleanedOn: typeof p.lastCleanedOn === 'string' ? p.lastCleanedOn : null,
-    lastPlayedOn: typeof p.lastPlayedOn === 'string' ? p.lastPlayedOn : null,
+    bornOn: isDayKey(p.bornOn) ? p.bornOn : todayKey(),
+    lastFedOn: isDayKey(p.lastFedOn) ? p.lastFedOn : null,
+    lastCleanedOn: isDayKey(p.lastCleanedOn) ? p.lastCleanedOn : null,
+    lastPlayedOn: isDayKey(p.lastPlayedOn) ? p.lastPlayedOn : null,
     lastFedBy: typeof p.lastFedBy === 'string' ? p.lastFedBy : null,
     lastCleanedBy: typeof p.lastCleanedBy === 'string' ? p.lastCleanedBy : null,
     lastPlayedBy: typeof p.lastPlayedBy === 'string' ? p.lastPlayedBy : null,
-    deadOn: typeof p.deadOn === 'string' ? p.deadOn : null,
-    updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : Date.now(),
+    deadOn: isDayKey(p.deadOn) ? p.deadOn : null,
+    updatedAt:
+      typeof p.updatedAt === 'number' && Number.isFinite(p.updatedAt)
+        ? p.updatedAt
+        : Date.now(),
   }
 }
 
@@ -185,9 +205,65 @@ export function shouldDie(pet: SharedPet, today = todayKey()): boolean {
   if (pet.status !== 'alive') return false
   if (pet.bornOn >= today) return false
   const yesterday = addDaysKey(today, -1)
-  if (!pet.lastFedOn || pet.lastFedOn < yesterday) return true
-  if (!pet.lastCleanedOn || pet.lastCleanedOn < yesterday) return true
+  // Hatching counts as that day's care, so a pet born yesterday gets the same
+  // one-day grace as one that was fed yesterday instead of dying overnight.
+  const lastFed = pet.lastFedOn ?? pet.bornOn
+  const lastCleaned = pet.lastCleanedOn ?? pet.bornOn
+  if (lastFed < yesterday) return true
+  if (lastCleaned < yesterday) return true
   return false
+}
+
+export interface DeathPostMortem {
+  deadOn: string
+  /** Care had to land on this day (or later) for the pet to survive. */
+  requiredCareBy: string
+  effectiveLastFed: string
+  effectiveLastCleaned: string
+  missedFeed: boolean
+  missedClean: boolean
+  /** False means the recorded state does not justify the death that was saved. */
+  deathWasEarned: boolean
+  summary: string
+}
+
+/**
+ * Re-run the death rule against the state frozen on the pet at the moment it
+ * died. `deathWasEarned: false` means the saved record does not justify the
+ * death — either an old rule killed it or a stale write erased the care.
+ */
+export function explainDeath(pet: SharedPet): DeathPostMortem | null {
+  if (pet.status !== 'dead' || !pet.deadOn) return null
+  const deadOn = pet.deadOn
+  const requiredCareBy = addDaysKey(deadOn, -1)
+  const effectiveLastFed = pet.lastFedOn ?? pet.bornOn
+  const effectiveLastCleaned = pet.lastCleanedOn ?? pet.bornOn
+  const missedFeed = effectiveLastFed < requiredCareBy
+  const missedClean = effectiveLastCleaned < requiredCareBy
+  const bornAfter = pet.bornOn >= deadOn
+  const deathWasEarned = !bornAfter && (missedFeed || missedClean)
+
+  let summary: string
+  if (!deathWasEarned) {
+    summary = `Unjustified: care on record (fed ${effectiveLastFed}, cleaned ${effectiveLastCleaned}) satisfies the ${requiredCareBy} deadline.`
+  } else if (missedFeed && missedClean) {
+    summary = `Missed both: last fed ${effectiveLastFed}, last cleaned ${effectiveLastCleaned}, needed ${requiredCareBy}.`
+  } else if (missedFeed) {
+    summary = `Missed feed: last fed ${effectiveLastFed}, needed ${requiredCareBy}.`
+  } else {
+    summary = `Missed bath: last cleaned ${effectiveLastCleaned}, needed ${requiredCareBy}.`
+  }
+
+  return {
+    deadOn,
+    requiredCareBy,
+    effectiveLastFed,
+    effectiveLastCleaned,
+    missedFeed,
+    missedClean,
+    deathWasEarned,
+    summary,
+  }
 }
 
 export function markDead(pet: SharedPet, today = todayKey()): SharedPet {
@@ -212,6 +288,82 @@ export function applyKennelDeathCheck(
   const changed = pets.some((pet, i) => pet !== kennel.pets[i])
   if (!changed) return kennel
   return { ...kennel, pets, updatedAt: Date.now() }
+}
+
+/** Pick the later of two care dates, carrying its matching caregiver name. */
+function laterCare(
+  aOn: string | null | undefined,
+  aBy: string | null | undefined,
+  bOn: string | null | undefined,
+  bBy: string | null | undefined,
+): [string | null, string | null] {
+  if (!aOn) return [bOn ?? null, bBy ?? null]
+  if (!bOn) return [aOn, aBy ?? null]
+  return bOn >= aOn ? [bOn, bBy ?? null] : [aOn, aBy ?? null]
+}
+
+/**
+ * Merge two versions of the same pet so care only ever moves forward. Guards
+ * against a stale writer regressing a feed/clean/play the other person already
+ * recorded, and keeps death sticky (earliest death date wins).
+ */
+export function mergePetForward(base: SharedPet, incoming: SharedPet): SharedPet {
+  const [lastFedOn, lastFedBy] = laterCare(
+    base.lastFedOn,
+    base.lastFedBy,
+    incoming.lastFedOn,
+    incoming.lastFedBy,
+  )
+  const [lastCleanedOn, lastCleanedBy] = laterCare(
+    base.lastCleanedOn,
+    base.lastCleanedBy,
+    incoming.lastCleanedOn,
+    incoming.lastCleanedBy,
+  )
+  const [lastPlayedOn, lastPlayedBy] = laterCare(
+    base.lastPlayedOn,
+    base.lastPlayedBy,
+    incoming.lastPlayedOn,
+    incoming.lastPlayedBy,
+  )
+  const dead = base.status === 'dead' || incoming.status === 'dead'
+  const deadDates = [base.deadOn, incoming.deadOn].filter(
+    (d): d is string => typeof d === 'string' && d.length > 0,
+  )
+  const deadOn = dead
+    ? (deadDates.sort()[0] ?? incoming.deadOn ?? base.deadOn ?? null)
+    : null
+
+  return {
+    ...incoming,
+    status: dead ? 'dead' : incoming.status,
+    deadOn,
+    bornOn: base.bornOn < incoming.bornOn ? base.bornOn : incoming.bornOn,
+    lastFedOn,
+    lastFedBy,
+    lastCleanedOn,
+    lastCleanedBy,
+    lastPlayedOn,
+    lastPlayedBy,
+    updatedAt: Date.now(),
+  }
+}
+
+/**
+ * Reconcile a desired kennel against freshly-read remote state (matched by pet
+ * id) so a concurrent edit can't be clobbered. Death checks deliberately live
+ * in their own transaction rather than piggybacking on unrelated writes.
+ */
+export function reconcileKennel(
+  remote: PetKennel,
+  desired: PetKennel,
+): PetKennel {
+  const remoteById = new Map(remote.pets.map((pet) => [pet.id, pet]))
+  const pets = desired.pets.map((pet) => {
+    const base = remoteById.get(pet.id)
+    return base ? mergePetForward(base, pet) : pet
+  })
+  return { ...desired, pets, updatedAt: Date.now() }
 }
 
 export function petMood(pet: SharedPet, today = todayKey()): PetMood {
@@ -250,8 +402,10 @@ export function hatchPet(
     name: cleanName,
     generation,
     bornOn: today,
-    lastFedOn: null,
-    lastCleanedOn: null,
+    // Hatching is explicit first-day care. Persisting the dates avoids relying
+    // on a null fallback when old/new clients reconcile the same pet.
+    lastFedOn: today,
+    lastCleanedOn: today,
     lastPlayedOn: null,
     lastFedBy: null,
     lastCleanedBy: null,
@@ -267,11 +421,20 @@ export function addHatchedPet(
   name: string,
   today = todayKey(),
 ): PetKennel {
+  return addPetToKennel(kennel, hatchPet(species, name, 0, today))
+}
+
+/** Add a pre-created pet while assigning its generation from remote state. */
+export function addPetToKennel(
+  kennel: PetKennel,
+  pet: SharedPet,
+): PetKennel {
+  if (kennel.pets.some((existing) => existing.id === pet.id)) return kennel
   if (kennel.pets.length >= MAX_PETS) return kennel
   const nextGen =
     kennel.pets.reduce((max, pet) => Math.max(max, pet.generation), 0) + 1
   return {
-    pets: [...kennel.pets, hatchPet(species, name, nextGen, today)],
+    pets: [...kennel.pets, { ...pet, generation: nextGen, updatedAt: Date.now() }],
     furniture: kennel.furniture,
     updatedAt: Date.now(),
   }
