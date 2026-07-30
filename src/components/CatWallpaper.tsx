@@ -1,6 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { petIdleSrc } from '../lib/petAssets'
-import { petQuote } from '../lib/petQuotes'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { usePetFace } from '../hooks/usePetFace'
+import { faceBackgroundImage } from '../lib/petAssets'
+import {
+  petDragQuote,
+  petQuoteDetailed,
+  petShakeQuote,
+  type PetQuoteResult,
+} from '../lib/petQuotes'
+import { speakDurationMs, SPEAK_FRAME_MS } from '../lib/petSpeak'
+import { PetSprite } from './PetSprite'
 
 /** Soft decorative wallpaper icons (cats + a couple extras). */
 export const WALLPAPER_ICONS = [
@@ -19,6 +27,15 @@ export const WALLPAPER_ICONS = [
 
 const COUNT = 120
 const QUOTE_SHOW_MS = 3_500
+const DRAG_THRESHOLD_PX = 30
+/** Path length while dragging before a shake protest fires. */
+const SHAKE_TRAVEL_PX = 320
+/** Pause after drop before the cat starts drifting again. */
+const DRIFT_RESUME_MS = 2_000
+/** Quiet beat after a held drag protest before the next drag line. */
+const DRAG_CYCLE_GAP_MS = 750
+/** Quiet beat after a held shake protest before the next shake line. */
+const SHAKE_CYCLE_GAP_MS = 1_250
 const WALLPAPER_NEEDS = { hungry: false, dirty: false, bored: false } as const
 
 type Floater = {
@@ -32,12 +49,6 @@ type Floater = {
   delay: number
   direction: 1 | -1
   drift: number
-}
-
-type SpeechBubble = {
-  id: number
-  text: string
-  key: number
 }
 
 function mulberry32(seed: number) {
@@ -76,13 +87,382 @@ function bumpWiggle(icon: HTMLElement) {
   icon.classList.add('is-wiggling')
 }
 
+/**
+ * Map a drop X back onto the infinite drift path so the cat continues from
+ * that spot instead of jumping to the start of the keyframes.
+ */
+function delayForDropX(
+  x: number,
+  direction: 1 | -1,
+  durationSec: number,
+): number {
+  const vw = window.innerWidth / 100
+  const start = (direction === 1 ? -20 : 110) * vw
+  const end = (direction === 1 ? 110 : -20) * vw
+  const progress = Math.min(1, Math.max(0, (x - start) / (end - start)))
+  return -progress * durationSec
+}
+
+function clampDrop(x: number, y: number, size: number) {
+  const maxX = Math.max(0, window.innerWidth - size)
+  const maxY = Math.max(0, window.innerHeight - size)
+  return {
+    x: Math.min(maxX, Math.max(0, x)),
+    y: Math.min(maxY, Math.max(0, y)),
+  }
+}
+
+function WallpaperCat({
+  floater,
+  speaking,
+  speechKey,
+  onSpeak,
+  onHoldEnd,
+}: {
+  floater: Floater
+  speaking: PetQuoteResult | null
+  speechKey: number
+  onSpeak: (quote: PetQuoteResult, hold: boolean) => void
+  /** Release a held drag/shake line so the hide timer can start. */
+  onHoldEnd: () => void
+}) {
+  const quoting = speaking !== null
+  const face = usePetFace({
+    species: floater.src,
+    speech: quoting,
+    blink: quoting,
+    mood: speaking?.mood ?? 'neutral',
+    eyes: speaking?.eyes,
+    mouth: speaking?.mouth,
+    effect: speaking?.effect,
+  })
+  const [speakFrame, setSpeakFrame] = useState(0)
+  const [mouthSpeaking, setMouthSpeaking] = useState(false)
+  // Path overrides after a drag so the cat resumes mid-lane from the drop.
+  const [path, setPath] = useState({
+    top: floater.top,
+    delay: floater.delay,
+  })
+  const [placed, setPlaced] = useState<{ x: number; y: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const resumeTimerRef = useRef(0)
+  const cycleTimerRef = useRef(0)
+  const protestModeRef = useRef<'none' | 'drag' | 'shake'>('none')
+  const floaterRef = useRef<HTMLDivElement | null>(null)
+  const dragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    hostX: number
+    hostY: number
+    lastX: number
+    lastY: number
+    travel: number
+    moved: boolean
+  } | null>(null)
+  const didDragRef = useRef(false)
+  const speakingTextRef = useRef(speaking?.text)
+  speakingTextRef.current = speaking?.text
+  const onSpeakRef = useRef(onSpeak)
+  onSpeakRef.current = onSpeak
+  const canAnimateSpeak = face.canSpeak && speaking?.speech !== 'hold'
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(resumeTimerRef.current)
+      window.clearTimeout(cycleTimerRef.current)
+    }
+  }, [])
+
+  const stopProtestCycle = () => {
+    protestModeRef.current = 'none'
+    window.clearTimeout(cycleTimerRef.current)
+  }
+
+  /** Keep delivering protest lines while the pointer is held. */
+  const startProtestCycle = (kind: 'drag' | 'shake') => {
+    protestModeRef.current = kind
+    window.clearTimeout(cycleTimerRef.current)
+    const quote =
+      kind === 'drag'
+        ? petDragQuote(speakingTextRef.current)
+        : petShakeQuote(speakingTextRef.current)
+    speakingTextRef.current = quote.text
+    onSpeakRef.current(quote, true)
+    const holdMs = speakDurationMs(quote.text, QUOTE_SHOW_MS)
+    cycleTimerRef.current = window.setTimeout(() => {
+      if (protestModeRef.current !== kind) return
+      cycleTimerRef.current = window.setTimeout(() => {
+        if (protestModeRef.current !== kind) return
+        startProtestCycle(kind)
+      }, kind === 'shake' ? SHAKE_CYCLE_GAP_MS : DRAG_CYCLE_GAP_MS)
+    }, holdMs)
+  }
+
+  const parkThenResumeDrift = (drop: { x: number; y: number }) => {
+    window.clearTimeout(resumeTimerRef.current)
+    setPlaced(drop)
+    resumeTimerRef.current = window.setTimeout(() => {
+      setPath({
+        top: `${(drop.y / window.innerHeight) * 100}%`,
+        delay: delayForDropX(drop.x, floater.direction, floater.duration),
+      })
+      setPlaced(null)
+      const host = floaterRef.current
+      if (host) host.style.animationPlayState = 'running'
+    }, DRIFT_RESUME_MS)
+  }
+
+  useEffect(() => {
+    setSpeakFrame(0)
+    if (!quoting || !canAnimateSpeak || !speaking) {
+      setMouthSpeaking(false)
+      return
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setMouthSpeaking(false)
+      return
+    }
+
+    setMouthSpeaking(true)
+    const stop = window.setTimeout(() => {
+      setMouthSpeaking(false)
+      setSpeakFrame(0)
+    }, speakDurationMs(speaking.text, QUOTE_SHOW_MS))
+    const tick = window.setInterval(() => {
+      setSpeakFrame((frame) => (frame + 1) % face.speaking.length)
+    }, SPEAK_FRAME_MS)
+    return () => {
+      window.clearTimeout(stop)
+      window.clearInterval(tick)
+    }
+  }, [quoting, canAnimateSpeak, face.speaking.length, speaking])
+
+  const displayFrame =
+    mouthSpeaking && canAnimateSpeak
+      ? (face.speaking[speakFrame] ?? face.idle)
+      : face.idle
+
+  return (
+    <div
+      ref={floaterRef}
+      className="cat-floater pointer-events-none absolute"
+      style={{
+        top: placed ? `${placed.y}px` : path.top,
+        left: placed ? `${placed.x}px` : 0,
+        width: floater.size,
+        height: floater.size,
+        ['--cat-drift' as string]: `${floater.drift}px`,
+        animationName: placed
+          ? 'none'
+          : floater.direction === 1
+            ? 'cat-drift-right'
+            : 'cat-drift-left',
+        animationDuration: `${floater.duration}s`,
+        animationDelay: `${path.delay}s`,
+        animationTimingFunction: 'linear',
+        animationIterationCount: 'infinite',
+        transform: placed ? 'none' : undefined,
+        zIndex: dragging ? 6 : undefined,
+      }}
+    >
+      {speaking ? (
+        <span
+          key={speechKey}
+          className="pet-care-quote pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-[2] w-max max-w-[10.5rem] -translate-x-1/2 rounded-full border border-border bg-surface px-2.5 py-1 text-center text-[11px] font-medium leading-snug text-muted shadow-lg"
+        >
+          {speaking.text}
+        </span>
+      ) : null}
+      <div
+        className="cat-wallpaper-icon pointer-events-auto relative size-full"
+        style={{
+          opacity: floater.opacity,
+          ['--cat-rot' as string]: `${floater.rotate}deg`,
+          transform: `rotate(${floater.rotate}deg)`,
+          cursor: dragging ? 'grabbing' : 'grab',
+          touchAction: 'none',
+        }}
+        onPointerEnter={(e) => {
+          const host = e.currentTarget.parentElement
+          if (host) {
+            host.style.animationPlayState = 'paused'
+            // Keep this cat on top so neighbors sliding under the cursor
+            // can't steal hover and unpause it.
+            host.style.zIndex = '5'
+          }
+          bumpWiggle(e.currentTarget)
+        }}
+        onPointerLeave={(e) => {
+          const host = e.currentTarget.parentElement
+          if (host) {
+            if (!placed && !dragging) host.style.animationPlayState = 'running'
+            if (!dragging) host.style.zIndex = ''
+          }
+        }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return
+          const host = e.currentTarget.parentElement
+          if (!host) return
+          window.clearTimeout(resumeTimerRef.current)
+          const rect = host.getBoundingClientRect()
+          host.style.animationPlayState = 'paused'
+          host.style.zIndex = '6'
+          dragRef.current = {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            hostX: rect.left,
+            hostY: rect.top,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            travel: 0,
+            moved: false,
+          }
+          didDragRef.current = false
+          setDragging(true)
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          const drag = dragRef.current
+          if (!drag || drag.pointerId !== e.pointerId) return
+          const dx = e.clientX - drag.startX
+          const dy = e.clientY - drag.startY
+          if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+
+          drag.travel += Math.hypot(
+            e.clientX - drag.lastX,
+            e.clientY - drag.lastY,
+          )
+          drag.lastX = e.clientX
+          drag.lastY = e.clientY
+
+          if (!drag.moved) {
+            drag.moved = true
+            didDragRef.current = true
+            startProtestCycle('drag')
+          }
+
+          setPlaced(clampDrop(drag.hostX + dx, drag.hostY + dy, floater.size))
+
+          // Each shake chunk restarts the shake protest cycle.
+          if (drag.travel >= SHAKE_TRAVEL_PX) {
+            drag.travel = 0
+            bumpWiggle(e.currentTarget)
+            startProtestCycle('shake')
+          }
+        }}
+        onPointerUp={(e) => {
+          if (dragRef.current?.pointerId !== e.pointerId) return
+          const drag = dragRef.current
+          dragRef.current = null
+          setDragging(false)
+          e.currentTarget.releasePointerCapture(e.pointerId)
+
+          const host = e.currentTarget.parentElement
+          if (drag.moved) {
+            const drop = clampDrop(
+              drag.hostX + (e.clientX - drag.startX),
+              drag.hostY + (e.clientY - drag.startY),
+              floater.size,
+            )
+            stopProtestCycle()
+            // Stay parked for a beat, then resume mid-path drift.
+            parkThenResumeDrift(drop)
+            // Face/quote stay until release; only then start the hide timer.
+            onHoldEnd()
+            if (host) host.style.zIndex = ''
+            return
+          }
+
+          setPlaced(null)
+          if (host) {
+            host.style.animationPlayState = 'running'
+            host.style.zIndex = ''
+          }
+        }}
+        onPointerCancel={(e) => {
+          if (dragRef.current?.pointerId !== e.pointerId) return
+          const drag = dragRef.current
+          dragRef.current = null
+          didDragRef.current = false
+          setDragging(false)
+          if (drag.moved) {
+            stopProtestCycle()
+            parkThenResumeDrift(
+              clampDrop(
+                drag.hostX + (e.clientX - drag.startX),
+                drag.hostY + (e.clientY - drag.startY),
+                floater.size,
+              ),
+            )
+            onHoldEnd()
+          } else {
+            setPlaced(null)
+          }
+          const host = e.currentTarget.parentElement
+          if (host) {
+            if (!drag.moved) host.style.animationPlayState = 'running'
+            host.style.zIndex = ''
+          }
+        }}
+        onClick={(e) => {
+          if (didDragRef.current) {
+            didDragRef.current = false
+            return
+          }
+          bumpWiggle(e.currentTarget)
+          onSpeak(
+            petQuoteDetailed(
+              floater.src,
+              WALLPAPER_NEEDS,
+              speaking?.text,
+              'wallpaper',
+            ),
+            false,
+          )
+        }}
+        onAnimationEnd={(e) => {
+          if (e.animationName === 'cat-icon-wiggle') {
+            e.currentTarget.classList.remove('is-wiggling')
+          }
+        }}
+      >
+        {quoting ? (
+          <PetSprite
+            frame={displayFrame}
+            alt=""
+            className="absolute inset-0 size-full"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 size-full"
+            style={{
+              backgroundImage: faceBackgroundImage(face.idle),
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+              backgroundSize: 'contain',
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Dense field of icons drifting horizontally across the page. */
 export function CatWallpaper() {
   const floaters = useMemo(() => buildFloaters(), [])
-  const [speech, setSpeech] = useState<SpeechBubble | null>(null)
+  const [speech, setSpeech] = useState<{
+    id: number
+    quote: PetQuoteResult
+    /** Drag/shake lines stay up until the pointer is released. */
+    held: boolean
+    key: number
+  } | null>(null)
 
   useEffect(() => {
-    if (!speech) return
+    if (!speech || speech.held) return
     const hide = window.setTimeout(() => setSpeech(null), QUOTE_SHOW_MS)
     return () => window.clearTimeout(hide)
   }, [speech])
@@ -95,78 +475,27 @@ export function CatWallpaper() {
       aria-hidden="true"
     >
       {floaters.map((f) => (
-        <div
+        <WallpaperCat
           key={f.id}
-          className="cat-floater pointer-events-none absolute"
-          style={{
-            top: f.top,
-            left: 0,
-            width: f.size,
-            height: f.size,
-            ['--cat-drift' as string]: `${f.drift}px`,
-            animationName:
-              f.direction === 1 ? 'cat-drift-right' : 'cat-drift-left',
-            animationDuration: `${f.duration}s`,
-            animationDelay: `${f.delay}s`,
-            animationTimingFunction: 'linear',
-            animationIterationCount: 'infinite',
-          }}
-        >
-          {speech?.id === f.id ? (
-            <span
-              key={speech.key}
-              className="pet-care-quote pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-[2] w-max max-w-[10.5rem] -translate-x-1/2 rounded-full border border-border bg-surface px-2.5 py-1 text-center text-[11px] font-medium leading-snug text-muted shadow-lg"
-            >
-              {speech.text}
-            </span>
-          ) : null}
-          <img
-            src={petIdleSrc(f.src)}
-            alt=""
-            draggable={false}
-            className="cat-wallpaper-icon pointer-events-auto size-full"
-            style={{
-              opacity: f.opacity,
-              ['--cat-rot' as string]: `${f.rotate}deg`,
-              transform: `rotate(${f.rotate}deg)`,
-            }}
-            onPointerEnter={(e) => {
-              const floater = e.currentTarget.parentElement
-              if (floater) {
-                floater.style.animationPlayState = 'paused'
-                // Keep this cat on top so neighbors sliding under the cursor
-                // can't steal hover and unpause it.
-                floater.style.zIndex = '5'
-              }
-              bumpWiggle(e.currentTarget)
-            }}
-            onPointerLeave={(e) => {
-              const floater = e.currentTarget.parentElement
-              if (floater) {
-                floater.style.animationPlayState = 'running'
-                floater.style.zIndex = ''
-              }
-            }}
-            onClick={(e) => {
-              bumpWiggle(e.currentTarget)
-              setSpeech((prev) => ({
-                id: f.id,
-                text: petQuote(
-                  f.src,
-                  WALLPAPER_NEEDS,
-                  prev?.id === f.id ? prev.text : undefined,
-                  'wallpaper',
-                ),
-                key: (prev?.key ?? 0) + 1,
-              }))
-            }}
-            onAnimationEnd={(e) => {
-              if (e.animationName === 'cat-icon-wiggle') {
-                e.currentTarget.classList.remove('is-wiggling')
-              }
-            }}
-          />
-        </div>
+          floater={f}
+          speaking={speech?.id === f.id ? speech.quote : null}
+          speechKey={speech?.id === f.id ? speech.key : 0}
+          onSpeak={(quote, hold) =>
+            setSpeech((prev) => ({
+              id: f.id,
+              quote,
+              held: hold,
+              key: (prev?.key ?? 0) + 1,
+            }))
+          }
+          onHoldEnd={() =>
+            setSpeech((prev) =>
+              prev?.id === f.id && prev.held
+                ? { ...prev, held: false }
+                : prev,
+            )
+          }
+        />
       ))}
     </div>
   )

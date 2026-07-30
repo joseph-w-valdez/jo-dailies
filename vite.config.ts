@@ -1,5 +1,8 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -8,9 +11,60 @@ import tailwindcss from '@tailwindcss/vite'
 // is left unwatched — drop in new frames and refresh the browser.
 const UNWATCHED_ART = '/public/cats/'
 
+const ART_ROOT = path.resolve(import.meta.dirname, 'public/cats')
+
+/**
+ * Vite indexes `public/` once at startup and depends on the watcher to notice
+ * later additions. The art is deliberately unwatched, so a newly drawn PNG
+ * would never register and would quietly fall through to the SPA HTML
+ * fallback — which the browser then fails to decode as an image. Reading
+ * straight off disk keeps drop-in frames working with just a browser refresh.
+ */
+function serveCatArt(): Plugin {
+  return {
+    name: 'serve-cat-art',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0]
+        if (!url?.startsWith('/cats/') || !url.endsWith('.png')) return next()
+
+        const file = path.resolve(ART_ROOT, `.${url.slice('/cats'.length)}`)
+        if (!file.startsWith(ART_ROOT + path.sep)) return next()
+
+        void stat(file).then(
+          (info) => {
+            if (!info.isFile()) {
+              next()
+              return
+            }
+            // Revalidate every load so re-exported art shows up on refresh,
+            // but stay cacheable — an uncacheable frame is re-fetched on every
+            // swap of a mouth animation, which reads as a flicker.
+            const etag = `W/"${info.size}-${info.mtimeMs}"`
+            res.setHeader('ETag', etag)
+            res.setHeader('Cache-Control', 'no-cache')
+            if (req.headers['if-none-match'] === etag) {
+              res.statusCode = 304
+              res.end()
+              return
+            }
+            res.setHeader('Content-Type', 'image/png')
+            res.setHeader('Content-Length', info.size)
+            createReadStream(file).pipe(res)
+          },
+          () => {
+            res.statusCode = 404
+            res.end()
+          },
+        )
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), serveCatArt()],
   server: {
     watch: {
       ignored: (path: string) => path.replace(/\\/g, '/').includes(UNWATCHED_ART),

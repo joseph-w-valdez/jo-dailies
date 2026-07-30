@@ -37,7 +37,6 @@ import {
 } from 'react'
 import { useFirebaseAuth } from '../hooks/firebaseAuthContext'
 import { db, syncRoomId } from '../lib/firebase'
-import { petIdleSrc } from '../lib/petAssets'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   isSettled,
@@ -55,6 +54,7 @@ import {
   type WatchRating,
   type WatchStatus,
 } from '../lib/watchlist'
+import { PetFace } from './PetSprite'
 
 const WATCHLIST_MIGRATION_KEY = 'jo-dailies:firestore-watchlist-migrated:v1'
 
@@ -836,11 +836,9 @@ export function Watchlist() {
 
           {items.length === 0 ? (
             <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-3 py-6 text-center">
-              <img
-                src={petIdleSrc(emptyPet)}
-                alt=""
-                className="watchlist-peek size-14 object-contain opacity-90"
-                draggable={false}
+              <PetFace
+                species={emptyPet}
+                className="watchlist-peek size-14 opacity-90"
               />
               <p className="text-xs text-muted">Nothing queued up yet.</p>
               <p className="text-[10px] text-muted/80">Waiting for the next watch party…</p>
@@ -1146,12 +1144,9 @@ const SortableWatchRow = memo(function SortableWatchRow({
         </button>
       )}
 
-      <img
-        src={petIdleSrc(pet)}
-        alt=""
-        draggable={false}
-        className="watchlist-row-pet pointer-events-none absolute right-2 top-7 z-[1] size-7 object-contain drop-shadow-sm"
-        aria-hidden="true"
+      <PetFace
+        species={pet}
+        className="watchlist-row-pet pointer-events-none absolute right-2 top-7 z-[1] size-7 drop-shadow-sm"
       />
     </li>
   )

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { petIdleSrc } from '../lib/petAssets'
 import { WALLPAPER_ICONS } from './CatWallpaper'
 
 const TRAIL_KEY = 'jo-dailies:cursor-trail'
@@ -43,7 +44,7 @@ export function CursorTrail({ enabled }: { enabled: boolean }) {
       lastRef.current = now
 
       const id = ++idRef.current
-      const src = WALLPAPER_ICONS[id % WALLPAPER_ICONS.length]!
+      const src = petIdleSrc(WALLPAPER_ICONS[id % WALLPAPER_ICONS.length]!)
       const size = 18 + (id % 4) * 3
 
       setDots((prev) => {

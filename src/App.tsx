@@ -18,6 +18,7 @@ import { useSharedTheme } from './hooks/useSharedTheme'
 import { useShellLayout } from './hooks/useShellLayout'
 import { parseKey } from './lib/date'
 import { pickLoadingFlavor } from './lib/loadingFlavor'
+import { petIdleSrc } from './lib/petAssets'
 import { useSyncStatus } from './lib/syncStatus'
 import type { GameId } from './types'
 
@@ -192,7 +193,10 @@ function AppContent() {
   const { user, loading, error, signIn, signOut } = useFirebaseAuth()
   const syncStatus = useSyncStatus()
   const loginPet = useMemo(
-    () => WALLPAPER_ICONS[Math.floor(Math.random() * WALLPAPER_ICONS.length)]!,
+    () =>
+      petIdleSrc(
+        WALLPAPER_ICONS[Math.floor(Math.random() * WALLPAPER_ICONS.length)]!,
+      ),
     [],
   )
   const loadingFlavor = useMemo(() => pickLoadingFlavor(), [])
