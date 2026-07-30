@@ -37,6 +37,7 @@ import {
 } from 'react'
 import { useFirebaseAuth } from '../hooks/firebaseAuthContext'
 import { db, syncRoomId } from '../lib/firebase'
+import { petIdleSrc } from '../lib/petAssets'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   isSettled,
@@ -836,7 +837,7 @@ export function Watchlist() {
           {items.length === 0 ? (
             <div className="mt-4 flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-3 py-6 text-center">
               <img
-                src={emptyPet}
+                src={petIdleSrc(emptyPet)}
                 alt=""
                 className="watchlist-peek size-14 object-contain opacity-90"
                 draggable={false}
@@ -1146,7 +1147,7 @@ const SortableWatchRow = memo(function SortableWatchRow({
       )}
 
       <img
-        src={pet}
+        src={petIdleSrc(pet)}
         alt=""
         draggable={false}
         className="watchlist-row-pet pointer-events-none absolute right-2 top-7 z-[1] size-7 object-contain drop-shadow-sm"

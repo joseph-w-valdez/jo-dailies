@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { usePetSpeakFrames } from "../hooks/usePetSpeakFrames";
 import { useSharedPet } from "../hooks/useSharedPet";
 import {
   FURNITURE_ASSETS,
@@ -27,6 +28,7 @@ import {
   type PetMood,
   type SharedPet,
 } from "../lib/pet";
+import { buildSpeakSequence, petIdleSrc } from "../lib/petAssets";
 import { petQuote, type PetQuoteNeeds } from "../lib/petQuotes";
 import { getRoomSky, type RoomSky } from "../lib/petRoomSky";
 
@@ -34,6 +36,30 @@ const PANEL_COLLAPSE_KEY = 'jo-dailies:pet-panel-collapsed:v1'
 const FOOTER_COLLAPSE_KEY = 'jo-dailies:pet-footer-collapsed:v1'
 const FURNITURE_COLLAPSE_KEY = 'jo-dailies:furniture-panel-collapsed:v1'
 const HATCH_COLLAPSE_KEY = 'jo-dailies:hatch-panel-collapsed:v1'
+
+/** How long a quote bubble stays fully visible. */
+const QUOTE_SHOW_MS = 5_000
+/** Fade-out length for the quote bubble. */
+const QUOTE_FADE_MS = 700
+/** Quiet gap after fade before the next line. */
+const QUOTE_GAP_MS = 1_500
+/** Rough talking pace used to size the mouth animation. */
+const SPEAK_MS_PER_CHAR = 80
+/** Shortest mouth-flap window for a tiny quote. */
+const SPEAK_DURATION_MIN_MS = 1_200
+/** Longest mouth-flap window — never longer than the bubble itself. */
+const SPEAK_DURATION_MAX_MS = QUOTE_SHOW_MS
+/** Per-frame hold while the mouth is moving during a quote. */
+const SPEAK_FRAME_MS = 60
+
+/** Map quote length → how long the mouth should keep flapping. */
+function speakDurationMs(text: string): number {
+  const raw = text.trim().length * SPEAK_MS_PER_CHAR
+  return Math.min(
+    SPEAK_DURATION_MAX_MS,
+    Math.max(SPEAK_DURATION_MIN_MS, raw),
+  )
+}
 
 function loadCollapsed(key: string): boolean {
   try {
@@ -228,9 +254,6 @@ function WanderingPet({
   const width = count >= 3 ? "w-[19%]" : count === 2 ? "w-[21%]" : "w-[23%]";
 
   // One explicit cycle: show → fade → next. No shared interval + hide race.
-  const QUOTE_SHOW_MS = 5_000;
-  const QUOTE_FADE_MS = 700;
-  const QUOTE_GAP_MS = 1_500; // blank air after fade before the next line
   const [quote, setQuote] = useState(() =>
     petQuote(src, quoteNeeds, undefined, 'room', valorantStoreDone),
   );
@@ -242,6 +265,16 @@ function WanderingPet({
   needsRef.current = quoteNeeds;
   const valorantDoneRef = useRef(valorantStoreDone);
   valorantDoneRef.current = valorantStoreDone;
+
+  const idleSrc = petIdleSrc(src);
+  const speakFrames = usePetSpeakFrames(src);
+  const speakSequence = useMemo(
+    () => buildSpeakSequence(idleSrc, speakFrames),
+    [idleSrc, speakFrames],
+  );
+  const [speakFrame, setSpeakFrame] = useState(0);
+  const [mouthSpeaking, setMouthSpeaking] = useState(false);
+  const canAnimateSpeak = speakSequence.length > 1;
 
   useEffect(() => {
     let cancelled = false;
@@ -288,6 +321,41 @@ function WanderingPet({
     quoteNeeds.bored,
   ]);
 
+  // Mouth flaps for a duration scaled to the quote length — independent of
+  // how long the bubble stays up, but never longer than the bubble itself.
+  useEffect(() => {
+    setSpeakFrame(0);
+    if (!quoteShown || !canAnimateSpeak) {
+      setMouthSpeaking(false);
+      return;
+    }
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reducedMotion) {
+      setMouthSpeaking(false);
+      return;
+    }
+
+    setMouthSpeaking(true);
+    const stop = window.setTimeout(() => {
+      setMouthSpeaking(false);
+      setSpeakFrame(0);
+    }, speakDurationMs(quote));
+    const tick = window.setInterval(() => {
+      setSpeakFrame((frame) => (frame + 1) % speakSequence.length);
+    }, SPEAK_FRAME_MS);
+    return () => {
+      window.clearTimeout(stop);
+      window.clearInterval(tick);
+    };
+  }, [quoteShown, canAnimateSpeak, speakSequence.length, quoteKey, quote]);
+
+  const displaySrc =
+    mouthSpeaking && canAnimateSpeak
+      ? (speakSequence[speakFrame] ?? idleSrc)
+      : idleSrc;
+
   return (
     <div
       className={`pointer-events-none absolute ${width} transition-[left,top] ease-in-out`}
@@ -310,7 +378,7 @@ function WanderingPet({
       >
         <span className="absolute bottom-0 left-1/2 h-[12%] w-[70%] -translate-x-1/2 rounded-full bg-black/25 blur-sm" />
         <img
-          src={src}
+          src={displaySrc}
           alt={name}
           draggable={false}
           className={[
@@ -942,7 +1010,7 @@ function HatchForm({
                 aria-pressed={draftSpecies === src}
               >
                 <img
-                  src={src}
+                  src={petIdleSrc(src)}
                   alt=""
                   draggable={false}
                   className="mx-auto size-12 object-contain"
@@ -1072,7 +1140,7 @@ function PetCareFooter({
         >
           <ChevronIcon open={!collapsed} />
           <img
-            src={pet.species}
+            src={petIdleSrc(pet.species)}
             alt=""
             draggable={false}
             className="size-7 shrink-0 object-contain"
@@ -1243,7 +1311,7 @@ function DeadPetCard({
     <div className="mx-auto flex w-full max-w-[44rem] flex-col items-center gap-4 rounded-xl border border-border bg-surface p-4 text-center sm:flex-row sm:text-left">
       <div className="flex w-full flex-col items-center justify-center sm:w-44">
         <img
-          src={pet.species}
+          src={petIdleSrc(pet.species)}
           alt=""
           draggable={false}
           className={["size-24 object-contain", moodClass("dead")].join(" ")}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { petIdleSrc } from '../lib/petAssets'
 import { petQuote } from '../lib/petQuotes'
 
 /** Soft decorative wallpaper icons (cats + a couple extras). */
@@ -120,7 +121,7 @@ export function CatWallpaper() {
             </span>
           ) : null}
           <img
-            src={f.src}
+            src={petIdleSrc(f.src)}
             alt=""
             draggable={false}
             className="cat-wallpaper-icon pointer-events-auto size-full"
