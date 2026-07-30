@@ -104,8 +104,10 @@ export function usePetFace({
   const speakFrames = usePetSpeakFrames(species, speech)
   const layers = useFaceLayers(species)
   const canBlink = layers?.eyes.has('blink') ?? false
-  // A blink is momentary and physical, so it wins over the mood's eyes.
-  const blinking = useBlinking(blink && canBlink)
+  // Annoyed is an eye-roll — blinking would wipe the expression.
+  const eyesPose = eyes ?? (mood === 'annoyed' ? 'annoyed' : undefined)
+  const allowBlink = blink && canBlink && eyesPose !== 'annoyed'
+  const blinking = useBlinking(allowBlink)
 
   return useMemo(() => {
     const shared = {
@@ -121,7 +123,17 @@ export function usePetFace({
       idle: idle[0]!,
       speaking,
       canSpeak: speaking.length > 1,
-      canBlink,
+      canBlink: allowBlink,
     }
-  }, [species, mood, eyes, mouth, effect, layers, speakFrames, blinking, canBlink])
+  }, [
+    species,
+    mood,
+    eyes,
+    mouth,
+    effect,
+    layers,
+    speakFrames,
+    blinking,
+    allowBlink,
+  ])
 }

@@ -81,15 +81,20 @@ describe('pet quote moods', () => {
     expect(moods.get('*shoots floor repeatedly*')).toBe('cheeky')
   })
 
-  it('holds speech for grin moods', () => {
-    const quote = (() => {
+  it('holds speech for grin and angry mouths', () => {
+    const moods = sampleMoods(CONTENT)
+    expect(moods.get('Turn around~')).toBe('excited')
+    expect(moods.get('This Jett is throwing')).toBe('angry')
+
+    const find = (text: string) => {
       for (let i = 0; i < 5_000; i += 1) {
         const next = petQuoteDetailed(CAT, CONTENT, undefined, 'room', true)
-        if (next.text === 'Turn around~') return next
+        if (next.text === text) return next
       }
-      throw new Error('never saw Turn around~')
-    })()
-    expect(quote.speech).toBe('hold')
+      throw new Error(`never saw ${text}`)
+    }
+    expect(find('Turn around~').speech).toBe('hold')
+    expect(find('This Jett is throwing').speech).toBe('hold')
   })
 
   it('avoids repeating the previous line', () => {
@@ -107,9 +112,11 @@ describe('pet quote moods', () => {
     for (let i = 0; i < 100; i += 1) {
       const grabbed = petDragQuote()
       expect(grabbed.mood).toBe('sad')
+      expect(grabbed.speech).toBe('hold')
       drag.add(grabbed.text)
       const shaken = petShakeQuote()
       expect(shaken.mood).toBe('panicked')
+      expect(shaken.speech).toBe('hold')
       shake.add(shaken.text)
     }
     expect(drag.has('What did I do, mother?')).toBe(true)

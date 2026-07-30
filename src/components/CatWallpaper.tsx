@@ -127,15 +127,6 @@ function WallpaperCat({
   onHoldEnd: () => void
 }) {
   const quoting = speaking !== null
-  const face = usePetFace({
-    species: floater.src,
-    speech: quoting,
-    blink: quoting,
-    mood: speaking?.mood ?? 'neutral',
-    eyes: speaking?.eyes,
-    mouth: speaking?.mouth,
-    effect: speaking?.effect,
-  })
   const [speakFrame, setSpeakFrame] = useState(0)
   const [mouthSpeaking, setMouthSpeaking] = useState(false)
   // Path overrides after a drag so the cat resumes mid-lane from the drop.
@@ -145,8 +136,21 @@ function WallpaperCat({
   })
   const [placed, setPlaced] = useState<{ x: number; y: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const face = usePetFace({
+    species: floater.src,
+    speech: quoting,
+    // Held protest lines keep their face locked for the whole bubble —
+    // no blink flashing back toward idle mid-hold or between cycle beats.
+    blink: quoting && speaking?.speech !== 'hold',
+    mood: speaking?.mood ?? 'neutral',
+    eyes: speaking?.eyes,
+    mouth: speaking?.mouth,
+    effect: speaking?.effect,
+  })
   const resumeTimerRef = useRef(0)
   const cycleTimerRef = useRef(0)
+  /** Drop point while the cat waits out its post-drag pause. */
+  const parkedRef = useRef<{ x: number; y: number } | null>(null)
   const protestModeRef = useRef<'none' | 'drag' | 'shake'>('none')
   const floaterRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{
@@ -201,8 +205,10 @@ function WallpaperCat({
 
   const parkThenResumeDrift = (drop: { x: number; y: number }) => {
     window.clearTimeout(resumeTimerRef.current)
+    parkedRef.current = drop
     setPlaced(drop)
     resumeTimerRef.current = window.setTimeout(() => {
+      parkedRef.current = null
       setPath({
         top: `${(drop.y / window.innerHeight) * 100}%`,
         delay: delayForDropX(drop.x, floater.direction, floater.duration),
@@ -211,6 +217,19 @@ function WallpaperCat({
       const host = floaterRef.current
       if (host) host.style.animationPlayState = 'running'
     }, DRIFT_RESUME_MS)
+  }
+
+  /**
+   * A tap that never became a drag. Clearing `placed` here would drop the cat
+   * back onto its pre-drag lane, so a still-parked cat just re-arms its wait.
+   */
+  const settleAfterTap = (host: HTMLElement | null) => {
+    if (parkedRef.current) {
+      parkThenResumeDrift(parkedRef.current)
+      return
+    }
+    setPlaced(null)
+    if (host) host.style.animationPlayState = 'running'
   }
 
   useEffect(() => {
@@ -375,11 +394,8 @@ function WallpaperCat({
             return
           }
 
-          setPlaced(null)
-          if (host) {
-            host.style.animationPlayState = 'running'
-            host.style.zIndex = ''
-          }
+          settleAfterTap(host)
+          if (host) host.style.zIndex = ''
         }}
         onPointerCancel={(e) => {
           if (dragRef.current?.pointerId !== e.pointerId) return
@@ -387,6 +403,7 @@ function WallpaperCat({
           dragRef.current = null
           didDragRef.current = false
           setDragging(false)
+          const host = e.currentTarget.parentElement
           if (drag.moved) {
             stopProtestCycle()
             parkThenResumeDrift(
@@ -398,13 +415,9 @@ function WallpaperCat({
             )
             onHoldEnd()
           } else {
-            setPlaced(null)
+            settleAfterTap(host)
           }
-          const host = e.currentTarget.parentElement
-          if (host) {
-            if (!drag.moved) host.style.animationPlayState = 'running'
-            host.style.zIndex = ''
-          }
+          if (host) host.style.zIndex = ''
         }}
         onClick={(e) => {
           if (didDragRef.current) {

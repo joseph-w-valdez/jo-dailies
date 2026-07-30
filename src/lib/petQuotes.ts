@@ -444,6 +444,8 @@ const HOLD_SPEECH_MOODS: ReadonlySet<FaceMood> = new Set([
   'excited',
   'playful',
   'cheeky',
+  // Angry mouth is a fixed snarl — flapping would undercut it.
+  'angry',
 ])
 
 function toQuoteResult(text: string, mood: FaceMood): PetQuoteResult {
@@ -569,14 +571,14 @@ function pickLine(
   return toQuoteResult(next.text, next.mood)
 }
 
-/** Wallpaper grab reaction — soft sad protest. */
+/** Wallpaper grab reaction — soft sad protest, expression held. */
 export function petDragQuote(avoid?: string): PetQuoteResult {
-  return pickLine(DRAG_QUOTES, avoid)
+  return { ...pickLine(DRAG_QUOTES, avoid), speech: 'hold' }
 }
 
-/** Wallpaper shake reaction — louder sad protest. */
+/** Wallpaper shake reaction — panicked protest, expression held. */
 export function petShakeQuote(avoid?: string): PetQuoteResult {
-  return pickLine(SHAKE_QUOTES, avoid)
+  return { ...pickLine(SHAKE_QUOTES, avoid), speech: 'hold' }
 }
 
 /** Text-only wrapper for callers that don't render faces (wallpaper, etc.). */
