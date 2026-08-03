@@ -19,6 +19,7 @@ import {
   type RefObject,
 } from 'react'
 import { useSharedJenga } from '../hooks/useSharedJenga'
+import { ArcadeStage } from './ArcadeStage'
 import {
   BRICK_H,
   BRICK_L,
@@ -38,8 +39,6 @@ import {
 import { petIdleSrc } from '../lib/petAssets'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
-
-const PANEL_COLLAPSE_KEY = 'jo-dailies:jenga-panel-collapsed:v1'
 
 const CAT_THEME_BY_ICON = new Map(
   JENGA_CAT_THEMES.map((theme) => [
@@ -61,44 +60,6 @@ function catThemeForBrick(
   pair: ReturnType<typeof themesForGame>,
 ) {
   return pair[jengaCatSlotForBrick(brickId)]!
-}
-
-function loadPanelCollapsed(): boolean {
-  try {
-    return localStorage.getItem(PANEL_COLLAPSE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function savePanelCollapsed(value: boolean): void {
-  try {
-    localStorage.setItem(PANEL_COLLAPSE_KEY, value ? '1' : '0')
-  } catch {
-    /* ignore */
-  }
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 12 12"
-      className={[
-        'size-3 shrink-0 transition-transform duration-200',
-        open ? 'rotate-90' : 'rotate-0',
-      ].join(' ')}
-      aria-hidden="true"
-    >
-      <path
-        d="M4 2.5 L8.5 6 L4 9.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
 }
 
 function poseFromBody(body: RapierRigidBody): JengaPose {
@@ -196,6 +157,7 @@ function CatMeteor({
   expireRef.current = onExpire
   const impactRef = useRef(onImpact)
   impactRef.current = onImpact
+  const camera = useThree((s) => s.camera)
 
   const seedBase =
     strikeId * 9973 +
@@ -245,7 +207,45 @@ function CatMeteor({
     hitRef.current = true
     const body = bodyRef.current
     const t = body?.translation()
-    impactRef.current(t ? { x: t.x, y: t.y, z: t.z } : aim)
+    const origin = t ? { x: t.x, y: t.y, z: t.z } : aim
+    impactRef.current(origin)
+    // Kick on the floor plane — usually toward camera, otherwise random.
+    if (body && t) {
+      let dx: number
+      let dz: number
+      if (Math.random() < 0.6) {
+        dx = camera.position.x - t.x
+        dz = camera.position.z - t.z
+        // Fan ±~35° around the camera direction so paths vary.
+        const base = Math.atan2(dz, dx)
+        const spread = (Math.random() - 0.5) * (Math.PI * 0.4)
+        const angled = base + spread
+        dx = Math.cos(angled)
+        dz = Math.sin(angled)
+      } else {
+        const angle = Math.random() * Math.PI * 2
+        dx = Math.cos(angle)
+        dz = Math.sin(angle)
+      }
+      const len = Math.hypot(dx, dz) || 1
+      const kick = 4.5 + Math.random() * 2.5
+      body.setLinvel(
+        {
+          x: (dx / len) * kick,
+          y: 0.6 + Math.random() * 0.7,
+          z: (dz / len) * kick,
+        },
+        true,
+      )
+      body.setAngvel(
+        {
+          x: (Math.random() - 0.5) * 4,
+          y: (Math.random() - 0.5) * 4,
+          z: (Math.random() - 0.5) * 4,
+        },
+        true,
+      )
+    }
   }
 
   useFrame(() => {
@@ -319,7 +319,7 @@ function CatMeteor({
         <mesh castShadow>
           <sphereGeometry args={[radius, 36, 36]} />
           <meshStandardMaterial
-            color="#f0e6d4"
+            color={theme.color}
             roughness={0.65}
             metalness={0.04}
           />
@@ -1273,7 +1273,7 @@ function JengaWorld({
   )
 }
 
-export function Jenga() {
+export function Jenga({ onClose }: { onClose: () => void }) {
   const {
     game,
     ghosts,
@@ -1286,7 +1286,6 @@ export function Jenga() {
     publishGhost,
     clearGhost,
   } = useSharedJenga()
-  const [panelCollapsed, setPanelCollapsed] = useState(() => loadPanelCollapsed())
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmExplode, setConfirmExplode] = useState(false)
   const [confirmMeteor, setConfirmMeteor] = useState(false)
@@ -1295,13 +1294,6 @@ export function Jenga() {
   /** Local explode/meteor chaos — keep physics + allow spam without re-confirm. */
   const [explodeChaos, setExplodeChaos] = useState(false)
   const [chaosKind, setChaosKind] = useState<'explode' | 'meteor' | null>(null)
-  const [theater, setTheater] = useState(false)
-  const [fullscreen, setFullscreen] = useState(false)
-  const frameRef = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    savePanelCollapsed(panelCollapsed)
-  }, [panelCollapsed])
 
   useEffect(() => {
     if (game.status === 'playing') {
@@ -1309,51 +1301,6 @@ export function Jenga() {
       setChaosKind(null)
     }
   }, [game.roundId, game.status])
-
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      setFullscreen(document.fullscreenElement === frameRef.current)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && theater && !document.fullscreenElement) {
-        setTheater(false)
-      }
-    }
-    document.addEventListener('fullscreenchange', onFullscreenChange)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('fullscreenchange', onFullscreenChange)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [theater])
-
-  useEffect(() => {
-    if (!theater) return
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [theater])
-
-  const enterTheater = () => {
-    setPanelCollapsed(false)
-    setTheater(true)
-  }
-
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen()
-        return
-      }
-      setTheater(false)
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      await frameRef.current?.requestFullscreen()
-    } catch {
-      /* Fullscreen can be denied; keep the module usable. */
-    }
-  }
 
   const onCommitMove = useCallback(
     async (
@@ -1460,65 +1407,25 @@ export function Jenga() {
     return null
   }, [chaosActive, chaosKind, game.endReason, game.status, uid])
 
-  const canChaos =
-    Boolean(uid) && (game.status === 'playing' || chaosActive)
+  // Always available while signed in — after a normal topple they still work,
+  // and while playing the first click confirms then flips to game over.
+  const canChaos = Boolean(uid)
   const chaosNeedsConfirm = game.status === 'playing' && !chaosActive
 
   return (
-    <section
-      ref={frameRef}
-      className={[
-        'border border-border bg-surface-raised shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]',
-        theater
-          ? 'fixed inset-0 z-[60] flex flex-col rounded-none p-4'
-          : 'rounded-2xl p-4',
-        fullscreen ? 'flex h-screen flex-col rounded-none p-4' : '',
-      ].join(' ')}
-      aria-label="Jenga"
+    <ArcadeStage
+      title="Jenga"
+      onClose={onClose}
+      meta={
+        <span className="text-[11px] text-muted tabular-nums">
+          {game.bricks.length} bricks
+          {liveEnabled ? ' · live' : ''}
+        </span>
+      }
     >
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (theater || fullscreen) return
-            setPanelCollapsed((value) => !value)
-          }}
-          aria-expanded={!panelCollapsed}
-          className={[
-            'flex min-w-0 items-center gap-1.5 text-left transition hover:opacity-90',
-            theater || fullscreen ? 'pointer-events-none' : '',
-          ].join(' ')}
-        >
-          {theater || fullscreen ? null : <ChevronIcon open={!panelCollapsed} />}
-          <h2 className="text-sm font-semibold text-white">Jenga</h2>
-        </button>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted tabular-nums">
-            {game.bricks.length} bricks
-            {liveEnabled ? ' · live' : ''}
-          </span>
-          <button
-            type="button"
-            onClick={() => (theater ? setTheater(false) : enterTheater())}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
-            aria-pressed={theater}
-          >
-            {theater ? 'Exit theater' : 'Theater'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void toggleFullscreen()}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
-            aria-pressed={fullscreen}
-          >
-            {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
-        </div>
-      </div>
-
-      {!panelCollapsed || theater || fullscreen ? (
+      {({ immersive }) => (
         <>
-          {theater || fullscreen ? null : (
+          {immersive ? null : (
             <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
                 Shared tower — either of you can pull anytime. Physics runs on
@@ -1607,7 +1514,7 @@ export function Jenga() {
                     onClick={() => confirmFirstMeteor()}
                     className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-100 transition hover:bg-violet-500/25"
                   >
-                    You can't undo this...
+                    You can&apos;t undo this...
                   </button>
                   <button
                     type="button"
@@ -1678,9 +1585,7 @@ export function Jenga() {
           <div
             className={[
               'relative mt-3 overflow-hidden rounded-xl border border-border bg-[#1a1620]',
-              theater || fullscreen
-                ? 'min-h-0 flex-1'
-                : 'h-[28rem] sm:h-[34rem]',
+              immersive ? 'min-h-0 flex-1' : 'h-[28rem] sm:h-[34rem]',
             ].join(' ')}
           >
             {ready ? (
@@ -1714,7 +1619,7 @@ export function Jenga() {
             )}
           </div>
         </>
-      ) : null}
-    </section>
+      )}
+    </ArcadeStage>
   )
 }
