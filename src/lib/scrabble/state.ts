@@ -24,6 +24,8 @@ import {
   type ScrabbleTile,
 } from './tiles'
 
+export type { ScrabbleTile} from './tiles'
+
 export type ScrabbleStatus = 'playing' | 'finished'
 
 export type ScrabbleMoveKind =
