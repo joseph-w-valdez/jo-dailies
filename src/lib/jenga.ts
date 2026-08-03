@@ -8,6 +8,9 @@ export const JENGA_PLAYER_UIDS = [
 /** Layers of 3 bricks. 15 ≈ classic feel without melting phones. */
 export const JENGA_LAYERS = 15
 
+/** Starting tower size (3 bricks × layers). */
+export const JENGA_BRICK_COUNT = JENGA_LAYERS * 3
+
 /** Brick size in world units (length × height × width). */
 export const BRICK_L = 0.75
 export const BRICK_H = 0.15
@@ -38,6 +41,11 @@ export interface JengaBrick extends JengaPose {
   layer: number
   /** Long axis along X when true; along Z when false. */
   alongX: boolean
+  /**
+   * Pulled free / fallen debris — still simulates, but not selectable.
+   * Omitted/false = still part of the tower.
+   */
+  loose?: boolean
 }
 
 export type JengaEndReason = 'explode' | 'meteor' | 'topple' | null
@@ -59,6 +67,12 @@ export interface JengaGameState {
   explodeCount: number
   /** Bumps on each meteor so every client can spawn the impact. */
   meteorCount: number
+  /**
+   * Successful clears this round — header score is
+   * `JENGA_BRICK_COUNT - removedCount` (lower remaining = better).
+   * Failed pulls / collapses do not bump this.
+   */
+  removedCount: number
 }
 
 /** Cat face + brick color. Icons are `/cats/<stem>.png` species keys. */
@@ -200,6 +214,7 @@ export function createInitialGame(turnUid: string): JengaGameState {
     roundId: `r-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
     explodeCount: 0,
     meteorCount: 0,
+    removedCount: 0,
   }
 }
 
@@ -228,6 +243,7 @@ export function normalizeBrick(raw: unknown): JengaBrick | null {
     id: b.id,
     layer: Math.max(0, Math.floor(clampNum(b.layer))),
     alongX: b.alongX !== false,
+    loose: b.loose === true ? true : undefined,
     ...pose,
   }
 }
@@ -279,6 +295,7 @@ export function normalizeGameState(
         : `legacy-${version}`,
     explodeCount: Math.max(0, Math.floor(clampNum(s.explodeCount, 0))),
     meteorCount: Math.max(0, Math.floor(clampNum(s.meteorCount, 0))),
+    removedCount: Math.max(0, Math.floor(clampNum(s.removedCount, 0))),
   }
 }
 
@@ -301,9 +318,10 @@ export function saveJengaLocal(state: JengaGameState): void {
 }
 
 /**
- * After a move settles: fail if any brick except the one pulled fell out of
- * the tower — onto the table or onto debris (e.g. resting on the pulled brick).
+ * After a move settles: fail if any tower brick except the one pulled fell out
+ * of the tower — onto the table or onto debris (e.g. resting on the pulled brick).
  * Bottom foundation bricks that already sat on the pad are ignored.
+ * Loose field debris is ignored.
  */
 export function detectCollapse(
   before: JengaBrick[],
@@ -316,9 +334,10 @@ export function detectCollapse(
   const aboveFoundationY = BRICK_H * 1.5
 
   for (const brick of after) {
+    if (brick.loose) continue
     if (movedId && brick.id === movedId) continue
     const was = prev.get(brick.id)
-    if (!was) continue
+    if (!was || was.loose) continue
 
     const fellFromAbove = was.y > aboveFoundationY
     const significantDrop = was.y - brick.y > BRICK_H * 1.1
@@ -331,6 +350,28 @@ export function detectCollapse(
     if (was.y - brick.y > BRICK_H * 2.5) return true
   }
   return false
+}
+
+/** True when a brick is clearly beside the tower on the playfield. */
+export function isFieldDebrisPose(brick: JengaPose): boolean {
+  const radial = Math.hypot(brick.x, brick.z)
+  // In-tower bricks sit within ~one brick-width of center; clear pulls go farther.
+  return radial > BRICK_L * 0.72 && brick.y < BRICK_H * 3.5
+}
+
+/** Mark off-tower debris as loose (keeps prior loose flags). */
+export function markFieldDebris(bricks: JengaBrick[]): JengaBrick[] {
+  return bricks.map((brick) => {
+    if (brick.loose || isFieldDebrisPose(brick)) {
+      return brick.loose ? brick : { ...brick, loose: true }
+    }
+    return brick
+  })
+}
+
+/** Remaining tower score from successful clears only. */
+export function jengaRemainingScore(removedCount: number): number {
+  return Math.max(0, JENGA_BRICK_COUNT - Math.max(0, removedCount))
 }
 
 /** Top of the stacked tower for placing the next brick. */

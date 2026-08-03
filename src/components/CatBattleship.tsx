@@ -30,12 +30,18 @@ import {
 } from '../lib/battleship'
 import { JENGA_PLAYER_UIDS, nextTurnUid } from '../lib/jenga'
 import { petIdleSrc } from '../lib/petAssets'
-import { cattleshipShotQuote, type PetQuoteResult } from '../lib/petQuotes'
+import { cattleshipIdleQuote, cattleshipShotQuote, type PetQuoteResult } from '../lib/petQuotes'
 import { speakDurationMs, SPEAK_FRAME_MS } from '../lib/petSpeak'
 import { ArcadeStage } from './ArcadeStage'
+import { NewGameConfirm } from './NewGameConfirm'
 import { PetSprite } from './PetSprite'
 
 const COACH_QUOTE_MS = 3_800
+/** Silence between idle coach lines (after a bubble clears). */
+const COACH_IDLE_GAP_MIN_MS = 8_000
+const COACH_IDLE_GAP_MAX_MS = 14_000
+/** First chatter after opening a round — a bit sooner. */
+const COACH_IDLE_FIRST_MS = 3_500
 
 function GridBoard({
   size = BS_SIZE,
@@ -135,6 +141,29 @@ function CatTile({
   )
 }
 
+/** Vivid hit marker — reads clearly on ship cats without washing them out. */
+function HitX() {
+  return (
+    <span
+      className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center"
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-[88%] w-[88%] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
+      >
+        <path
+          d="M3.5 3.5 L20.5 20.5 M20.5 3.5 L3.5 20.5"
+          fill="none"
+          stroke="#ff2d2d"
+          strokeWidth="4.25"
+          strokeLinecap="round"
+        />
+      </svg>
+    </span>
+  )
+}
+
 function FleetVitalsBar({
   label,
   vitals,
@@ -226,7 +255,7 @@ function CattleshipCoach({
       : face.idle
 
   return (
-    <div className="relative mx-auto flex w-full max-w-[5.5rem] flex-col items-center sm:max-w-[6.5rem]">
+    <div className="relative mx-auto flex w-[5.5rem] flex-col items-center sm:w-[6.5rem]">
       {quote ? (
         <div
           key={quoteKey}
@@ -238,14 +267,14 @@ function CattleshipCoach({
       <PetSprite
         frame={frame}
         alt="Your cattleship coach"
-        className="relative aspect-square w-full drop-shadow-lg"
+        className="pet-care-sprite pet-care-happy relative aspect-square w-full drop-shadow-lg"
       />
     </div>
   )
 }
 
 export function CatBattleship({ onClose }: { onClose: () => void }) {
-  const { game, ready, uid, canShoot, commitGame, resetGame } =
+  const { game, ready, uid, actorUid, canShoot, commitGame, resetGame } =
     useSharedBattleship()
 
   const [horizontal, setHorizontal] = useState(true)
@@ -253,16 +282,40 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [coachQuote, setCoachQuote] = useState<PetQuoteResult | null>(null)
   const [coachQuoteKey, setCoachQuoteKey] = useState(0)
+  const [newGameOpen, setNewGameOpen] = useState(false)
+  const [placeAsUid, setPlaceAsUid] = useState<string>(JENGA_PLAYER_UIDS[0]!)
   const lastCoachLineRef = useRef<string | undefined>(undefined)
+  const idleFirstRef = useRef(true)
 
-  const myPet = cattleshipPetForUid(uid)
+  useEffect(() => {
+    setPlaceAsUid(game.hotseat ? JENGA_PLAYER_UIDS[0]! : uid)
+  }, [game.roundId, game.hotseat, uid])
+
+  // After locking one fleet in hotseat, switch to the other seat if needed.
+  useEffect(() => {
+    if (!game.hotseat || game.status !== 'placing') return
+    const board = game.boards[placeAsUid]
+    if (!board?.ready) return
+    const other = nextTurnUid(placeAsUid)
+    if (!game.boards[other]?.ready) setPlaceAsUid(other)
+  }, [game.hotseat, game.status, game.boards, placeAsUid])
+
+  const seatUid =
+    game.status === 'placing'
+      ? game.hotseat
+        ? placeAsUid
+        : uid
+      : actorUid
+  const myPet = cattleshipPetForUid(seatUid)
   const opponentUid =
-    JENGA_PLAYER_UIDS.find((id) => id === uid) !== undefined
-      ? nextTurnUid(uid)
+    JENGA_PLAYER_UIDS.find((id) => id === seatUid) !== undefined
+      ? nextTurnUid(seatUid)
       : JENGA_PLAYER_UIDS[1]!
   const theirPet = cattleshipPetForUid(opponentUid)
-  const myBoard = game.boards[uid]
+  const myBoard = game.boards[seatUid]
   const theirBoard = game.boards[opponentUid]
+  const placeSeatLabel =
+    seatUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'
 
   const placedIds = useMemo(
     () => new Set((myBoard?.ships ?? []).map((s) => s.id)),
@@ -279,6 +332,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setHover(null)
     setCoachQuote(null)
+    idleFirstRef.current = true
   }, [game.roundId])
 
   useEffect(() => {
@@ -307,6 +361,24 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
     return () => window.clearTimeout(clear)
   }, [coachQuote, coachQuoteKey])
 
+  // Random idle chatter while waiting between shots (duel phase only).
+  useEffect(() => {
+    if (coachQuote || !ready || game.status !== 'playing') return
+    const first = idleFirstRef.current
+    idleFirstRef.current = false
+    const gap = first
+      ? COACH_IDLE_FIRST_MS
+      : COACH_IDLE_GAP_MIN_MS +
+        Math.random() * (COACH_IDLE_GAP_MAX_MS - COACH_IDLE_GAP_MIN_MS)
+    const id = window.setTimeout(() => {
+      const line = cattleshipIdleQuote(lastCoachLineRef.current)
+      lastCoachLineRef.current = line.text
+      setCoachQuote(line)
+      setCoachQuoteKey((k) => k + 1)
+    }, gap)
+    return () => window.clearTimeout(id)
+  }, [coachQuote, ready, game.status, game.roundId])
+
   const reactToShot = (kind: CattleshipShotKind) => {
     const line = cattleshipShotQuote(kind, lastCoachLineRef.current)
     lastCoachLineRef.current = line.text
@@ -317,14 +389,29 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
     if (game.status === 'won') {
+      if (game.hotseat) {
+        return game.winnerUid === JENGA_PLAYER_UIDS[0] ? 'P1 wins!' : 'P2 wins!'
+      }
       return game.winnerUid === uid ? 'You win!' : 'Opponent wins'
     }
     if (game.status === 'placing') {
+      if (game.hotseat) {
+        if (myBoard?.ready) return `${placeSeatLabel} locked — switch seats`
+        if (!canPlaceSelected)
+          return `${placeSeatLabel} fleet set — lock in when ready`
+        return `${placeSeatLabel}: place ${selectedDef!.name}`
+      }
       if (myBoard?.ready) return 'Waiting for opponent to lock in…'
       if (!canPlaceSelected) return 'Fleet set — lock in when ready'
       return `Place ${selectedDef!.name} · tap a ship to pick up`
     }
-    if (canShoot) return 'Your shot'
+    if (canShoot) {
+      if (game.hotseat) {
+        const seat = actorUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'
+        return `${seat} — your shot`
+      }
+      return 'Your shot'
+    }
     return 'Opponent shooting…'
   })()
 
@@ -346,7 +433,9 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
     if (!myBoard || myBoard.ready) return
     const existing = shipAtCell(myBoard.ships, x, y)
     if (existing) {
-      void commitGame((prev) => removeShip(prev, uid, existing.id) ?? prev)
+      void commitGame(
+        (prev) => removeShip(prev, seatUid, existing.id) ?? prev,
+      )
       setSelectedId(existing.id)
       return
     }
@@ -358,21 +447,21 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
       horizontal,
       length: selectedDef.length,
     }
-    void commitGame((prev) => placeShip(prev, uid, ship) ?? prev)
+    void commitGame((prev) => placeShip(prev, seatUid, ship) ?? prev)
   }
 
   const toggleReady = () => {
     if (!myBoard) return
     const next = !myBoard.ready
-    void commitGame((prev) => setPlayerReady(prev, uid, next) ?? prev)
+    void commitGame((prev) => setPlayerReady(prev, seatUid, next) ?? prev)
   }
 
   const shoot = (x: number, y: number) => {
     if (!canShoot) return
     void commitGame((prev) => {
-      const next = applyBattleshipShot(prev, uid, x, y)
+      const next = applyBattleshipShot(prev, actorUid, x, y)
       if (!next) return prev
-      const kind = classifyBattleshipShot(prev, next, uid, x, y)
+      const kind = classifyBattleshipShot(prev, next, actorUid, x, y)
       if (kind) queueMicrotask(() => reactToShot(kind))
       return next
     })
@@ -387,7 +476,6 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
         ? 'bg-emerald-500/20 border-emerald-400/40'
         : 'bg-rose-500/25 border-rose-400/40'
     }
-    if (mark === 'hit') return 'bg-rose-500/50'
     if (mark === 'miss') return 'bg-slate-600/60'
     if (ship) return 'border-white/20'
     return 'bg-[#152033]'
@@ -418,20 +506,24 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
       return (
         <>
           <CatTile icon={theme.icon} color={theme.color} />
-          {mark === 'hit' ? (
-            <span className="absolute inset-0 z-[2] bg-rose-500/45" />
-          ) : null}
+          {mark === 'hit' ? <HitX /> : null}
         </>
       )
     }
+    if (mark === 'hit') return <HitX />
     return null
   }
 
   const enemyCellClass = (x: number, y: number) => {
     const mark = theirBoard?.received[cellIndex(x, y)] ?? null
-    if (mark === 'hit') return 'bg-rose-500/55'
     if (mark === 'miss') return 'bg-slate-600/55'
     return 'bg-[#152033]'
+  }
+
+  const enemyCellContent = (x: number, y: number): ReactNode => {
+    const mark = theirBoard?.received[cellIndex(x, y)] ?? null
+    if (mark === 'hit') return <HitX />
+    return null
   }
 
   return (
@@ -447,7 +539,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
           }
         >
           {immersive ? null : (
-            <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
+            <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
                 Place your cat fleet — tap a placed ship to pick it up and move
                 it. Each ship is a different cat; lock in when you&apos;re set.
@@ -476,7 +568,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
           )}
 
           <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <img
                 src={petIdleSrc(myPet)}
                 alt=""
@@ -488,15 +580,52 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                 alt=""
                 className="h-7 w-7 rounded-full object-cover ring-2 ring-white/20"
               />
+              {game.hotseat ? (
+                <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">
+                  Debug hotseat
+                </span>
+              ) : null}
+              {game.hotseat && game.status === 'placing' ? (
+                <div className="flex items-center gap-1">
+                  {([0, 1] as const).map((seat) => {
+                    const seatId = JENGA_PLAYER_UIDS[seat]!
+                    const active = placeAsUid === seatId
+                    const locked = Boolean(game.boards[seatId]?.ready)
+                    return (
+                      <button
+                        key={seatId}
+                        type="button"
+                        onClick={() => setPlaceAsUid(seatId)}
+                        className={[
+                          'rounded-md border px-2 py-0.5 text-[10px] font-medium transition',
+                          active
+                            ? 'border-golden/50 bg-golden/15 text-golden'
+                            : 'border-border bg-surface/60 text-muted hover:text-white',
+                        ].join(' ')}
+                      >
+                        {seat === 0 ? 'P1' : 'P2'}
+                        {locked ? ' ✓' : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
             </div>
             <button
               type="button"
-              onClick={() => void resetGame()}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-white/30"
+              onClick={() => setNewGameOpen(true)}
+              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
             >
               New game
             </button>
           </div>
+
+          <NewGameConfirm
+            open={newGameOpen}
+            onClose={() => setNewGameOpen(false)}
+            onConfirm={(opts) => void resetGame(opts)}
+            blurb="Clears both fleets and starts a new round."
+          />
 
           {game.status === 'placing' ? (
             <div
@@ -510,7 +639,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                   type="button"
                   disabled={Boolean(myBoard?.ready) || !canPlaceSelected}
                   onClick={() => setHorizontal((h) => !h)}
-                  className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-white/30 disabled:opacity-40"
+                  className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted disabled:opacity-40"
                 >
                   Rotate
                 </button>
@@ -550,7 +679,8 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                       onClick={() => {
                         if (placed && myBoard) {
                           void commitGame(
-                            (prev) => removeShip(prev, uid, d.id) ?? prev,
+                            (prev) =>
+                              removeShip(prev, seatUid, d.id) ?? prev,
                           )
                         }
                         setSelectedId(d.id)
@@ -562,7 +692,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                           : placed
                             ? 'border-emerald-400/30 bg-emerald-500/10'
                             : 'border-border bg-surface/60',
-                        myBoard?.ready ? 'opacity-50' : 'hover:border-white/30',
+                        myBoard?.ready ? 'opacity-50' : 'hover:border-muted',
                       ].join(' ')}
                       title={
                         placed
@@ -608,7 +738,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                   }
                 >
                   <GridBoard
-                    label="Your fleet placement"
+                    label={
+                      game.hotseat
+                        ? `${placeSeatLabel} fleet placement`
+                        : 'Your fleet placement'
+                    }
                     disabled={Boolean(myBoard?.ready)}
                     onHover={(cell) => setHover(cell)}
                     onCell={onOwnCell}
@@ -619,7 +753,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <p className="shrink-0 text-[11px] text-muted">
-                Opponent:{' '}
+                {game.hotseat ? 'Other seat' : 'Opponent'}:{' '}
                 {theirBoard?.ready ? 'locked in' : 'still placing…'}
               </p>
             </div>
@@ -640,7 +774,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
               >
                 <div className="w-full max-w-[min(100%,17rem)] shrink-0 sm:max-w-none">
                   <FleetVitalsBar
-                    label="Your waters"
+                    label={
+                      game.hotseat
+                        ? `${actorUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'} waters`
+                        : 'Your waters'
+                    }
                     vitals={boardVitals(myBoard)}
                   />
                 </div>
@@ -658,7 +796,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                     }
                   >
                     <GridBoard
-                      label="Your waters"
+                      label={
+                        game.hotseat
+                          ? `${actorUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'} waters`
+                          : 'Your waters'
+                      }
                       disabled
                       cellClass={ownCellClass}
                       cellContent={ownCellContent}
@@ -682,7 +824,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
               >
                 <div className="w-full max-w-[min(100%,17rem)] shrink-0 sm:max-w-none">
                   <FleetVitalsBar
-                    label="Enemy waters"
+                    label={
+                      game.hotseat
+                        ? `${opponentUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'} waters`
+                        : 'Enemy waters'
+                    }
                     vitals={boardVitals(theirBoard)}
                   />
                 </div>
@@ -700,10 +846,15 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                     }
                   >
                     <GridBoard
-                      label="Enemy waters"
+                      label={
+                        game.hotseat
+                          ? `${opponentUid === JENGA_PLAYER_UIDS[0] ? 'P1' : 'P2'} waters`
+                          : 'Enemy waters'
+                      }
                       disabled={!canShoot}
                       onCell={shoot}
                       cellClass={enemyCellClass}
+                      cellContent={enemyCellContent}
                       fill={immersive}
                     />
                   </div>

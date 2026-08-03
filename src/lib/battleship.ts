@@ -56,6 +56,8 @@ export interface BattleshipState {
   turnUid: string
   status: BsStatus
   winnerUid: string | null
+  /** Debug: one human plays both seats. */
+  hotseat: boolean
   version: number
   roundId: string
   updatedAt: number
@@ -146,7 +148,10 @@ export function normalizeShipCats(raw: unknown, seed = 1): BsShipCats {
   return out
 }
 
-export function createInitialBattleship(turnUid: string): BattleshipState {
+export function createInitialBattleship(
+  turnUid: string,
+  opts?: { hotseat?: boolean },
+): BattleshipState {
   const boards: Record<string, BsPlayerBoard> = {}
   for (const uid of JENGA_PLAYER_UIDS) {
     boards[uid] = emptyPlayerBoard()
@@ -158,6 +163,7 @@ export function createInitialBattleship(turnUid: string): BattleshipState {
     turnUid: turnUid || JENGA_PLAYER_UIDS[0]!,
     status: 'placing',
     winnerUid: null,
+    hotseat: Boolean(opts?.hotseat),
     version: 1,
     roundId: newRoundId(),
     updatedAt: Date.now(),
@@ -502,6 +508,7 @@ export function normalizeBattleship(
         : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
     status,
     winnerUid: typeof s.winnerUid === 'string' ? s.winnerUid : null,
+    hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
     roundId:
       typeof s.roundId === 'string' && s.roundId ? s.roundId : newRoundId(),

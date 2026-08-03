@@ -94,6 +94,7 @@ export function useSharedJenga() {
             prev.endReason === remote.endReason &&
             prev.explodeCount === remote.explodeCount &&
             prev.meteorCount === remote.meteorCount &&
+            prev.removedCount === remote.removedCount &&
             prev.roundId === remote.roundId
           ) {
             return prev

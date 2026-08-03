@@ -46,3 +46,12 @@ export function applyThemeToDocument(theme: ThemeId): void {
     document.documentElement.dataset.theme = theme
   }
 }
+
+/** Read a CSS custom property from <html> (e.g. `--color-app-bg`). */
+export function readThemeCssColor(varName: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim()
+  return value || fallback
+}

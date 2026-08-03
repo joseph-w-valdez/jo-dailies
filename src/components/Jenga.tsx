@@ -19,7 +19,9 @@ import {
   type RefObject,
 } from 'react'
 import { useSharedJenga } from '../hooks/useSharedJenga'
+import { useThemeCssColor } from '../hooks/useThemeCssColor'
 import { ArcadeStage } from './ArcadeStage'
+import { ThemeClearColor } from './ThemeClearColor'
 import {
   BRICK_H,
   BRICK_L,
@@ -28,7 +30,8 @@ import {
   detectCollapse,
   JENGA_CAT_THEMES,
   jengaCatSlotForBrick,
-  nextPlacePose,
+  jengaRemainingScore,
+  markFieldDebris,
   nextTurnUid,
   type JengaBrick,
   type JengaEndReason,
@@ -121,6 +124,75 @@ function blastBodies(
         x: (Math.random() - 0.5) * 10 * strength,
         y: (Math.random() - 0.5) * 8 * strength,
         z: (Math.random() - 0.5) * 10 * strength,
+      },
+      true,
+    )
+  }
+}
+
+/**
+ * IRL: steady medium pulls are safest; jerky/fast yanks vibrate the stack.
+ * World-units/sec along the pull axis — tuned to the 0.004 screen→world scale.
+ */
+const PULL_STEADY_SPEED = 0.45
+const PULL_YANK_SPEED = 2.2
+
+function pullYankFactor(peakSpeed: number): number {
+  return Math.max(
+    0,
+    Math.min(1, (peakSpeed - PULL_STEADY_SPEED) / (PULL_YANK_SPEED - PULL_STEADY_SPEED)),
+  )
+}
+
+/** Hand tremor + speed shake while the brick is kinematic. */
+function pullWiggleOffset(
+  peakSpeed: number,
+  speed: number,
+): { perp: number; y: number } {
+  const yank = pullYankFactor(Math.max(peakSpeed, speed))
+  // Always a little human noise; yanks amplify it.
+  const amp = 0.0012 + yank * 0.01 + speed * 0.0025 + Math.random() * 0.0008
+  return {
+    perp: (Math.random() - 0.5) * 2 * amp,
+    y: (Math.random() - 0.5) * 2 * amp * 0.55,
+  }
+}
+
+/**
+ * When the pull releases and the tower goes dynamic, seed a small shake.
+ * Calm clears barely nudge; yanks + unlucky slips can topple.
+ */
+function shockTowerFromPull(
+  bodies: Map<string, RapierRigidBody>,
+  pulledId: string,
+  peakSpeed: number,
+) {
+  const yank = pullYankFactor(peakSpeed)
+  // Even steady hands can slip; yanks get much riskier.
+  const slipChance = 0.05 + yank * 0.38
+  const slipped = Math.random() < slipChance
+  const shake =
+    0.01 +
+    yank * yank * 0.11 +
+    (slipped ? 0.045 + Math.random() * 0.07 : Math.random() * 0.018)
+
+  for (const [id, body] of bodies) {
+    if (id === pulledId) continue
+    const t = body.translation()
+    if (Math.hypot(t.x, t.z) > 1.15) continue
+    body.setLinvel(
+      {
+        x: (Math.random() - 0.5) * shake,
+        y: Math.random() * shake * 0.35,
+        z: (Math.random() - 0.5) * shake,
+      },
+      true,
+    )
+    body.setAngvel(
+      {
+        x: (Math.random() - 0.5) * shake * 3.2,
+        y: (Math.random() - 0.5) * shake * 2.2,
+        z: (Math.random() - 0.5) * shake * 3.2,
       },
       true,
     )
@@ -753,14 +825,34 @@ function JengaWorld({
     collapsed: boolean,
     movedId: string | null,
     endReason: JengaEndReason,
+    /** Successful clear that did not topple — bumps the remaining-brick score. */
+    scoredRemoval: boolean,
   ) => void
   publishGhost: ReturnType<typeof useSharedJenga>['publishGhost']
   clearGhost: () => void
 }) {
+  const floorColor = useThemeCssColor('--color-surface-raised', '#2a2430')
   const catPair = useMemo(() => themesForGame(game.cats), [game.cats])
   const bodiesRef = useRef(new Map<string, RapierRigidBody>())
+  const metaRoundIdRef = useRef(game.roundId)
   const brickMetaRef = useRef(new Map(game.bricks.map((b) => [b.id, b])))
-  brickMetaRef.current = new Map(game.bricks.map((b) => [b.id, b]))
+  {
+    // Brick ids reuse across rounds (`b-0-0`…) — never carry loose flags
+    // from a previous tower into a reset.
+    if (metaRoundIdRef.current !== game.roundId) {
+      metaRoundIdRef.current = game.roundId
+      brickMetaRef.current = new Map(game.bricks.map((b) => [b.id, b]))
+    } else {
+      const prev = brickMetaRef.current
+      brickMetaRef.current = new Map(
+        game.bricks.map((b) => {
+          const old = prev.get(b.id)
+          const loose = Boolean(b.loose || old?.loose)
+          return [b.id, loose ? { ...b, loose: true } : b]
+        }),
+      )
+    }
+  }
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pulling, setPulling] = useState(false)
@@ -772,6 +864,7 @@ function JengaWorld({
     { id: number; aim: { x: number; y: number; z: number } }[]
   >([])
   const [culledBrickIds, setCulledBrickIds] = useState(() => new Set<string>())
+  const clearedThisMoveRef = useRef(false)
   const expireMeteor = useCallback((strikeId: number) => {
     setMeteorStrikes((prev) => prev.filter((s) => s.id !== strikeId))
   }, [])
@@ -783,6 +876,7 @@ function JengaWorld({
       return next
     })
   }, [])
+
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const beforeRef = useRef<JengaBrick[]>(game.bricks)
   const movedIdRef = useRef<string | null>(null)
@@ -796,7 +890,13 @@ function JengaWorld({
     startClientX: number
     startClientY: number
     origin: JengaPose
+    lastClientX: number
+    lastClientY: number
+    lastTime: number
+    lastDelta: number
+    peakSpeed: number
   } | null>(null)
+  const pullPeakSpeedRef = useRef(0)
   const cullProtectRef = useRef<string | null>(null)
   cullProtectRef.current = pullRef.current?.id ?? selectedId
 
@@ -812,12 +912,13 @@ function JengaWorld({
       const body = bodiesRef.current.get(brick.id)
       const meta = brickMetaRef.current.get(brick.id) ?? brick
       if (!body) {
-        out.push(brick)
+        out.push(meta.loose ? { ...brick, ...meta, loose: true } : { ...brick, ...meta })
         continue
       }
       out.push({
         ...meta,
         ...poseFromBody(body),
+        loose: meta.loose === true ? true : undefined,
       })
     }
     return out
@@ -839,6 +940,15 @@ function JengaWorld({
         body.setBodyType(0, true) // Dynamic
         body.wakeUp()
       }
+      // Yanky / unlucky pulls disturb the rest of the tower as physics starts.
+      if (movedId) {
+        shockTowerFromPull(
+          bodiesRef.current,
+          movedId,
+          pullPeakSpeedRef.current,
+        )
+      }
+      pullPeakSpeedRef.current = 0
     },
     [clearGhost],
   )
@@ -846,11 +956,21 @@ function JengaWorld({
   const onSettled = useCallback(() => {
     if (settleDoneRef.current) return
     settleDoneRef.current = true
-    const after = readBricks()
+    // Detect topple before marking field debris — otherwise fallen tower
+    // bricks are already `loose` and get skipped by detectCollapse.
+    const settled = readBricks()
     const collapsed =
       forceCollapseRef.current ||
-      detectCollapse(beforeRef.current, after, movedIdRef.current)
+      detectCollapse(beforeRef.current, settled, movedIdRef.current)
+    const after = markFieldDebris(settled)
+    // Keep meta in sync so selection stays correct until Firestore lands.
+    for (const brick of after) {
+      const meta = brickMetaRef.current.get(brick.id)
+      if (meta && brick.loose) meta.loose = true
+    }
     const endReason: JengaEndReason = collapsed ? 'topple' : null
+    const scoredRemoval = Boolean(clearedThisMoveRef.current) && !collapsed
+    clearedThisMoveRef.current = false
     forceCollapseRef.current = false
     // Freeze after a normal pull settle (not explode chaos).
     for (const body of bodiesRef.current.values()) {
@@ -861,12 +981,19 @@ function JengaWorld({
     setSettling(false)
     setPulling(false)
     setSelectedId(null)
-    onCommitMove(after, collapsed, movedIdRef.current, endReason)
+    onCommitMove(
+      after,
+      collapsed,
+      movedIdRef.current,
+      endReason,
+      scoredRemoval,
+    )
   }, [onCommitMove, readBricks])
 
   useEffect(() => {
     setCulledBrickIds(new Set())
     setMeteorStrikes([])
+    clearedThisMoveRef.current = false
   }, [game.roundId])
 
   const appliedResetRef = useRef(0)
@@ -1001,6 +1128,8 @@ function JengaWorld({
 
   const onSelect = (id: string) => {
     if (!canPlay || settling || game.status !== 'playing') return
+    const meta = brickMetaRef.current.get(id)
+    if (meta?.loose) return
     setSelectedId(id)
   }
 
@@ -1010,14 +1139,29 @@ function JengaWorld({
       if (!pull) return
       const body = bodiesRef.current.get(pull.id)
       if (!body) return
+      const now = performance.now()
+      const dt = Math.max(0.008, (now - pull.lastTime) / 1000)
       const dx = (event.clientX - pull.startClientX) * 0.004
       const dy = (event.clientY - pull.startClientY) * 0.004
       // Screen X/Y → world pull along brick long axis (approx).
       const delta = dx - dy * 0.35
+      const speed = Math.abs(delta - pull.lastDelta) / dt
+      pull.peakSpeed = Math.max(pull.peakSpeed, speed)
+      pullPeakSpeedRef.current = pull.peakSpeed
+      pull.lastDelta = delta
+      pull.lastClientX = event.clientX
+      pull.lastClientY = event.clientY
+      pull.lastTime = now
+
+      const wig = pullWiggleOffset(pull.peakSpeed, speed)
       const next = {
-        x: pull.origin.x + (pull.alongX ? delta : 0),
-        y: pull.origin.y,
-        z: pull.origin.z + (pull.alongX ? 0 : delta),
+        x:
+          pull.origin.x +
+          (pull.alongX ? delta : wig.perp),
+        y: pull.origin.y + wig.y,
+        z:
+          pull.origin.z +
+          (pull.alongX ? wig.perp : delta),
       }
       body.setNextKinematicTranslation(next)
       publishGhost({
@@ -1043,6 +1187,7 @@ function JengaWorld({
       if (!body || !meta) {
         setPulling(false)
         clearGhost()
+        pullPeakSpeedRef.current = 0
         return
       }
 
@@ -1051,29 +1196,34 @@ function JengaWorld({
         ? Math.abs(pose.x - pull.origin.x)
         : Math.abs(pose.z - pull.origin.z)
       const cleared = travel > BRICK_L * 0.52
+      pullPeakSpeedRef.current = pull.peakSpeed
+
+      // Carry a bit of yank into the free brick when physics takes over.
+      const sign =
+        (pull.alongX ? pose.x - pull.origin.x : pose.z - pull.origin.z) >= 0
+          ? 1
+          : -1
+      const fling = Math.min(1.4, pull.peakSpeed * 0.35) * sign
+      body.setLinvel(
+        {
+          x: pull.alongX ? fling : (Math.random() - 0.5) * 0.05,
+          y: 0,
+          z: pull.alongX ? (Math.random() - 0.5) * 0.05 : fling,
+        },
+        true,
+      )
 
       if (cleared) {
-        const place = nextPlacePose(
-          readBricks().filter((b) => b.id !== pull.id),
-        )
-        body.setNextKinematicTranslation({
-          x: place.pose.x,
-          y: place.pose.y + BRICK_H * 0.15,
-          z: place.pose.z,
-        })
-        body.setNextKinematicRotation({
-          x: place.pose.qx,
-          y: place.pose.qy,
-          z: place.pose.qz,
-          w: place.pose.qw,
-        })
-        meta.alongX = place.alongX
-        meta.layer = place.layer
+        // Leave the brick on the field as debris — still physics, not selectable.
+        meta.loose = true
+        clearedThisMoveRef.current = true
         publishGhost({
           brickId: pull.id,
           phase: 'placing',
-          pose: place.pose,
+          pose,
         })
+      } else {
+        clearedThisMoveRef.current = false
       }
 
       beginSettle(pull.id)
@@ -1087,23 +1237,31 @@ function JengaWorld({
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
     }
-  }, [beginSettle, clearGhost, publishGhost, readBricks])
+  }, [beginSettle, clearGhost, publishGhost])
 
   const startPull = (id: string, clientX: number, clientY: number) => {
     if (!canPlay || settling || pulling) return
     const body = bodiesRef.current.get(id)
     const meta = brickMetaRef.current.get(id)
-    if (!body || !meta) return
+    if (!body || !meta || meta.loose) return
+    clearedThisMoveRef.current = false
     beforeRef.current = readBricks()
     const origin = poseFromBody(body)
     body.setBodyType(2, true) // KinematicPositionBased
+    const now = performance.now()
     pullRef.current = {
       id,
       alongX: meta.alongX,
       startClientX: clientX,
       startClientY: clientY,
       origin,
+      lastClientX: clientX,
+      lastClientY: clientY,
+      lastTime: now,
+      lastDelta: 0,
+      peakSpeed: 0,
     }
+    pullPeakSpeedRef.current = 0
     setPulling(true)
     setOrbitEnabled(false)
     publishGhost({ brickId: id, phase: 'pulling', pose: origin })
@@ -1152,7 +1310,7 @@ function JengaWorld({
         />
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
           <circleGeometry args={[3.2, 48]} />
-          <meshStandardMaterial color="#2a2430" roughness={0.95} />
+          <meshStandardMaterial color={floorColor} roughness={0.95} />
         </mesh>
         {game.bricks.map((brick) => {
           const ghost = ghosts.find((g) => g.brickId === brick.id)
@@ -1204,7 +1362,7 @@ function JengaWorld({
             receiveShadow
           >
             <circleGeometry args={[3.2, 48]} />
-            <meshStandardMaterial color="#2a2430" roughness={0.95} />
+            <meshStandardMaterial color={floorColor} roughness={0.95} />
           </mesh>
         </RigidBody>
 
@@ -1224,22 +1382,33 @@ function JengaWorld({
 
         {game.bricks
           .filter((brick) => !culledBrickIds.has(brick.id))
-          .map((brick) => (
+          .map((brick) => {
+            const meta = brickMetaRef.current.get(brick.id)
+            const loose = Boolean(meta?.loose ?? brick.loose)
+            return (
           <PhysicsBrick
             key={brick.id}
-            brick={brick}
+            brick={loose ? { ...brick, loose: true } : brick}
             selected={selectedId === brick.id}
             bodyRef={setBody}
             pulling={pulling && selectedId === brick.id}
-            interactive={!pulling && !settling && game.status === 'playing'}
+            interactive={
+              !loose &&
+              !pulling &&
+              !settling &&
+              game.status === 'playing'
+            }
             catPair={catPair}
             onSelect={onSelect}
             onPullStart={startPull}
           />
-        ))}
+            )
+          })}
 
         <FallenCullWatcher
-          active={keepPhysics}
+          // Despawn off-map bricks in normal play too (not only explode/meteor),
+          // so the header count tracks what’s still in the scene.
+          active
           bodies={bodiesRef.current}
           protectedIdRef={cullProtectRef}
           culled={culledBrickIds}
@@ -1286,6 +1455,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
     publishGhost,
     clearGhost,
   } = useSharedJenga()
+  const sceneBg = useThemeCssColor('--color-app-bg', '#1a1620')
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmExplode, setConfirmExplode] = useState(false)
   const [confirmMeteor, setConfirmMeteor] = useState(false)
@@ -1294,6 +1464,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
   /** Local explode/meteor chaos — keep physics + allow spam without re-confirm. */
   const [explodeChaos, setExplodeChaos] = useState(false)
   const [chaosKind, setChaosKind] = useState<'explode' | 'meteor' | null>(null)
+  const bricksInPlay = jengaRemainingScore(game.removedCount)
 
   useEffect(() => {
     if (game.status === 'playing') {
@@ -1308,6 +1479,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
       collapsed: boolean,
       _movedId: string | null,
       endReason: JengaEndReason,
+      scoredRemoval: boolean,
     ) => {
       if (!uid || busy) return
       setBusy(true)
@@ -1325,6 +1497,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
           roundId: game.roundId,
           explodeCount: game.explodeCount,
           meteorCount: game.meteorCount,
+          removedCount: game.removedCount + (scoredRemoval ? 1 : 0),
         }
         await commitGame(next)
       } finally {
@@ -1338,6 +1511,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
       game.cats,
       game.explodeCount,
       game.meteorCount,
+      game.removedCount,
       game.roundId,
       game.version,
       uid,
@@ -1418,7 +1592,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       meta={
         <span className="text-[11px] text-muted tabular-nums">
-          {game.bricks.length} bricks
+          {bricksInPlay} left
           {liveEnabled ? ' · live' : ''}
         </span>
       }
@@ -1426,7 +1600,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
       {({ immersive }) => (
         <>
           {immersive ? null : (
-            <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
+            <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
                 Shared tower — either of you can pull anytime. Physics runs on
                 whoever&apos;s moving a brick; the result syncs when it settles.
@@ -1477,7 +1651,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                   <button
                     type="button"
                     onClick={() => confirmFirstExplode()}
-                    className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-100 transition hover:bg-amber-500/25"
+                    className="rounded-lg border border-amber-500/55 bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-app-text transition hover:bg-amber-500/30"
                   >
                     Do you really want to do this?
                   </button>
@@ -1502,7 +1676,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                     }
                     fireExplode()
                   }}
-                  className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-100/90 transition hover:border-amber-300/50 hover:bg-amber-500/20 disabled:opacity-40"
+                  className="rounded-lg border border-amber-500/55 bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-app-text transition hover:border-amber-400/70 hover:bg-amber-500/30 disabled:opacity-40"
                 >
                   Explode
                 </button>
@@ -1512,7 +1686,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                   <button
                     type="button"
                     onClick={() => confirmFirstMeteor()}
-                    className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-100 transition hover:bg-violet-500/25"
+                    className="rounded-lg border border-violet-500/55 bg-violet-500/20 px-2.5 py-1 text-xs font-medium text-app-text transition hover:bg-violet-500/30"
                   >
                     You can&apos;t undo this...
                   </button>
@@ -1537,7 +1711,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                     }
                     fireMeteor()
                   }}
-                  className="rounded-lg border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-100/90 transition hover:border-violet-300/50 hover:bg-violet-500/20 disabled:opacity-40"
+                  className="rounded-lg border border-violet-500/55 bg-violet-500/20 px-2.5 py-1 text-xs font-medium text-app-text transition hover:border-violet-400/70 hover:bg-violet-500/30 disabled:opacity-40"
                 >
                   Catsteroid
                 </button>
@@ -1555,7 +1729,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                       setResetNonce((n) => n + 1)
                       void resetGame()
                     }}
-                    className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/25"
+                    className="rounded-lg border border-rose-500/55 bg-rose-500/20 px-2.5 py-1 text-xs font-medium text-app-text transition hover:bg-rose-500/30"
                   >
                     Confirm reset
                   </button>
@@ -1584,7 +1758,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
 
           <div
             className={[
-              'relative mt-3 overflow-hidden rounded-xl border border-border bg-[#1a1620]',
+              'relative mt-3 overflow-hidden rounded-xl border border-border bg-app-bg',
               immersive ? 'min-h-0 flex-1' : 'h-[28rem] sm:h-[34rem]',
             ].join(' ')}
           >
@@ -1593,10 +1767,8 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                 shadows
                 camera={{ position: [2.6, 2.4, 3.4], fov: 42 }}
                 gl={{ antialias: true, alpha: false }}
-                onCreated={({ gl }) => {
-                  gl.setClearColor('#1a1620')
-                }}
               >
+                <ThemeClearColor color={sceneBg} />
                 <JengaWorld
                   game={game}
                   ghosts={ghosts}

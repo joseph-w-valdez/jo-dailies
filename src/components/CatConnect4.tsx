@@ -13,6 +13,7 @@ import {
 import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { petIdleSrc } from '../lib/petAssets'
 import { ArcadeStage } from './ArcadeStage'
+import { NewGameConfirm } from './NewGameConfirm'
 
 function CatDisc({
   icon,
@@ -60,9 +61,10 @@ function CatDisc({
 }
 
 export function CatConnect4({ onClose }: { onClose: () => void }) {
-  const { game, ready, uid, canPlay, commitGame, resetGame } =
+  const { game, ready, uid, actorUid, canPlay, commitGame, resetGame } =
     useSharedConnect4()
   const [hoverCol, setHoverCol] = useState<number | null>(null)
+  const [newGameOpen, setNewGameOpen] = useState(false)
 
   const themes = useMemo(
     () =>
@@ -74,6 +76,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
   )
 
   const turnSeat = seatForUid(game.turnUid)
+  const actorSeat = seatForUid(actorUid)
   const mySeat = seatForUid(uid)
   const winnerSeat =
     game.winnerUid !== null ? seatForUid(game.winnerUid) : null
@@ -81,17 +84,25 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
     if (game.status === 'won' && winnerSeat !== null) {
+      if (game.hotseat) {
+        return winnerSeat === 0 ? 'P1 wins!' : 'P2 wins!'
+      }
       return mySeat === winnerSeat ? 'You win!' : 'Opponent wins'
     }
     if (game.status === 'draw') return 'Draw'
-    if (canPlay) return 'Your turn — pick a column'
+    if (canPlay) {
+      if (game.hotseat && turnSeat !== null) {
+        return `${turnSeat === 0 ? 'P1' : 'P2'} — pick a column`
+      }
+      return 'Your turn — pick a column'
+    }
     if (turnSeat !== null) return 'Waiting for opponent'
     return 'Waiting…'
   })()
 
   const drop = (col: number) => {
     if (!canPlay) return
-    void commitGame((prev) => applyConnect4Drop(prev, uid, col) ?? prev)
+    void commitGame((prev) => applyConnect4Drop(prev, actorUid, col) ?? prev)
   }
 
   const previewRow =
@@ -110,7 +121,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
           }
         >
           {immersive ? null : (
-            <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
+            <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
                 Shared board — drop cats in turn. Get four in a row. Two random
                 cat faces each round.
@@ -144,8 +155,11 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                 const theme = themes[seat]!
                 const isTurn =
                   game.status === 'playing' && turnSeat === seat
-                const label =
-                  JENGA_PLAYER_UIDS[seat] === uid
+                const label = game.hotseat
+                  ? seat === 0
+                    ? 'P1'
+                    : 'P2'
+                  : JENGA_PLAYER_UIDS[seat] === uid
                     ? 'You'
                     : seat === 0
                       ? 'P1'
@@ -167,15 +181,27 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                   </div>
                 )
               })}
+              {game.hotseat ? (
+                <span className="rounded-md border border-amber-400/35 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-100">
+                  Debug hotseat
+                </span>
+              ) : null}
             </div>
             <button
               type="button"
-              onClick={() => void resetGame()}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-white/30"
+              onClick={() => setNewGameOpen(true)}
+              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
             >
               New game
             </button>
           </div>
+
+          <NewGameConfirm
+            open={newGameOpen}
+            onClose={() => setNewGameOpen(false)}
+            onConfirm={(opts) => void resetGame(opts)}
+            blurb="Starts a fresh board for both of you."
+          />
 
           <div
             className={[
@@ -249,8 +275,8 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                       previewRow === row &&
                       hoverCol === col &&
                       cell === -1 &&
-                      mySeat !== null
-                    const seat = cell === -1 ? (isPreview ? mySeat : null) : cell
+                      actorSeat !== null
+                    const seat = cell === -1 ? (isPreview ? actorSeat : null) : cell
                     const theme =
                       seat === 0 || seat === 1 ? themes[seat] : null
                     return (

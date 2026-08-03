@@ -135,14 +135,14 @@ export function GameFrame({ game, onClose, onOpenExternal }: GameFrameProps) {
           <button
             type="button"
             onClick={onOpenExternal}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
           >
             Pop out
           </button>
           <button
             type="button"
             onClick={() => setTheater((active) => !active)}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
             aria-pressed={theater}
           >
             {theater ? 'Exit theater' : 'Theater'}
@@ -150,7 +150,7 @@ export function GameFrame({ game, onClose, onOpenExternal }: GameFrameProps) {
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
             aria-pressed={fullscreen}
           >
             {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}

@@ -616,6 +616,25 @@ const CATTLESHIP_MISS_QUOTES = [
   'A polite miss. Reload those paws.',
 ] as const
 
+const CATTLESHIP_IDLE_QUOTES: readonly QuoteLine[] = [
+  { text: 'The tide is gossiping…', mood: 'neutral' },
+  { text: 'I am supervising this ocean.', mood: 'cheeky' },
+  { text: 'Any second now… dramatic pause.', mood: 'playful' },
+  { text: 'My whiskers sense ships.', mood: 'happy' },
+  { text: 'Waiting is a skill. I am bad at it.', mood: 'annoyed' },
+  { text: 'Do not rush greatness. Or do.', mood: 'cheeky' },
+  { text: 'I packed snacks for the voyage.', mood: 'happy' },
+  { text: 'Enemy waters look suspicious.', mood: 'neutral' },
+  { text: 'Place carefully. I am watching.', mood: 'cheeky' },
+  { text: 'Captain Cat reports: still cute.', mood: 'blush' },
+  { text: 'If I had thumbs I’d fire already.', mood: 'annoyed' },
+  { text: 'The sea is big. Your fleet is brave.', mood: 'happy' },
+  { text: 'Hmm. Strategy… or vibes?', mood: 'playful' },
+  { text: 'I believe in you. Mostly.', mood: 'cheeky' },
+  { text: 'Quiet waters. Too quiet.', mood: 'neutral' },
+  { text: 'Tap when ready. I will cheer.', mood: 'happy' },
+]
+
 function pickExcitedLine(
   pool: readonly string[],
   avoid?: string,
@@ -624,7 +643,7 @@ function pickExcitedLine(
   const text = (choices.length > 0 ? choices : pool)[
     Math.floor(Math.random() * (choices.length > 0 ? choices.length : pool.length))
   ]!
-  return { text, mood: 'excited' }
+  return toQuoteResult(text, 'excited')
 }
 
 /** Coach lines after you fire in Cattleship. */
@@ -635,4 +654,9 @@ export function cattleshipShotQuote(
   if (kind === 'miss') return pickExcitedLine(CATTLESHIP_MISS_QUOTES, avoid)
   if (kind === 'sink') return pickExcitedLine(CATTLESHIP_SINK_QUOTES, avoid)
   return pickExcitedLine(CATTLESHIP_HIT_QUOTES, avoid)
+}
+
+/** Filler chatter while placing or waiting between shots. */
+export function cattleshipIdleQuote(avoid?: string): PetQuoteResult {
+  return pickLine(CATTLESHIP_IDLE_QUOTES, avoid)
 }

@@ -86,7 +86,7 @@ export function ArcadeStage({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:border-white/30 hover:text-white"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white"
           >
             Back
           </button>
@@ -97,7 +97,7 @@ export function ArcadeStage({
           <button
             type="button"
             onClick={() => setTheater((v) => !v)}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
             aria-pressed={theater}
           >
             {theater ? 'Exit theater' : 'Theater'}
@@ -105,7 +105,7 @@ export function ArcadeStage({
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-white/30"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
             aria-pressed={fullscreen}
           >
             {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}

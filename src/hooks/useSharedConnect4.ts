@@ -103,16 +103,23 @@ export function useSharedConnect4() {
     [],
   )
 
-  const resetGame = useCallback(async () => {
-    const turnUid = user?.uid ?? gameRef.current.turnUid
-    await commitGame({
-      ...createInitialConnect4(turnUid),
-      version: gameRef.current.version + 1,
-      updatedAt: Date.now(),
-    })
-  }, [commitGame, user?.uid])
+  const resetGame = useCallback(
+    async (opts?: { hotseat?: boolean }) => {
+      const turnUid = user?.uid ?? gameRef.current.turnUid
+      await commitGame({
+        ...createInitialConnect4(turnUid, {
+          hotseat: Boolean(opts?.hotseat),
+        }),
+        version: gameRef.current.version + 1,
+        updatedAt: Date.now(),
+      })
+    },
+    [commitGame, user?.uid],
+  )
 
   const uid = user?.uid ?? null
+  const signedIn = Boolean(uid)
+  const actorUid = game.hotseat ? game.turnUid : (uid ?? 'local')
   const mySeat =
     uid && JENGA_PLAYER_UIDS.includes(uid as (typeof JENGA_PLAYER_UIDS)[number])
       ? (JENGA_PLAYER_UIDS.indexOf(uid as (typeof JENGA_PLAYER_UIDS)[number]) as
@@ -126,11 +133,13 @@ export function useSharedConnect4() {
     game,
     ready,
     uid: uid ?? 'local',
+    /** Seat whose disc you drop (turn seat in hotseat). */
+    actorUid,
     mySeat,
     canPlay:
-      Boolean(uid) &&
+      signedIn &&
       game.status === 'playing' &&
-      game.turnUid === uid,
+      (game.hotseat || game.turnUid === uid),
     commitGame,
     resetGame,
   }

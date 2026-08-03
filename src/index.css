@@ -20,6 +20,9 @@
   --color-room-line: rgba(255, 255, 255, 0.035);
   --color-room-line-soft: rgba(255, 255, 255, 0.025);
   --color-window-muntin: rgba(255, 255, 255, 0.15);
+  /* Scrabble board chrome — retinted per theme */
+  --color-board-frame: #1a2740;
+  --color-board-cell: #3d5678;
 }
 
 html,
@@ -1375,21 +1378,22 @@ input:disabled {
   max-height: 31.25rem;
 }
 
+/* Shared thin scrollbar (watchlist, Scrabble moves, …) */
 /* Firefox only — scrollbar-color on Chromium/Edge reintroduces classic end-cap arrows */
 @supports not selector(::-webkit-scrollbar) {
-  .watchlist-kind-list {
+  .jo-scroll {
     scrollbar-width: thin;
     scrollbar-color: var(--color-scroll-thumb) var(--color-scroll-track);
   }
 }
 
 /* Chromium / Safari / Edge */
-.watchlist-kind-list::-webkit-scrollbar {
+.jo-scroll::-webkit-scrollbar {
   width: 10px;
   background: var(--color-scroll-rail);
 }
 
-.watchlist-kind-list::-webkit-scrollbar-button {
+.jo-scroll::-webkit-scrollbar-button {
   width: 0 !important;
   height: 0 !important;
   -webkit-appearance: none;
@@ -1399,14 +1403,14 @@ input:disabled {
   border: 0 !important;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-button:single-button,
-.watchlist-kind-list::-webkit-scrollbar-button:double-button,
-.watchlist-kind-list::-webkit-scrollbar-button:vertical:start:decrement,
-.watchlist-kind-list::-webkit-scrollbar-button:vertical:end:increment,
-.watchlist-kind-list::-webkit-scrollbar-button:vertical:start:increment,
-.watchlist-kind-list::-webkit-scrollbar-button:vertical:end:decrement,
-.watchlist-kind-list::-webkit-scrollbar-button:horizontal:start:decrement,
-.watchlist-kind-list::-webkit-scrollbar-button:horizontal:end:increment {
+.jo-scroll::-webkit-scrollbar-button:single-button,
+.jo-scroll::-webkit-scrollbar-button:double-button,
+.jo-scroll::-webkit-scrollbar-button:vertical:start:decrement,
+.jo-scroll::-webkit-scrollbar-button:vertical:end:increment,
+.jo-scroll::-webkit-scrollbar-button:vertical:start:increment,
+.jo-scroll::-webkit-scrollbar-button:vertical:end:decrement,
+.jo-scroll::-webkit-scrollbar-button:horizontal:start:decrement,
+.jo-scroll::-webkit-scrollbar-button:horizontal:end:increment {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
@@ -1416,25 +1420,25 @@ input:disabled {
   border: 0 !important;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-corner {
+.jo-scroll::-webkit-scrollbar-corner {
   background: transparent;
   width: 0;
   height: 0;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-track {
+.jo-scroll::-webkit-scrollbar-track {
   background: var(--color-scroll-track);
   margin: 0;
   border: 0;
   border-radius: 4px;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-track-piece {
+.jo-scroll::-webkit-scrollbar-track-piece {
   background: transparent;
   margin: 0;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-thumb {
+.jo-scroll::-webkit-scrollbar-thumb {
   border-radius: 4px;
   background-color: var(--color-scroll-thumb);
   border: 2px solid transparent;
@@ -1442,11 +1446,11 @@ input:disabled {
   min-height: 2rem;
 }
 
-.watchlist-kind-list::-webkit-scrollbar-thumb:hover {
+.jo-scroll::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-scroll-thumb-hover);
 }
 
-.watchlist-kind-list::-webkit-scrollbar-thumb:active {
+.jo-scroll::-webkit-scrollbar-thumb:active {
   background-color: var(--color-scroll-thumb-active);
 }
 
@@ -1623,6 +1627,8 @@ html[data-theme='black'] {
   --color-scroll-thumb-active: #e5e7eb;
   --color-scroll-track: rgba(255, 255, 255, 0.08);
   --color-scroll-rail: rgba(255, 255, 255, 0.04);
+  --color-board-frame: #0a0a0a;
+  --color-board-cell: #262626;
   color-scheme: dark;
 }
 
@@ -1644,6 +1650,8 @@ html[data-theme='white'] {
   --color-room-line: rgba(15, 23, 42, 0.14);
   --color-room-line-soft: rgba(15, 23, 42, 0.08);
   --color-window-muntin: rgba(15, 23, 42, 0.2);
+  --color-board-frame: #cbd5e1;
+  --color-board-cell: #e2e8f0;
   color-scheme: light;
 }
 
@@ -1651,13 +1659,21 @@ html[data-theme='white'] {
 html[data-theme='white'] .text-white,
 html[data-theme='white'] .text-white\/90,
 html[data-theme='white'] .text-white\/85,
+html[data-theme='white'] .text-white\/80,
 html[data-theme='white'] .text-white\/70,
-html[data-theme='white'] .text-white\/60 {
+html[data-theme='white'] .text-white\/65,
+html[data-theme='white'] .text-white\/60,
+html[data-theme='white'] .text-white\/40 {
   color: var(--color-app-text);
 }
 
-html[data-theme='white'] .text-white\/60 {
+html[data-theme='white'] .text-white\/60,
+html[data-theme='white'] .text-white\/65 {
   color: color-mix(in srgb, var(--color-app-text) 72%, transparent);
+}
+
+html[data-theme='white'] .text-white\/40 {
+  color: color-mix(in srgb, var(--color-app-text) 48%, transparent);
 }
 
 html[data-theme='white'] .hover\:text-white:hover {
@@ -1669,12 +1685,19 @@ html[data-theme='white'] .group:hover .group-hover\:text-white {
 }
 
 html[data-theme='white'] .border-white\/20,
+html[data-theme='white'] .border-white\/15,
+html[data-theme='white'] .border-white\/10,
+html[data-theme='white'] .border-white\/8,
+html[data-theme='white'] .border-white\/5,
 html[data-theme='white'] .hover\:border-white\/20:hover,
-html[data-theme='white'] .hover\:border-white\/25:hover {
+html[data-theme='white'] .hover\:border-white\/25:hover,
+html[data-theme='white'] .hover\:border-white\/30:hover {
   border-color: rgb(17 24 39 / 0.18);
 }
 
-html[data-theme='white'] .ring-white\/40 {
+html[data-theme='white'] .ring-white\/40,
+html[data-theme='white'] .ring-white\/20,
+html[data-theme='white'] .ring-white\/10 {
   --tw-ring-color: rgb(17 24 39 / 0.35);
 }
 
@@ -1686,9 +1709,28 @@ html[data-theme='white'] .bg-black\/85 {
   background-color: rgb(255 255 255 / 0.92);
 }
 
+html[data-theme='white'] .bg-black\/60,
+html[data-theme='white'] .bg-black\/40,
+html[data-theme='white'] .bg-black\/25,
+html[data-theme='white'] .bg-black\/20 {
+  background-color: rgb(15 23 42 / 0.06);
+}
+
+html[data-theme='white'] .text-rose-100,
+html[data-theme='white'] .text-rose-100\/90,
 html[data-theme='white'] .text-rose-200,
 html[data-theme='white'] .text-rose-300 {
   color: #be123c;
+}
+
+html[data-theme='white'] .text-emerald-100,
+html[data-theme='white'] .text-amber-100,
+html[data-theme='white'] .text-sky-100,
+html[data-theme='white'] .text-violet-100,
+html[data-theme='white'] .text-fuchsia-100,
+html[data-theme='white'] .text-orange-100,
+html[data-theme='white'] .text-teal-100 {
+  color: #0f172a;
 }
 
 html[data-theme='white'] .decoration-white\/35 {
@@ -1713,6 +1755,8 @@ html[data-theme='pink'] {
   --color-room-line: rgba(131, 24, 67, 0.16);
   --color-room-line-soft: rgba(131, 24, 67, 0.09);
   --color-window-muntin: rgba(131, 24, 67, 0.22);
+  --color-board-frame: #f9a8d4;
+  --color-board-cell: #fbcfe8;
   color-scheme: light;
 }
 
@@ -1720,13 +1764,21 @@ html[data-theme='pink'] {
 html[data-theme='pink'] .text-white,
 html[data-theme='pink'] .text-white\/90,
 html[data-theme='pink'] .text-white\/85,
+html[data-theme='pink'] .text-white\/80,
 html[data-theme='pink'] .text-white\/70,
-html[data-theme='pink'] .text-white\/60 {
+html[data-theme='pink'] .text-white\/65,
+html[data-theme='pink'] .text-white\/60,
+html[data-theme='pink'] .text-white\/40 {
   color: var(--color-app-text);
 }
 
-html[data-theme='pink'] .text-white\/60 {
+html[data-theme='pink'] .text-white\/60,
+html[data-theme='pink'] .text-white\/65 {
   color: color-mix(in srgb, var(--color-app-text) 72%, transparent);
+}
+
+html[data-theme='pink'] .text-white\/40 {
+  color: color-mix(in srgb, var(--color-app-text) 48%, transparent);
 }
 
 html[data-theme='pink'] .hover\:text-white:hover {
@@ -1738,12 +1790,19 @@ html[data-theme='pink'] .group:hover .group-hover\:text-white {
 }
 
 html[data-theme='pink'] .border-white\/20,
+html[data-theme='pink'] .border-white\/15,
+html[data-theme='pink'] .border-white\/10,
+html[data-theme='pink'] .border-white\/8,
+html[data-theme='pink'] .border-white\/5,
 html[data-theme='pink'] .hover\:border-white\/20:hover,
-html[data-theme='pink'] .hover\:border-white\/25:hover {
+html[data-theme='pink'] .hover\:border-white\/25:hover,
+html[data-theme='pink'] .hover\:border-white\/30:hover {
   border-color: rgb(131 24 67 / 0.18);
 }
 
-html[data-theme='pink'] .ring-white\/40 {
+html[data-theme='pink'] .ring-white\/40,
+html[data-theme='pink'] .ring-white\/20,
+html[data-theme='pink'] .ring-white\/10 {
   --tw-ring-color: rgb(131 24 67 / 0.28);
 }
 
@@ -1755,20 +1814,47 @@ html[data-theme='pink'] .bg-black\/85 {
   background-color: rgb(255 241 247 / 0.94);
 }
 
+html[data-theme='pink'] .bg-black\/60,
+html[data-theme='pink'] .bg-black\/40,
+html[data-theme='pink'] .bg-black\/25,
+html[data-theme='pink'] .bg-black\/20 {
+  background-color: rgb(131 24 67 / 0.08);
+}
+
+html[data-theme='pink'] .text-rose-100,
+html[data-theme='pink'] .text-rose-100\/90,
 html[data-theme='pink'] .text-rose-200,
 html[data-theme='pink'] .text-rose-300 {
   color: #be123c;
+}
+
+html[data-theme='pink'] .text-emerald-100,
+html[data-theme='pink'] .text-amber-100,
+html[data-theme='pink'] .text-sky-100,
+html[data-theme='pink'] .text-violet-100,
+html[data-theme='pink'] .text-fuchsia-100,
+html[data-theme='pink'] .text-orange-100,
+html[data-theme='pink'] .text-teal-100 {
+  color: #831843;
 }
 
 html[data-theme='pink'] .decoration-white\/35 {
   text-decoration-color: rgb(131 24 67 / 0.35);
 }
 
-/* Always-red controls (remove ×, confirm) keep white text on light themes. */
+/* Solid accent fills keep white label text on light themes. */
 html[data-theme='white'] .bg-rose-500,
 html[data-theme='white'] .bg-rose-400,
+html[data-theme='white'] .bg-emerald-500,
+html[data-theme='white'] .bg-sky-500,
+html[data-theme='white'] .bg-sky-500\/80,
+html[data-theme='white'] .bg-zinc-600\/80,
 html[data-theme='pink'] .bg-rose-500,
-html[data-theme='pink'] .bg-rose-400 {
+html[data-theme='pink'] .bg-rose-400,
+html[data-theme='pink'] .bg-emerald-500,
+html[data-theme='pink'] .bg-sky-500,
+html[data-theme='pink'] .bg-sky-500\/80,
+html[data-theme='pink'] .bg-zinc-600\/80 {
   color: #ffffff;
 }
 
@@ -1787,6 +1873,8 @@ html[data-theme='violet'] {
   --color-scroll-thumb-active: #ddd6fe;
   --color-scroll-track: rgba(167, 139, 250, 0.12);
   --color-scroll-rail: rgba(167, 139, 250, 0.06);
+  --color-board-frame: #1a1430;
+  --color-board-cell: #3b2f55;
   color-scheme: dark;
 }
 
@@ -1805,5 +1893,7 @@ html[data-theme='emerald'] {
   --color-scroll-thumb-active: #a7f3d0;
   --color-scroll-track: rgba(52, 211, 153, 0.12);
   --color-scroll-rail: rgba(52, 211, 153, 0.06);
+  --color-board-frame: #123028;
+  --color-board-cell: #2a4538;
   color-scheme: dark;
 }

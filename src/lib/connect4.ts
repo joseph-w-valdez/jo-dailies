@@ -23,6 +23,8 @@ export interface Connect4State {
   turnUid: string
   status: C4Status
   winnerUid: string | null
+  /** Debug: one human plays both seats. */
+  hotseat: boolean
   version: number
   roundId: string
   updatedAt: number
@@ -41,13 +43,17 @@ export function emptyC4Grid(): C4Cell[] {
   return Array.from({ length: C4_CELLS }, () => -1 as C4Cell)
 }
 
-export function createInitialConnect4(turnUid: string): Connect4State {
+export function createInitialConnect4(
+  turnUid: string,
+  opts?: { hotseat?: boolean },
+): Connect4State {
   return {
     grid: emptyC4Grid(),
     cats: pickTwoJengaCats(),
     turnUid: turnUid || JENGA_PLAYER_UIDS[0]!,
     status: 'playing',
     winnerUid: null,
+    hotseat: Boolean(opts?.hotseat),
     version: 1,
     roundId: newRoundId(),
     updatedAt: Date.now(),
@@ -186,6 +192,7 @@ export function normalizeConnect4(
         : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
     status,
     winnerUid: typeof s.winnerUid === 'string' ? s.winnerUid : null,
+    hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
     roundId:
       typeof s.roundId === 'string' && s.roundId ? s.roundId : newRoundId(),

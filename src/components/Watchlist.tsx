@@ -885,7 +885,7 @@ export function Watchlist() {
                           items={group.items.map((i) => i.id)}
                           strategy={verticalListSortingStrategy}
                         >
-                          <ul className="watchlist-kind-list space-y-2">
+                          <ul className="watchlist-kind-list jo-scroll space-y-2">
                             {group.items.map((item) => (
                               <SortableWatchRow
                                 key={item.id}

@@ -17,8 +17,11 @@ const CatBattleship = lazy(() =>
     default: m.CatBattleship,
   })),
 )
+const CatScrabble = lazy(() =>
+  import('../components/CatScrabble').then((m) => ({ default: m.CatScrabble })),
+)
 
-type ArcadeGame = 'jenga' | 'suika' | 'connect4' | 'battleship'
+type ArcadeGame = 'jenga' | 'suika' | 'connect4' | 'battleship' | 'scrabble'
 
 const TILES: {
   id: ArcadeGame
@@ -29,6 +32,7 @@ const TILES: {
   { id: 'suika', title: 'Suika', blurb: 'Cat merge' },
   { id: 'connect4', title: 'Connect Four', blurb: 'Shared drops' },
   { id: 'battleship', title: 'Cattleship', blurb: 'Fog duel' },
+  { id: 'scrabble', title: 'Scrabble', blurb: 'Shared board' },
 ]
 
 export function ArcadePage() {
@@ -39,7 +43,12 @@ export function ArcadePage() {
     <>
       <CatWallpaper />
       <CursorTrail enabled={trailEnabled} />
-      <div className="relative z-10 mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+      <div
+        className={[
+          'relative z-10 mx-auto w-full px-4 py-8 sm:px-6',
+          active === 'scrabble' ? 'max-w-5xl' : 'max-w-3xl',
+        ].join(' ')}
+      >
         {active ? (
           <Suspense
             fallback={
@@ -54,8 +63,10 @@ export function ArcadePage() {
               <CatSuika onClose={() => setActive(null)} />
             ) : active === 'connect4' ? (
               <CatConnect4 onClose={() => setActive(null)} />
-            ) : (
+            ) : active === 'battleship' ? (
               <CatBattleship onClose={() => setActive(null)} />
+            ) : (
+              <CatScrabble onClose={() => setActive(null)} />
             )}
           </Suspense>
         ) : (
@@ -70,7 +81,7 @@ export function ArcadePage() {
                   key={tile.id}
                   type="button"
                   onClick={() => setActive(tile.id)}
-                  className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-white/30 hover:bg-surface"
+                  className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-muted hover:bg-surface"
                 >
                   <span className="block text-base font-semibold text-white">
                     {tile.title}

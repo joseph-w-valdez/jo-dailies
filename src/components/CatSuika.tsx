@@ -17,7 +17,9 @@ import {
 } from 'react'
 import * as THREE from 'three'
 import { useSharedSuika } from '../hooks/useSharedSuika'
+import { useThemeCssColor } from '../hooks/useThemeCssColor'
 import { ArcadeStage } from './ArcadeStage'
+import { ThemeClearColor } from './ThemeClearColor'
 import { petIdleSrc } from '../lib/petAssets'
 import {
   advanceDropQueue,
@@ -247,9 +249,10 @@ function Bowl() {
   const depth = 1.6
   const innerH = BOWL_WALL_H
   const rim = 0.12
-  const wallColor = '#6b5f7a'
-  const floorColor = '#8a7c9a'
-  const backColor = '#241c30'
+  const wallColor = useThemeCssColor('--color-muted', '#6b5f7a')
+  const floorColor = useThemeCssColor('--color-surface-raised', '#8a7c9a')
+  const backColor = useThemeCssColor('--color-app-bg', '#241c30')
+  const rimColor = useThemeCssColor('--color-app-text', '#a899b8')
 
   return (
     <group>
@@ -284,7 +287,7 @@ function Bowl() {
         </mesh>
         <mesh position={[0, innerH / 2 + rim / 2, 0]}>
           <boxGeometry args={[wallT + 0.06, rim, depth + 0.08]} />
-          <meshStandardMaterial color="#a899b8" roughness={0.55} />
+          <meshStandardMaterial color={rimColor} roughness={0.55} />
         </mesh>
       </RigidBody>
 
@@ -300,17 +303,18 @@ function Bowl() {
         </mesh>
         <mesh position={[0, innerH / 2 + rim / 2, 0]}>
           <boxGeometry args={[wallT + 0.06, rim, depth + 0.08]} />
-          <meshStandardMaterial color="#a899b8" roughness={0.55} />
+          <meshStandardMaterial color={rimColor} roughness={0.55} />
         </mesh>
       </RigidBody>
 
       <mesh position={[0, BOWL_FLOOR_Y + 0.02, depth / 2 + 0.02]}>
         <boxGeometry args={[BOWL_HALF_W * 2 + wallT * 2, 0.04, 0.04]} />
-        <meshStandardMaterial color="#a899b8" roughness={0.55} />
+        <meshStandardMaterial color={rimColor} roughness={0.55} />
       </mesh>
 
+      {/* Flush with the inner wall faces (playable width). */}
       <mesh position={[0, DANGER_Y, depth / 2 + 0.01]}>
-        <boxGeometry args={[BOWL_HALF_W * 2 - 0.08, 0.045, 0.03]} />
+        <boxGeometry args={[BOWL_HALF_W * 2, 0.045, 0.03]} />
         <meshStandardMaterial
           color="#fb7185"
           emissive="#be123c"
@@ -1104,6 +1108,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
     publishLive,
     clearLive,
   } = useSharedSuika()
+  const sceneBg = useThemeCssColor('--color-app-bg', '#1a1620')
 
   const [localPieces, setLocalPieces] = useState<LocalPiece[]>([])
   const [aiming, setAiming] = useState(true)
@@ -1518,7 +1523,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
       {({ immersive }) => (
         <>
           {immersive ? null : (
-      <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
+      <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
         <p className="text-[11px] leading-relaxed text-muted">
           Drop cats into the jar. Matching cats merge into the next one up the
           ladder. Don&apos;t let any cat sit above the red line. Fresh bowl each
@@ -1597,7 +1602,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Shake',
                     left: game.shakeLeft,
                     title: 'Slam the jar left/right',
-                    cls: 'border-amber-400/30 bg-amber-500/10 text-amber-100/90 hover:bg-amber-500/20',
+                    cls: 'border-amber-500/55 bg-amber-500/20 text-app-text hover:bg-amber-500/30',
                     disabledExtra: false,
                   },
                   {
@@ -1605,7 +1610,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Float',
                     left: game.floatLeft,
                     title: 'Lift cats upward',
-                    cls: 'border-sky-400/30 bg-sky-500/10 text-sky-100/90 hover:bg-sky-500/20',
+                    cls: 'border-sky-500/55 bg-sky-500/20 text-app-text hover:bg-sky-500/30',
                     disabledExtra: false,
                   },
                   {
@@ -1613,7 +1618,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Snipe',
                     left: game.snipeLeft,
                     title: 'Remove all lowest-tier cats (no points)',
-                    cls: 'border-violet-400/30 bg-violet-500/10 text-violet-100/90 hover:bg-violet-500/20',
+                    cls: 'border-violet-500/55 bg-violet-500/20 text-app-text hover:bg-violet-500/30',
                     disabledExtra: false,
                   },
                   {
@@ -1621,7 +1626,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Flip',
                     left: game.flipLeft,
                     title: 'Flip the stack vertically',
-                    cls: 'border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-100/90 hover:bg-fuchsia-500/20',
+                    cls: 'border-fuchsia-500/55 bg-fuchsia-500/20 text-app-text hover:bg-fuchsia-500/30',
                     disabledExtra: false,
                   },
                   {
@@ -1629,7 +1634,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Magnet',
                     left: game.magnetLeft,
                     title: 'Pull cats matching your next drop together',
-                    cls: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100/90 hover:bg-emerald-500/20',
+                    cls: 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30',
                     disabledExtra:
                       countPiecesOfTier(game.pieces, game.nextTier) < 2,
                   },
@@ -1638,7 +1643,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Compress',
                     left: game.compressLeft,
                     title: 'Pull everything toward the center',
-                    cls: 'border-orange-400/30 bg-orange-500/10 text-orange-100/90 hover:bg-orange-500/20',
+                    cls: 'border-orange-500/55 bg-orange-500/20 text-app-text hover:bg-orange-500/30',
                     disabledExtra: false,
                   },
                   {
@@ -1646,7 +1651,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     label: 'Swap',
                     left: game.swapLeft,
                     title: 'Swap two different cats',
-                    cls: 'border-teal-400/30 bg-teal-500/10 text-teal-100/90 hover:bg-teal-500/20',
+                    cls: 'border-teal-500/55 bg-teal-500/20 text-app-text hover:bg-teal-500/30',
                     disabledExtra: game.pieces.length < 2,
                   },
                 ] as const
@@ -1678,7 +1683,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
                     setLocalPieces([])
                     void resetGame()
                   }}
-                  className="rounded-md border border-rose-400/40 bg-rose-500/15 px-1.5 py-1.5 text-[10px] font-medium leading-tight text-rose-200"
+                  className="rounded-md border border-rose-500/55 bg-rose-500/20 px-1.5 py-1.5 text-[10px] font-medium leading-tight text-app-text hover:bg-rose-500/30"
                 >
                   Confirm reset
                 </button>
@@ -1705,7 +1710,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
             {/* Bowl — aspect matches world jar so the camera fills edge-to-edge */}
             <div
               className={[
-                'relative w-full overflow-hidden rounded-xl border border-border bg-[#1a1620]',
+                'relative w-full overflow-hidden rounded-xl border border-border bg-app-bg',
                 immersive ? 'min-h-0 min-w-0' : '',
               ].join(' ')}
               style={immersive ? undefined : { aspectRatio: SUIKA_CANVAS_ASPECT }}
@@ -1716,10 +1721,8 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
               orthographic
               camera={{ position: [0, 3.5, 12], near: 0.1, far: 50 }}
               gl={{ antialias: true, alpha: false }}
-              onCreated={({ gl }) => {
-                gl.setClearColor('#1a1620')
-              }}
             >
+              <ThemeClearColor color={sceneBg} />
               <SuikaWorld
                 game={game}
                 ghosts={ghosts}

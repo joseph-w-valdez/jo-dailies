@@ -1,23 +1,24 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  createInitialBattleship,
-  normalizeBattleship,
-  type BattleshipState,
-} from '../lib/battleship'
+  createInitialScrabble,
+  startNewScrabble,
+  normalizeScrabble,
+  type ScrabbleState,
+} from '../lib/scrabble'
 import { db, syncRoomId } from '../lib/firebase'
 import { updateSyncSource } from '../lib/syncStatus'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
 function gameDocRef() {
-  return doc(db, 'rooms', syncRoomId, 'battleship', 'current')
+  return doc(db, 'rooms', syncRoomId, 'scrabble', 'current')
 }
 
-export function useSharedBattleship() {
+export function useSharedScrabble() {
   const { user } = useFirebaseAuth()
   const fallbackUid = user?.uid ?? 'local'
-  const [game, setGame] = useState<BattleshipState>(() =>
-    createInitialBattleship(fallbackUid),
+  const [game, setGame] = useState<ScrabbleState>(() =>
+    createInitialScrabble(fallbackUid),
   )
   const [ready, setReady] = useState(false)
   const gameRef = useRef(game)
@@ -27,26 +28,26 @@ export function useSharedBattleship() {
   useEffect(() => {
     if (!user) {
       setReady(true)
-      updateSyncSource('battleship', null)
+      updateSyncSource('scrabble', null)
       return
     }
     const unsub = onSnapshot(
       gameDocRef(),
       { includeMetadataChanges: true },
       (snap) => {
-        updateSyncSource('battleship', {
+        updateSyncSource('scrabble', {
           pending: snap.metadata.hasPendingWrites,
           fromCache: snap.metadata.fromCache,
         })
         if (!snap.exists()) {
-          const seed = createInitialBattleship(user.uid)
+          const seed = createInitialScrabble(user.uid)
           void setDoc(gameDocRef(), seed)
           setGame(seed)
           gameRef.current = seed
           setReady(true)
           return
         }
-        const remote = normalizeBattleship(snap.data(), user.uid)
+        const remote = normalizeScrabble(snap.data(), user.uid)
         if (
           pendingVersionRef.current !== null &&
           remote.version < pendingVersionRef.current
@@ -65,8 +66,8 @@ export function useSharedBattleship() {
         setReady(true)
       },
       (error) => {
-        console.error('battleship sync', error)
-        updateSyncSource('battleship', {
+        console.error('scrabble sync', error)
+        updateSyncSource('scrabble', {
           pending: false,
           fromCache: false,
           error: true,
@@ -76,16 +77,16 @@ export function useSharedBattleship() {
     )
     return () => {
       unsub()
-      updateSyncSource('battleship', null)
+      updateSyncSource('scrabble', null)
     }
   }, [user])
 
   const commitGame = useCallback(
     async (
-      next: BattleshipState | ((prev: BattleshipState) => BattleshipState),
+      next: ScrabbleState | ((prev: ScrabbleState) => ScrabbleState),
     ) => {
       const base = typeof next === 'function' ? next(gameRef.current) : next
-      const resolved: BattleshipState = {
+      const resolved: ScrabbleState = {
         ...base,
         version: Math.max(base.version, gameRef.current.version + 1),
         updatedAt: Date.now(),
@@ -96,7 +97,7 @@ export function useSharedBattleship() {
       try {
         await setDoc(gameDocRef(), resolved)
       } catch (error) {
-        console.error('Could not save battleship', error)
+        console.error('Could not save scrabble', error)
       }
     },
     [],
@@ -106,7 +107,7 @@ export function useSharedBattleship() {
     async (opts?: { hotseat?: boolean }) => {
       const turnUid = user?.uid ?? gameRef.current.turnUid
       await commitGame({
-        ...createInitialBattleship(turnUid, {
+        ...startNewScrabble(gameRef.current, turnUid, {
           hotseat: Boolean(opts?.hotseat),
         }),
         version: gameRef.current.version + 1,
@@ -117,16 +118,18 @@ export function useSharedBattleship() {
   )
 
   const uid = user?.uid ?? 'local'
-  const signedIn = Boolean(user?.uid)
-  /** Seat shooting this turn (turn seat in hotseat). */
   const actorUid = game.hotseat ? game.turnUid : uid
+  const myRack = game.racks[actorUid] ?? []
+  const signedIn = Boolean(user?.uid)
 
   return {
     game,
     ready,
     uid,
+    /** Seat whose rack/actions you control (turn seat in hotseat). */
     actorUid,
-    canShoot:
+    myRack,
+    canAct:
       signedIn &&
       game.status === 'playing' &&
       (game.hotseat || game.turnUid === user?.uid),
