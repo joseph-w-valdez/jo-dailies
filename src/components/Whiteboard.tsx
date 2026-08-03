@@ -8,7 +8,11 @@ import {
 import { useWhiteboard } from '../hooks/useWhiteboard'
 import {
   FREEHAND_TOOLS,
+  MAX_TEXT_SCALE,
+  MIN_TEXT_SCALE,
+  measureTextStrokeLayout,
   newWhiteboardStrokeId,
+  normalizeRotation,
   paintWhiteboardStroke,
   redrawWhiteboard,
   SHAPE_TOOLS,
@@ -181,6 +185,363 @@ function ToolButton({
   )
 }
 
+function DraggableTextBox({
+  stroke,
+  boardWidth,
+  boardHeight,
+  selected,
+  onSelect,
+  onPreview,
+  onCommit,
+  onFlip,
+  onDelete,
+}: {
+  stroke: WhiteboardStroke
+  boardWidth: number
+  boardHeight: number
+  selected: boolean
+  onSelect: () => void
+  onPreview: (next: WhiteboardStroke) => void
+  onCommit: (next: WhiteboardStroke) => void
+  onFlip: () => void
+  onDelete: () => void
+}) {
+  const layout = measureTextStrokeLayout(stroke, boardWidth, boardHeight)
+  const elRef = useRef<HTMLDivElement>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const strokeRef = useRef(stroke)
+  strokeRef.current = stroke
+
+  const dragRef = useRef<{
+    pointerId: number
+    startPointerX: number
+    startPointerY: number
+    startAnchorX: number
+    startAnchorY: number
+  } | null>(null)
+  const rotateRef = useRef<{
+    pointerId: number
+    centerX: number
+    centerY: number
+    startAngle: number
+    startRotation: number
+  } | null>(null)
+  const resizeRef = useRef<{
+    pointerId: number
+    centerX: number
+    centerY: number
+    startDistance: number
+    startScale: number
+  } | null>(null)
+
+  if (!layout || boardWidth <= 0 || boardHeight <= 0) return null
+
+  const scale = layout.scale
+  const boxW = layout.width * scale
+  const boxH = layout.height * scale
+  const leftPct =
+    ((layout.left + (layout.width - boxW) / 2) / boardWidth) * 100
+  const topPct =
+    ((layout.top + (layout.height - boxH) / 2) / boardHeight) * 100
+  const widthPct = (boxW / boardWidth) * 100
+  const heightPct = (boxH / boardHeight) * 100
+  const showControls = selected || dragging || confirmDelete
+
+  const pieceCenter = () => {
+    const rect = elRef.current?.getBoundingClientRect()
+    if (!rect) return null
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }
+
+  const clampAnchor = (x: number, y: number) => ({
+    x: Math.min(0.98, Math.max(0.02, x)),
+    y: Math.min(0.98, Math.max(0.02, y)),
+  })
+
+  const boardPointFromEvent = (clientX: number, clientY: number) => {
+    const board = elRef.current?.offsetParent as HTMLElement | null
+    if (!board) return null
+    const rect = board.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    return {
+      x: (clientX - rect.left) / rect.width,
+      y: (clientY - rect.top) / rect.height,
+    }
+  }
+
+  const preview = (next: WhiteboardStroke) => {
+    strokeRef.current = next
+    onPreview(next)
+  }
+
+  const commit = () => {
+    onCommit(strokeRef.current)
+  }
+
+  return (
+    <div
+      ref={elRef}
+      role="button"
+      tabIndex={0}
+      aria-label={`Text${selected ? ' (selected)' : ''}: ${stroke.text ?? ''}`}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return
+        if (confirmDelete) return
+        event.preventDefault()
+        event.stopPropagation()
+        onSelect()
+        setConfirmDelete(false)
+        const point = boardPointFromEvent(event.clientX, event.clientY)
+        const anchor = strokeRef.current.points[0]
+        if (!point || !anchor) return
+        dragRef.current = {
+          pointerId: event.pointerId,
+          startPointerX: point.x,
+          startPointerY: point.y,
+          startAnchorX: anchor.x,
+          startAnchorY: anchor.y,
+        }
+        setDragging(true)
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerMove={(event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        const point = boardPointFromEvent(event.clientX, event.clientY)
+        if (!point) return
+        preview({
+          ...strokeRef.current,
+          points: [
+            clampAnchor(
+              drag.startAnchorX + (point.x - drag.startPointerX),
+              drag.startAnchorY + (point.y - drag.startPointerY),
+            ),
+          ],
+        })
+      }}
+      onPointerUp={(event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        dragRef.current = null
+        setDragging(false)
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId)
+        } catch {
+          /* ignore */
+        }
+        commit()
+      }}
+      onPointerCancel={(event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        dragRef.current = null
+        setDragging(false)
+      }}
+      className={[
+        'absolute touch-none select-none',
+        showControls
+          ? 'z-20 ring-2 ring-sky-400/80 ring-offset-1 ring-offset-transparent'
+          : 'z-10',
+      ].join(' ')}
+      style={{
+        left: `${leftPct}%`,
+        top: `${topPct}%`,
+        width: `${widthPct}%`,
+        height: `${heightPct}%`,
+        cursor: dragging ? 'grabbing' : 'grab',
+      }}
+    >
+      {/* Invisible hit target — glyphs stay on the canvas underneath. */}
+      <div className="size-full" />
+
+      {showControls && confirmDelete ? (
+        <div
+          className="absolute -top-9 left-1/2 z-[6] flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-surface px-1.5 py-1 shadow-lg"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmDelete(false)
+              onDelete()
+            }}
+            className="rounded-md border border-rose-400/40 bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-200 transition hover:bg-rose-500/25"
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(false)}
+            className="rounded-md px-2 py-0.5 text-[11px] text-muted transition hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
+
+      {showControls && !confirmDelete ? (
+        <button
+          type="button"
+          aria-label="Flip text horizontally"
+          title="Flip horizontally"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onFlip()
+          }}
+          className="absolute -left-1 -top-1 z-[6] flex size-6 items-center justify-center rounded-full border-2 border-white/90 bg-sky-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-sky-400"
+        >
+          ↔
+        </button>
+      ) : null}
+
+      {showControls && !confirmDelete ? (
+        <button
+          type="button"
+          aria-label="Delete text"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            dragRef.current = null
+            setDragging(false)
+            try {
+              elRef.current?.releasePointerCapture(event.pointerId)
+            } catch {
+              /* ignore */
+            }
+            setConfirmDelete(true)
+          }}
+          className="absolute -right-1 -top-1 z-[6] flex size-6 items-center justify-center rounded-full border-2 border-white/90 bg-rose-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-rose-400"
+        >
+          ×
+        </button>
+      ) : null}
+
+      {showControls && !confirmDelete ? (
+        <button
+          type="button"
+          aria-label="Rotate text"
+          title="Hold and drag to rotate"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            event.stopPropagation()
+            const center = pieceCenter()
+            if (!center) return
+            rotateRef.current = {
+              pointerId: event.pointerId,
+              centerX: center.x,
+              centerY: center.y,
+              startAngle:
+                (Math.atan2(event.clientY - center.y, event.clientX - center.x) *
+                  180) /
+                Math.PI,
+              startRotation: strokeRef.current.rotation ?? 0,
+            }
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={(event) => {
+            const rot = rotateRef.current
+            if (!rot || rot.pointerId !== event.pointerId) return
+            const angle =
+              (Math.atan2(event.clientY - rot.centerY, event.clientX - rot.centerX) *
+                180) /
+              Math.PI
+            preview({
+              ...strokeRef.current,
+              rotation: normalizeRotation(
+                rot.startRotation + angle - rot.startAngle,
+              ),
+            })
+          }}
+          onPointerUp={(event) => {
+            const rot = rotateRef.current
+            if (!rot || rot.pointerId !== event.pointerId) return
+            rotateRef.current = null
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            } catch {
+              /* ignore */
+            }
+            commit()
+          }}
+          onPointerCancel={() => {
+            rotateRef.current = null
+          }}
+          className="absolute -bottom-1 -left-1 z-[6] flex size-6 cursor-grab items-center justify-center rounded-full border-2 border-white/90 bg-violet-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-violet-400 active:cursor-grabbing"
+        >
+          ↻
+        </button>
+      ) : null}
+
+      {showControls && !confirmDelete ? (
+        <button
+          type="button"
+          aria-label="Resize text"
+          title="Hold and drag to resize"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            event.stopPropagation()
+            const center = pieceCenter()
+            if (!center) return
+            const distance = Math.hypot(
+              event.clientX - center.x,
+              event.clientY - center.y,
+            )
+            if (distance < 1) return
+            resizeRef.current = {
+              pointerId: event.pointerId,
+              centerX: center.x,
+              centerY: center.y,
+              startDistance: distance,
+              startScale: strokeRef.current.scale ?? 1,
+            }
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={(event) => {
+            const resize = resizeRef.current
+            if (!resize || resize.pointerId !== event.pointerId) return
+            const distance = Math.hypot(
+              event.clientX - resize.centerX,
+              event.clientY - resize.centerY,
+            )
+            const next = Math.min(
+              MAX_TEXT_SCALE,
+              Math.max(
+                MIN_TEXT_SCALE,
+                resize.startScale * (distance / resize.startDistance),
+              ),
+            )
+            preview({
+              ...strokeRef.current,
+              scale: next,
+            })
+          }}
+          onPointerUp={(event) => {
+            const resize = resizeRef.current
+            if (!resize || resize.pointerId !== event.pointerId) return
+            resizeRef.current = null
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            } catch {
+              /* ignore */
+            }
+            commit()
+          }}
+          onPointerCancel={() => {
+            resizeRef.current = null
+          }}
+          className="absolute -bottom-1 -right-1 z-[6] flex size-6 cursor-nwse-resize items-center justify-center rounded-full border-2 border-white/90 bg-emerald-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-emerald-400"
+        >
+          ⤡
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function Whiteboard() {
   const {
     strokes,
@@ -189,6 +550,9 @@ export function Whiteboard() {
     canUndo,
     canRedo,
     appendStroke,
+    updateStroke,
+    patchStrokeLocal,
+    removeStroke,
     undo,
     redo,
     clear,
@@ -204,6 +568,8 @@ export function Whiteboard() {
   const [textBackground, setTextBackground] = useState(true)
   const [bgColor, setBgColor] = useState<string>('#fef3c7')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
+  const [boardSize, setBoardSize] = useState({ cssW: 0, cssH: 0 })
   const [textDraft, setTextDraft] = useState<{
     id: string
     x: number
@@ -311,6 +677,7 @@ export function Whiteboard() {
       const cssH = Math.max(1, Math.floor(rect.height))
       const dpr = window.devicePixelRatio || 1
       sizeRef.current = { cssW, cssH }
+      setBoardSize({ cssW, cssH })
       canvas.width = Math.floor(cssW * dpr)
       canvas.height = Math.floor(cssH * dpr)
       canvas.style.width = `${cssW}px`
@@ -339,6 +706,17 @@ export function Whiteboard() {
     return () => window.clearTimeout(id)
   }, [textDraft?.id])
 
+  useEffect(() => {
+    if (
+      selectedTextId &&
+      !strokes.some(
+        (stroke) => stroke.id === selectedTextId && stroke.tool === 'text',
+      )
+    ) {
+      setSelectedTextId(null)
+    }
+  }, [strokes, selectedTextId])
+
   const commitTextDraft = () => {
     const current = textDraftRef.current
     if (!current) return
@@ -346,8 +724,9 @@ export function Whiteboard() {
     textDraftRef.current = null
     setTextDraft(null)
     if (!value) return
+    const id = current.id
     appendStroke({
-      id: current.id,
+      id,
       tool: 'text',
       color: colorRef.current,
       width: sizeWidthRef.current,
@@ -356,8 +735,11 @@ export function Whiteboard() {
       fontSize: fontSizeRef.current,
       background: textBackgroundRef.current,
       backgroundColor: bgColorRef.current,
+      rotation: 0,
+      scale: 1,
       createdAt: Date.now(),
     })
+    setSelectedTextId(id)
   }
 
   const pointFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -376,6 +758,8 @@ export function Whiteboard() {
     const point = pointFromEvent(event)
     if (!point) return
     const activeTool = toolRef.current
+
+    setSelectedTextId(null)
 
     if (textDraftRef.current) {
       commitTextDraft()
@@ -538,8 +922,8 @@ export function Whiteboard() {
         <>
           <p className="mt-1 text-xs text-muted">
             {liveEnabled
-              ? 'Doodle together — ink streams live while you draw.'
-              : 'Doodle together — strokes sync when you lift the pen. Add VITE_FIREBASE_DATABASE_URL for live ink.'}
+              ? 'Doodle together — ink streams live while you draw. Tap a text box to move, flip, rotate, resize, or delete it.'
+              : 'Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it.'}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -788,6 +1172,34 @@ export function Whiteboard() {
               onPointerUp={endStroke}
               onPointerCancel={endStroke}
             />
+            {strokes.map((stroke) => {
+              if (stroke.tool !== 'text') return null
+              return (
+                <DraggableTextBox
+                  key={stroke.id}
+                  stroke={stroke}
+                  boardWidth={boardSize.cssW}
+                  boardHeight={boardSize.cssH}
+                  selected={selectedTextId === stroke.id}
+                  onSelect={() => setSelectedTextId(stroke.id)}
+                  onPreview={patchStrokeLocal}
+                  onCommit={updateStroke}
+                  onFlip={() => {
+                    const current =
+                      strokesRef.current.find((item) => item.id === stroke.id) ??
+                      stroke
+                    updateStroke({
+                      ...current,
+                      flipped: !current.flipped,
+                    })
+                  }}
+                  onDelete={() => {
+                    void removeStroke(stroke.id)
+                    setSelectedTextId(null)
+                  }}
+                />
+              )
+            })}
             {textDraft ? (
               <textarea
                 ref={textInputRef}
@@ -816,7 +1228,7 @@ export function Whiteboard() {
                   }
                 }}
                 placeholder="Type here…"
-                className="absolute z-10 min-h-0 min-w-[4rem] max-w-[70%] resize-none rounded-lg border-2 border-sky-400/80 bg-amber-50 px-2 py-1.5 text-sm leading-[1.15] text-gray-900 outline-none shadow-lg"
+                className="absolute z-30 min-h-0 min-w-[4rem] max-w-[70%] resize-none rounded-lg border-2 border-sky-400/80 bg-amber-50 px-2 py-1.5 text-sm leading-[1.15] text-gray-900 outline-none shadow-lg"
                 style={{
                   left: `${textDraft.x * 100}%`,
                   top: `${textDraft.y * 100}%`,

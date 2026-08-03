@@ -23,7 +23,7 @@ export interface WhiteboardStroke {
   /**
    * pen/erase/highlighter: path points
    * line/rect/ellipse: [start, end]
-   * fill / text: [{ x, y }] anchor
+   * fill / text: [{ x, y }] anchor (ink top-left before transform)
    */
   points: WhiteboardPoint[]
   /** For rect/ellipse — paint interior. */
@@ -35,7 +35,46 @@ export interface WhiteboardStroke {
   /** Text background pill. */
   background?: boolean
   backgroundColor?: string
+  /** Text box rotation in degrees (0–360). */
+  rotation?: number
+  /** Text box size multiplier. */
+  scale?: number
+  /** Mirror text horizontally. */
+  flipped?: boolean
   createdAt: number
+}
+
+export const MIN_TEXT_SCALE = 0.4
+export const MAX_TEXT_SCALE = 2.5
+
+export function normalizeRotation(value: number): number {
+  return ((value % 360) + 360) % 360
+}
+
+export function clampTextScale(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(MAX_TEXT_SCALE, Math.max(MIN_TEXT_SCALE, value))
+}
+
+export interface TextStrokeLayout {
+  lines: string[]
+  fontSize: number
+  lineStep: number
+  ascent: number
+  descent: number
+  paddingX: number
+  paddingY: number
+  /** Untransformed padded box in CSS px. */
+  left: number
+  top: number
+  width: number
+  height: number
+  /** Ink anchor (points[0]) in CSS px. */
+  anchorX: number
+  anchorY: number
+  rotation: number
+  scale: number
+  flipped: boolean
 }
 
 interface WhiteboardStore {
@@ -159,6 +198,14 @@ export function normalizeWhiteboardStroke(
     typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) && s.fontSize > 0
       ? Math.min(96, s.fontSize)
       : undefined
+  const rotation =
+    typeof s.rotation === 'number' && Number.isFinite(s.rotation)
+      ? normalizeRotation(s.rotation)
+      : undefined
+  const scale =
+    typeof s.scale === 'number' && Number.isFinite(s.scale)
+      ? clampTextScale(s.scale)
+      : undefined
   return {
     id: s.id,
     tool,
@@ -172,6 +219,9 @@ export function normalizeWhiteboardStroke(
     backgroundColor: s.backgroundColor
       ? normalizeColor(s.backgroundColor)
       : undefined,
+    rotation,
+    scale,
+    flipped: s.flipped === true ? true : undefined,
     createdAt,
   }
 }
@@ -211,10 +261,13 @@ export function mergeWhiteboardStrokes(
   local: WhiteboardStroke[],
   pendingIds: ReadonlySet<string>,
 ): WhiteboardStroke[] {
+  const localById = new Map(local.map((stroke) => [stroke.id, stroke]))
   const seen = new Set<string>()
   const merged: WhiteboardStroke[] = []
   for (const stroke of remote) {
-    merged.push(stroke)
+    // Keep optimistic local edits (moves/transforms) until the write lands.
+    const pending = pendingIds.has(stroke.id) ? localById.get(stroke.id) : null
+    merged.push(pending ?? stroke)
     seen.add(stroke.id)
   }
   for (const stroke of local) {
@@ -232,6 +285,41 @@ export function whiteboardStrokeIdsEqual(
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i += 1) {
     if (a[i]!.id !== b[i]!.id) return false
+  }
+  return true
+}
+
+/** True when stroke lists match id-for-id including text transform fields. */
+export function whiteboardStrokesContentEqual(
+  a: WhiteboardStroke[],
+  b: WhiteboardStroke[],
+): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i]!
+    const right = b[i]!
+    if (left.id !== right.id) return false
+    if (left.tool !== right.tool) return false
+    if (left.color !== right.color) return false
+    if (left.width !== right.width) return false
+    if (left.filled !== right.filled) return false
+    if (left.text !== right.text) return false
+    if (left.fontSize !== right.fontSize) return false
+    if (left.background !== right.background) return false
+    if (left.backgroundColor !== right.backgroundColor) return false
+    if ((left.rotation ?? 0) !== (right.rotation ?? 0)) return false
+    if ((left.scale ?? 1) !== (right.scale ?? 1)) return false
+    if (Boolean(left.flipped) !== Boolean(right.flipped)) return false
+    if (left.createdAt !== right.createdAt) return false
+    if (left.points.length !== right.points.length) return false
+    for (let p = 0; p < left.points.length; p += 1) {
+      if (
+        left.points[p]!.x !== right.points[p]!.x ||
+        left.points[p]!.y !== right.points[p]!.y
+      ) {
+        return false
+      }
+    }
   }
   return true
 }
@@ -431,27 +519,38 @@ function paintShape(
   }
 }
 
-function paintText(
-  ctx: CanvasRenderingContext2D,
+let measureCtx: CanvasRenderingContext2D | null = null
+
+function getMeasureContext(): CanvasRenderingContext2D {
+  if (measureCtx) return measureCtx
+  const canvas = document.createElement('canvas')
+  measureCtx = canvas.getContext('2d')
+  if (!measureCtx) {
+    throw new Error('Could not create canvas measure context')
+  }
+  return measureCtx
+}
+
+export function measureTextStrokeLayout(
   stroke: WhiteboardStroke,
   cssWidth: number,
   cssHeight: number,
-): void {
+): TextStrokeLayout | null {
   const text = stroke.text?.trim()
-  if (!text) return
+  if (!text || stroke.points.length === 0 || cssWidth <= 0 || cssHeight <= 0) {
+    return null
+  }
   const anchor = stroke.points[0]!
-  const scale = cssWidth / WHITEBOARD_WIDTH_REF
-  const fontSize = Math.max(10, (stroke.fontSize ?? 28) * scale)
-  const x = anchor.x * cssWidth
-  const y = anchor.y * cssHeight
+  const boardScale = cssWidth / WHITEBOARD_WIDTH_REF
+  const fontSize = Math.max(10, (stroke.fontSize ?? 28) * boardScale)
+  const anchorX = anchor.x * cssWidth
+  const anchorY = anchor.y * cssHeight
   const lines = text.split('\n')
   const lineStep = fontSize * 1.15
-  // Uniform inset that grows with text size (S/M/L).
   const paddingY = Math.max(5, fontSize * 0.28)
   const paddingX = Math.max(7, fontSize * 0.38)
 
-  ctx.globalCompositeOperation = 'source-over'
-  ctx.globalAlpha = 1
+  const ctx = getMeasureContext()
   ctx.font = `${fontSize}px ${WHITEBOARD_TEXT_FONT}`
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
@@ -478,19 +577,70 @@ function paintText(
     }
   }
 
-  // Pad around the real glyph ink (not the em square), so top/bottom match.
   const contentHeight = (lines.length - 1) * lineStep + ascent + descent
-  const boxW = maxWidth + paddingX * 2
-  const boxH = contentHeight + paddingY * 2
-  // First-line ink top sits at `y`; alphabetic baseline is `y + ascent`.
-  const baseline0 = y + ascent
+  return {
+    lines,
+    fontSize,
+    lineStep,
+    ascent,
+    descent,
+    paddingX,
+    paddingY,
+    left: anchorX - paddingX,
+    top: anchorY - paddingY,
+    width: maxWidth + paddingX * 2,
+    height: contentHeight + paddingY * 2,
+    anchorX,
+    anchorY,
+    rotation: normalizeRotation(stroke.rotation ?? 0),
+    scale: clampTextScale(stroke.scale ?? 1),
+    flipped: stroke.flipped === true,
+  }
+}
+
+function paintText(
+  ctx: CanvasRenderingContext2D,
+  stroke: WhiteboardStroke,
+  cssWidth: number,
+  cssHeight: number,
+): void {
+  const layout = measureTextStrokeLayout(stroke, cssWidth, cssHeight)
+  if (!layout) return
+
+  const {
+    lines,
+    fontSize,
+    lineStep,
+    ascent,
+    left,
+    top,
+    width: boxW,
+    height: boxH,
+    anchorX,
+    anchorY,
+    rotation,
+    scale,
+    flipped,
+  } = layout
+  const cx = left + boxW / 2
+  const cy = top + boxH / 2
+  const baseline0 = anchorY + ascent
+
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalAlpha = 1
+  ctx.translate(cx, cy)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.scale(flipped ? -scale : scale, scale)
+  ctx.translate(-cx, -cy)
+
+  ctx.font = `${fontSize}px ${WHITEBOARD_TEXT_FONT}`
+  ctx.textBaseline = 'alphabetic'
+  ctx.textAlign = 'left'
 
   if (stroke.background) {
     const bg = stroke.backgroundColor || '#fef3c7'
     ctx.fillStyle = bg
     const r = Math.min(10, fontSize * 0.3)
-    const left = x - paddingX
-    const top = y - paddingY
     ctx.beginPath()
     ctx.moveTo(left + r, top)
     ctx.arcTo(left + boxW, top, left + boxW, top + boxH, r)
@@ -503,7 +653,7 @@ function paintText(
 
   ctx.fillStyle = stroke.color
   lines.forEach((line, index) => {
-    ctx.fillText(line, x, baseline0 + index * lineStep)
+    ctx.fillText(line, anchorX, baseline0 + index * lineStep)
   })
 }
 

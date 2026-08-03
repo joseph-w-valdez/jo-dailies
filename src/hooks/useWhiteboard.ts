@@ -27,7 +27,7 @@ import {
   normalizeWhiteboardStrokes,
   saveWhiteboard,
   sortWhiteboardStrokes,
-  whiteboardStrokeIdsEqual,
+  whiteboardStrokesContentEqual,
   type WhiteboardPoint,
   type WhiteboardStroke,
 } from '../lib/whiteboard'
@@ -126,7 +126,7 @@ export function useWhiteboard() {
           pendingIdsRef.current,
         )
 
-        if (whiteboardStrokeIdsEqual(merged, strokesRef.current)) return
+        if (whiteboardStrokesContentEqual(merged, strokesRef.current)) return
 
         saveWhiteboard(merged)
         setStrokes(merged)
@@ -306,6 +306,38 @@ export function useWhiteboard() {
     }
   }, [])
 
+  const updateStroke = useCallback((stroke: WhiteboardStroke) => {
+    const withMeta: WhiteboardStroke = {
+      ...stroke,
+      createdAt: stroke.createdAt || Date.now(),
+    }
+    pendingIdsRef.current.add(withMeta.id)
+    setStrokes((prev) => {
+      const next = prev.map((existing) =>
+        existing.id === withMeta.id ? withMeta : existing,
+      )
+      strokesRef.current = next
+      return next
+    })
+    void setDoc(doc(strokesCollection(), withMeta.id), withMeta).catch(
+      (error: unknown) => {
+        console.error('Could not update whiteboard stroke', error)
+      },
+    )
+  }, [])
+
+  /** Optimistic local edit while dragging — does not write until updateStroke. */
+  const patchStrokeLocal = useCallback((stroke: WhiteboardStroke) => {
+    pendingIdsRef.current.add(stroke.id)
+    setStrokes((prev) => {
+      const next = prev.map((existing) =>
+        existing.id === stroke.id ? stroke : existing,
+      )
+      strokesRef.current = next
+      return next
+    })
+  }, [])
+
   const undo = useCallback(() => {
     const list = strokesRef.current
     if (list.length === 0) return
@@ -365,6 +397,9 @@ export function useWhiteboard() {
     canUndo,
     canRedo,
     appendStroke,
+    updateStroke,
+    patchStrokeLocal,
+    removeStroke,
     undo,
     redo,
     clear,
