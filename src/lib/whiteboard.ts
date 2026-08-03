@@ -1,4 +1,11 @@
-export type WhiteboardTool = 'pen' | 'erase'
+export type WhiteboardTool =
+  | 'pen'
+  | 'erase'
+  | 'highlighter'
+  | 'line'
+  | 'rect'
+  | 'ellipse'
+  | 'fill'
 
 export interface WhiteboardPoint {
   x: number
@@ -8,11 +15,19 @@ export interface WhiteboardPoint {
 export interface WhiteboardStroke {
   id: string
   tool: WhiteboardTool
-  /** CSS color for pen strokes; ignored for erase. */
+  /** CSS color for ink tools; ignored for erase. */
   color: string
   /** Stroke width in CSS px at a 1000px-wide board. */
   width: number
+  /**
+   * pen/erase/highlighter: path points
+   * line/rect/ellipse: [start, end]
+   * fill: [{ x, y }] seed
+   */
   points: WhiteboardPoint[]
+  /** For rect/ellipse — paint interior. */
+  filled?: boolean
+  createdAt: number
 }
 
 interface WhiteboardStore {
@@ -26,11 +41,18 @@ export const WHITEBOARD_WIDTH_REF = 1000
 
 export const WHITEBOARD_COLORS = [
   '#111827',
+  '#6b7280',
   '#dc2626',
-  '#2563eb',
-  '#16a34a',
+  '#ea580c',
   '#ca8a04',
+  '#16a34a',
+  '#0d9488',
+  '#2563eb',
+  '#38bdf8',
   '#9333ea',
+  '#c026d3',
+  '#f472b6',
+  '#fb7185',
 ] as const
 
 export const WHITEBOARD_SIZES = [
@@ -39,7 +61,34 @@ export const WHITEBOARD_SIZES = [
   { id: 'thick', width: 12 },
 ] as const
 
+export const FREEHAND_TOOLS: WhiteboardTool[] = ['pen', 'erase', 'highlighter']
+export const SHAPE_TOOLS: WhiteboardTool[] = ['line', 'rect', 'ellipse']
+
+const TOOL_SET = new Set<WhiteboardTool>([
+  'pen',
+  'erase',
+  'highlighter',
+  'line',
+  'rect',
+  'ellipse',
+  'fill',
+])
+
 const COLOR_SET = new Set<string>(WHITEBOARD_COLORS)
+
+function normalizeColor(raw: unknown): string {
+  if (typeof raw !== 'string') return '#111827'
+  const value = raw.trim().toLowerCase()
+  if (COLOR_SET.has(value)) return value
+  if (/^#[0-9a-f]{6}$/.test(value)) return value
+  if (/^#[0-9a-f]{3}$/.test(value)) {
+    const r = value[1]!
+    const g = value[2]!
+    const b = value[3]!
+    return `#${r}${r}${g}${g}${b}${b}`
+  }
+  return '#111827'
+}
 
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0
@@ -53,6 +102,12 @@ function normalizePoint(raw: unknown): WhiteboardPoint | null {
   return { x: clamp01(p.x), y: clamp01(p.y) }
 }
 
+function normalizeTool(raw: unknown): WhiteboardTool {
+  return typeof raw === 'string' && TOOL_SET.has(raw as WhiteboardTool)
+    ? (raw as WhiteboardTool)
+    : 'pen'
+}
+
 export function normalizeWhiteboardStroke(
   raw: unknown,
 ): WhiteboardStroke | null {
@@ -63,38 +118,64 @@ export function normalizeWhiteboardStroke(
     .map(normalizePoint)
     .filter((p): p is WhiteboardPoint => p !== null)
   if (points.length === 0) return null
-  const tool: WhiteboardTool = s.tool === 'erase' ? 'erase' : 'pen'
-  const color =
-    typeof s.color === 'string' && COLOR_SET.has(s.color) ? s.color : '#111827'
+  const tool = normalizeTool(s.tool)
+  if (tool === 'fill' && points.length < 1) return null
+  if (
+    (tool === 'line' || tool === 'rect' || tool === 'ellipse') &&
+    points.length < 2
+  ) {
+    return null
+  }
+  const color = normalizeColor(s.color)
   const width =
     typeof s.width === 'number' && Number.isFinite(s.width) && s.width > 0
       ? Math.min(48, s.width)
       : 6
-  return { id: s.id, tool, color, width, points }
+  const createdAt =
+    typeof s.createdAt === 'number' && Number.isFinite(s.createdAt)
+      ? s.createdAt
+      : 0
+  return {
+    id: s.id,
+    tool,
+    color,
+    width,
+    points,
+    filled: s.filled === true,
+    createdAt,
+  }
 }
 
 export function normalizeWhiteboardStrokes(raw: unknown): WhiteboardStroke[] {
   if (!raw || typeof raw !== 'object') return []
   const strokes = (raw as { strokes?: unknown }).strokes
   if (!Array.isArray(strokes)) return []
-  return capWhiteboardStrokes(
-    strokes
-      .map(normalizeWhiteboardStroke)
-      .filter((s): s is WhiteboardStroke => s !== null),
+  return sortWhiteboardStrokes(
+    capWhiteboardStrokes(
+      strokes
+        .map(normalizeWhiteboardStroke)
+        .filter((s): s is WhiteboardStroke => s !== null),
+    ),
   )
+}
+
+export function sortWhiteboardStrokes(
+  strokes: WhiteboardStroke[],
+): WhiteboardStroke[] {
+  return [...strokes].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+    return a.id.localeCompare(b.id)
+  })
 }
 
 export function capWhiteboardStrokes(
   strokes: WhiteboardStroke[],
 ): WhiteboardStroke[] {
-  if (strokes.length <= MAX_WHITEBOARD_STROKES) return strokes
-  return strokes.slice(strokes.length - MAX_WHITEBOARD_STROKES)
+  const sorted = sortWhiteboardStrokes(strokes)
+  if (sorted.length <= MAX_WHITEBOARD_STROKES) return sorted
+  return sorted.slice(sorted.length - MAX_WHITEBOARD_STROKES)
 }
 
-/**
- * Remote strokes win for shared ids. Local strokes still in `pendingIds`
- * (written optimistically, not yet visible in the snapshot) are appended.
- */
 export function mergeWhiteboardStrokes(
   remote: WhiteboardStroke[],
   local: WhiteboardStroke[],
@@ -114,7 +195,6 @@ export function mergeWhiteboardStrokes(
   return capWhiteboardStrokes(merged)
 }
 
-/** True when both lists have the same stroke ids in the same order. */
 export function whiteboardStrokeIdsEqual(
   a: WhiteboardStroke[],
   b: WhiteboardStroke[],
@@ -149,26 +229,110 @@ export function newWhiteboardStrokeId(): string {
   return `wb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
 }
 
-export function paintWhiteboardStroke(
+function parseCssColor(color: string): [number, number, number, number] {
+  const hex = color.replace('#', '')
+  if (hex.length === 6) {
+    return [
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16),
+      255,
+    ]
+  }
+  return [17, 24, 39, 255]
+}
+
+function colorsMatch(
+  data: Uint8ClampedArray,
+  index: number,
+  target: [number, number, number, number],
+  tolerance = 24,
+): boolean {
+  return (
+    Math.abs(data[index]! - target[0]) <= tolerance &&
+    Math.abs(data[index + 1]! - target[1]) <= tolerance &&
+    Math.abs(data[index + 2]! - target[2]) <= tolerance &&
+    Math.abs(data[index + 3]! - target[3]) <= tolerance
+  )
+}
+
+/** Flood-fill the canvas bitmap from a normalized seed point. */
+export function floodFillCanvas(
+  ctx: CanvasRenderingContext2D,
+  seed: WhiteboardPoint,
+  color: string,
+): void {
+  const width = ctx.canvas.width
+  const height = ctx.canvas.height
+  if (width <= 0 || height <= 0) return
+  const sx = Math.min(width - 1, Math.max(0, Math.floor(seed.x * width)))
+  const sy = Math.min(height - 1, Math.max(0, Math.floor(seed.y * height)))
+  const image = ctx.getImageData(0, 0, width, height)
+  const { data } = image
+  const start = (sy * width + sx) * 4
+  const fill = parseCssColor(color)
+  const target: [number, number, number, number] = [
+    data[start]!,
+    data[start + 1]!,
+    data[start + 2]!,
+    data[start + 3]!,
+  ]
+  if (
+    Math.abs(target[0] - fill[0]) <= 8 &&
+    Math.abs(target[1] - fill[1]) <= 8 &&
+    Math.abs(target[2] - fill[2]) <= 8 &&
+    Math.abs(target[3] - fill[3]) <= 8
+  ) {
+    return
+  }
+
+  const stack: number[] = [sx, sy]
+  const seen = new Uint8Array(width * height)
+
+  while (stack.length > 0) {
+    const y = stack.pop()!
+    const x = stack.pop()!
+    if (x < 0 || y < 0 || x >= width || y >= height) continue
+    const key = y * width + x
+    if (seen[key]) continue
+    const idx = key * 4
+    if (!colorsMatch(data, idx, target)) continue
+    seen[key] = 1
+    data[idx] = fill[0]
+    data[idx + 1] = fill[1]
+    data[idx + 2] = fill[2]
+    data[idx + 3] = fill[3]
+    stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1)
+  }
+
+  ctx.putImageData(image, 0, 0)
+}
+
+function paintFreehand(
   ctx: CanvasRenderingContext2D,
   stroke: WhiteboardStroke,
   cssWidth: number,
   cssHeight: number,
 ): void {
-  if (stroke.points.length === 0 || cssWidth <= 0 || cssHeight <= 0) return
   const scale = cssWidth / WHITEBOARD_WIDTH_REF
   const lineWidth = Math.max(1, stroke.width * scale)
-
-  ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.lineWidth = lineWidth
+
   if (stroke.tool === 'erase') {
     ctx.globalCompositeOperation = 'destination-out'
     ctx.strokeStyle = 'rgba(0,0,0,1)'
+    ctx.globalAlpha = 1
+  } else if (stroke.tool === 'highlighter') {
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.strokeStyle = stroke.color
+    ctx.globalAlpha = 0.35
+    ctx.lineWidth = Math.max(lineWidth * 2.2, 8 * scale)
   } else {
     ctx.globalCompositeOperation = 'source-over'
     ctx.strokeStyle = stroke.color
+    ctx.globalAlpha = 1
   }
 
   const first = stroke.points[0]!
@@ -182,6 +346,84 @@ export function paintWhiteboardStroke(
     ctx.lineTo(first.x * cssWidth + 0.01, first.y * cssHeight)
   }
   ctx.stroke()
+}
+
+function paintShape(
+  ctx: CanvasRenderingContext2D,
+  stroke: WhiteboardStroke,
+  cssWidth: number,
+  cssHeight: number,
+): void {
+  const a = stroke.points[0]!
+  const b = stroke.points[stroke.points.length - 1]!
+  const x0 = a.x * cssWidth
+  const y0 = a.y * cssHeight
+  const x1 = b.x * cssWidth
+  const y1 = b.y * cssHeight
+  const scale = cssWidth / WHITEBOARD_WIDTH_REF
+  const lineWidth = Math.max(1, stroke.width * scale)
+
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalAlpha = 1
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = lineWidth
+  ctx.strokeStyle = stroke.color
+  ctx.fillStyle = stroke.color
+
+  if (stroke.tool === 'line') {
+    ctx.beginPath()
+    ctx.moveTo(x0, y0)
+    ctx.lineTo(x1, y1)
+    ctx.stroke()
+    return
+  }
+
+  if (stroke.tool === 'rect') {
+    const left = Math.min(x0, x1)
+    const top = Math.min(y0, y1)
+    const w = Math.abs(x1 - x0)
+    const h = Math.abs(y1 - y0)
+    if (stroke.filled) ctx.fillRect(left, top, w, h)
+    ctx.strokeRect(left, top, w, h)
+    return
+  }
+
+  if (stroke.tool === 'ellipse') {
+    const cx = (x0 + x1) / 2
+    const cy = (y0 + y1) / 2
+    const rx = Math.abs(x1 - x0) / 2
+    const ry = Math.abs(y1 - y0) / 2
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, Math.max(rx, 0.5), Math.max(ry, 0.5), 0, 0, Math.PI * 2)
+    if (stroke.filled) ctx.fill()
+    ctx.stroke()
+  }
+}
+
+export function paintWhiteboardStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: WhiteboardStroke,
+  cssWidth: number,
+  cssHeight: number,
+): void {
+  if (stroke.points.length === 0 || cssWidth <= 0 || cssHeight <= 0) return
+  ctx.save()
+  if (stroke.tool === 'fill') {
+    // Flood fill uses device pixels; temporarily reset transform.
+    const transform = ctx.getTransform()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    floodFillCanvas(ctx, stroke.points[0]!, stroke.color)
+    ctx.setTransform(transform)
+  } else if (
+    stroke.tool === 'pen' ||
+    stroke.tool === 'erase' ||
+    stroke.tool === 'highlighter'
+  ) {
+    paintFreehand(ctx, stroke, cssWidth, cssHeight)
+  } else {
+    paintShape(ctx, stroke, cssWidth, cssHeight)
+  }
   ctx.restore()
 }
 

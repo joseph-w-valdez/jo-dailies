@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "rooms": {
+      "jo-and-friend": {
+        "wbLive": {
+          "$uid": {
+            ".read": "auth != null && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')",
+            ".write": "auth != null && auth.uid == $uid && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')"
+          }
+        }
+      }
+    }
+  }
+}
