@@ -13,6 +13,8 @@ import { StreakBar } from './components/StreakBar'
 import { TogetherTodos } from './components/TogetherTodos'
 import { Watchlist } from './components/Watchlist'
 import { Whiteboard } from './components/Whiteboard'
+import { AppHeader } from './components/AppHeader'
+import { ArcadePage } from './pages/ArcadePage'
 import { GAMES, GAME_COUNT } from './games'
 import { useDailies } from './hooks/useDailies'
 import { useFirebaseAuth } from './hooks/firebaseAuthContext'
@@ -21,10 +23,10 @@ import { useShellLayout } from './hooks/useShellLayout'
 import { parseKey } from './lib/date'
 import { pickLoadingFlavor } from './lib/loadingFlavor'
 import { petIdleSrc } from './lib/petAssets'
-import { useSyncStatus } from './lib/syncStatus'
 import type { GameId } from './types'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
-function Dashboard() {
+function HomePage() {
   const {
     today,
     streaks,
@@ -196,8 +198,7 @@ function Dashboard() {
 }
 
 function AppContent() {
-  const { user, loading, error, signIn, signOut } = useFirebaseAuth()
-  const syncStatus = useSyncStatus()
+  const { user, loading, error, signIn } = useFirebaseAuth()
   const loginPet = useMemo(
     () =>
       petIdleSrc(
@@ -247,48 +248,24 @@ function AppContent() {
   }
 
   return (
-    <>
-      <div className="fixed right-3 top-3 z-50 flex items-center gap-2 rounded-full border border-border bg-surface/90 px-2.5 py-1.5 text-[10px] shadow-lg backdrop-blur">
-        <span
-          className={[
-            'size-1.5 rounded-full',
-            syncStatus === 'synced'
-              ? 'bg-emerald-400'
-              : syncStatus === 'offline'
-                ? 'bg-amber-400'
-                : syncStatus === 'error'
-                  ? 'bg-rose-400'
-                  : 'animate-pulse bg-streak',
-          ].join(' ')}
-        />
-        <span className="text-muted">
-          {syncStatus === 'synced'
-            ? 'synced'
-            : syncStatus === 'offline'
-              ? 'offline · saves queued'
-              : syncStatus === 'error'
-                ? 'sync blocked · check rules'
-                : 'syncing…'}
-        </span>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="text-muted transition hover:text-white"
-          title={`Signed in as ${user.email ?? user.displayName ?? 'Google user'}`}
-        >
-          sign out
-        </button>
-      </div>
-      <Dashboard />
-    </>
+    <div className="min-h-screen">
+      <AppHeader />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/arcade" element={<ArcadePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
   )
 }
 
 function App() {
   return (
-    <FirebaseAuthProvider>
-      <AppContent />
-    </FirebaseAuthProvider>
+    <BrowserRouter>
+      <FirebaseAuthProvider>
+        <AppContent />
+      </FirebaseAuthProvider>
+    </BrowserRouter>
   )
 }
 
