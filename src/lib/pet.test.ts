@@ -5,6 +5,7 @@ import {
   explainDeath,
   hatchPet,
   mergePetForward,
+  needsCareDeadline,
   normalizePet,
   reconcileKennel,
   shouldDie,
@@ -230,5 +231,37 @@ describe('normalization', () => {
     expect(normalized.lastFedOn).toBeNull()
     expect(normalized.lastCleanedOn).toBeNull()
     expect(normalized.deadOn).toBeNull()
+  })
+})
+
+describe('needsCareDeadline', () => {
+  it('shows when an alive pet still needs feed or bath today', () => {
+    expect(
+      needsCareDeadline(
+        pet({ status: 'alive', lastFedOn: '2026-07-29', lastCleanedOn: '2026-07-30' }),
+        '2026-07-30',
+      ),
+    ).toBe(true)
+    expect(
+      needsCareDeadline(
+        pet({ status: 'alive', lastFedOn: '2026-07-30', lastCleanedOn: '2026-07-29' }),
+        '2026-07-30',
+      ),
+    ).toBe(true)
+  })
+
+  it('hides when feed and bath are both done, or the pet is dead', () => {
+    expect(
+      needsCareDeadline(
+        pet({ status: 'alive', lastFedOn: '2026-07-30', lastCleanedOn: '2026-07-30' }),
+        '2026-07-30',
+      ),
+    ).toBe(false)
+    expect(
+      needsCareDeadline(
+        pet({ status: 'dead', lastFedOn: null, lastCleanedOn: null }),
+        '2026-07-30',
+      ),
+    ).toBe(false)
   })
 })

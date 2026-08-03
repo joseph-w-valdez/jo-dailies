@@ -23,6 +23,7 @@ import {
 import {
   daysAliveCount,
   moodLabel,
+  needsCareDeadline,
   PET_SPECIES,
   petMood,
   type PetMood,
@@ -35,6 +36,7 @@ import {
   type PetQuoteResult,
 } from "../lib/petQuotes";
 import { getRoomSky, type RoomSky } from "../lib/petRoomSky";
+import { formatCountdown, msUntilNextAppMidnight } from "../lib/date";
 import { speakDurationMs, SPEAK_FRAME_MS } from "../lib/petSpeak";
 import { PetFace, PetSprite } from "./PetSprite";
 
@@ -1056,6 +1058,49 @@ function ActionRow({
   );
 }
 
+const WARN_MS = 60 * 60 * 1000
+const DANGER_MS = 15 * 60 * 1000
+
+/** Compact Pacific-midnight clock while feed or bath is still owed today. */
+function CareCountdown() {
+  const [remainingMs, setRemainingMs] = useState(() => msUntilNextAppMidnight())
+
+  useEffect(() => {
+    const tick = () => setRemainingMs(msUntilNextAppMidnight())
+    tick()
+    const id = window.setInterval(tick, 1_000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
+  const tone =
+    remainingMs <= DANGER_MS
+      ? 'border-red-400/60 bg-red-500/25 text-red-100'
+      : remainingMs <= WARN_MS
+        ? 'border-rose-400/50 bg-rose-500/20 text-rose-100'
+        : 'border-rose-400/40 bg-rose-500/15 text-rose-200'
+
+  return (
+    <div
+      className={`shrink-0 rounded-lg border px-2 py-1 text-right leading-tight ${tone}`}
+      title="Feed and bath before Pacific midnight"
+    >
+      <p className="text-[9px] font-bold uppercase tracking-[0.16em] opacity-85">
+        care due
+      </p>
+      <p className="text-[11px] font-semibold tabular-nums">
+        {formatCountdown(remainingMs)}
+      </p>
+    </div>
+  )
+}
+
 function PetCareFooter({
   pet,
   today,
@@ -1078,6 +1123,7 @@ function PetCareFooter({
   const fedToday = pet.lastFedOn === today
   const cleanedToday = pet.lastCleanedOn === today
   const playedToday = pet.lastPlayedOn === today
+  const showCareCountdown = needsCareDeadline(pet, today)
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(pet.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -1133,6 +1179,7 @@ function PetCareFooter({
             </p>
           </div>
         </button>
+        {showCareCountdown ? <CareCountdown /> : null}
         <p className="shrink-0 text-[11px] text-muted tabular-nums">
           gen {pet.generation} · age {age}d
         </p>

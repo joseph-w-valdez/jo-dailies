@@ -4,6 +4,7 @@ import {
   addDaysKey,
   appTimeParts,
   calendarKey,
+  formatCountdown,
   msUntilNextAppMidnight,
   todayKey,
   toKey,
@@ -42,5 +43,12 @@ describe('Pacific app calendar', () => {
     const after = new Date(beforeMidnight.getTime() + ms)
     expect(todayKey(after)).toBe('2026-07-26')
     expect(appTimeParts(after).hour).toBe(0)
+  })
+
+  it('formats remaining time as H:MM:SS or M:SS', () => {
+    expect(formatCountdown(3_661_000)).toBe('1:01:01')
+    expect(formatCountdown(59_000)).toBe('0:59')
+    expect(formatCountdown(0)).toBe('0:00')
+    expect(formatCountdown(-500)).toBe('0:00')
   })
 })

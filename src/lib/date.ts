@@ -180,6 +180,18 @@ export function msUntilNextAppMidnight(now = new Date()): number {
   return Math.max(1000, nextMidnight - now.getTime())
 }
 
+/** Format a remaining duration for compact UI clocks. */
+export function formatCountdown(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(totalSec / 3600)
+  const minutes = Math.floor((totalSec % 3600) / 60)
+  const seconds = totalSec % 60
+  const mm = String(minutes).padStart(2, '0')
+  const ss = String(seconds).padStart(2, '0')
+  if (hours > 0) return `${hours}:${mm}:${ss}`
+  return `${minutes}:${ss}`
+}
+
 /** @deprecated Alias — midnight is Pacific, not the browser's local zone. */
 export const msUntilNextLocalMidnight = msUntilNextAppMidnight
 

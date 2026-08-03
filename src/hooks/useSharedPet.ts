@@ -5,6 +5,7 @@ import {
   runTransaction,
 } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { addDaysKey } from '../lib/date'
 import { db, syncRoomId } from '../lib/firebase'
 import {
   addFurniture,
@@ -44,6 +45,8 @@ interface PetConsoleApi {
   diagnose(): Promise<unknown[]>
   revive(petNameOrId: string): Promise<unknown[]>
   reviveAll(): Promise<unknown[]>
+  /** Clear today's feed / bath / play so the care countdown shows again. */
+  resetCare(petNameOrId?: string): Promise<unknown[]>
 }
 
 declare global {
@@ -263,6 +266,54 @@ export function useSharedPet() {
     [petDiagnostics, petDocRef, user?.displayName, user?.email],
   )
 
+  /**
+   * Dev helper: roll feed/bath back to yesterday and clear play so an alive
+   * pet looks uncaring today without dying until the next Pacific midnight.
+   * Writes the doc directly (skips monotonic merge) so today's care can regress.
+   */
+  const resetCarePets = useCallback(
+    async (petNameOrId?: string) => {
+      const day = todayRef.current
+      const yesterday = addDaysKey(day, -1)
+      const query = petNameOrId?.trim().toLocaleLowerCase()
+      await runTransaction(db, async (tx) => {
+        const ref = petDocRef()
+        const snapshot = await tx.get(ref)
+        if (!snapshot.exists()) throw new Error('No saved kennel was found.')
+        const remote = normalizeKennel(snapshot.data())
+        let reset = 0
+        const pets = remote.pets.map((pet) => {
+          const matches =
+            !query ||
+            pet.id.toLocaleLowerCase() === query ||
+            pet.name.toLocaleLowerCase() === query
+          if (!matches || pet.status !== 'alive') return pet
+          reset += 1
+          return {
+            ...pet,
+            lastFedOn: yesterday,
+            lastFedBy: null,
+            lastCleanedOn: yesterday,
+            lastCleanedBy: null,
+            lastPlayedOn: null,
+            lastPlayedBy: null,
+            updatedAt: Date.now(),
+          }
+        })
+        if (reset === 0) {
+          throw new Error(
+            query
+              ? `No alive pet matched "${petNameOrId}". Run __joPets.diagnose() to list ids and names.`
+              : 'There are no alive pets to reset.',
+          )
+        }
+        tx.set(ref, { ...remote, pets, updatedAt: Date.now() })
+      })
+      return petDiagnostics()
+    },
+    [petDiagnostics, petDocRef],
+  )
+
   // Intentionally absent from the UI. Firestore rules still restrict these
   // helpers to the two signed-in room members; the console name is not security.
   useEffect(() => {
@@ -275,10 +326,12 @@ export function useSharedPet() {
       help() {
         console.info(
           [
-            '__joPets.diagnose()       Read fresh server data, print all pets + death post-mortem',
-            '__joPets.revive("name")   Revive one dead pet by exact name or id',
-            '__joPets.reviveAll()      Revive every dead pet',
-            '__joPets.help()           Show these commands',
+            '__joPets.diagnose()            Read fresh server data, print all pets + death post-mortem',
+            '__joPets.revive("name")        Revive one dead pet by exact name or id',
+            '__joPets.reviveAll()           Revive every dead pet',
+            '__joPets.resetCare("name")     Clear today\'s feed/bath/play for one alive pet',
+            '__joPets.resetCare()           Clear today\'s feed/bath/play for every alive pet',
+            '__joPets.help()                Show these commands',
           ].join('\n'),
         )
       },
@@ -299,6 +352,16 @@ export function useSharedPet() {
         console.table(rows)
         return rows
       },
+      async resetCare(petNameOrId?: string) {
+        const rows = await resetCarePets(petNameOrId)
+        console.info(
+          petNameOrId
+            ? `Reset care for "${petNameOrId}" (feed/bath → yesterday, play cleared).`
+            : 'Reset care for all alive pets (feed/bath → yesterday, play cleared).',
+        )
+        console.table(rows)
+        return rows
+      },
     }
     window.__joPets = api
     console.info('Pet console ready. Run __joPets.help() for commands.')
@@ -306,7 +369,7 @@ export function useSharedPet() {
     return () => {
       if (window.__joPets === api) delete window.__joPets
     }
-  }, [petDiagnostics, revivePets, user])
+  }, [petDiagnostics, resetCarePets, revivePets, user])
 
   // At Pacific midnight (or tab wake) sweep for deaths against server state.
   useEffect(() => {

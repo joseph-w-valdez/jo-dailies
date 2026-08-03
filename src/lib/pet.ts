@@ -377,6 +377,12 @@ export function petMood(pet: SharedPet, today = todayKey()): PetMood {
   return 'happy'
 }
 
+/** True when an alive pet still owes feed or bath before Pacific midnight. */
+export function needsCareDeadline(pet: SharedPet, today = todayKey()): boolean {
+  if (pet.status !== 'alive') return false
+  return pet.lastFedOn !== today || pet.lastCleanedOn !== today
+}
+
 export function daysAliveCount(pet: SharedPet, today = todayKey()): number {
   if (pet.status === 'empty') return 0
   const endKey = pet.status === 'dead' && pet.deadOn ? pet.deadOn : today
