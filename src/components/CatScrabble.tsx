@@ -14,6 +14,13 @@ import {
   applyPass,
   applyPlay,
   applyBust,
+  applyCatBurglar,
+  applyBlankStare,
+  applyShelfCheck,
+  applyMeowtiply,
+  beginPeekAPaw,
+  finishPeekAPaw,
+  shuffleRack,
   cellIndex,
   checkWords,
   DICTIONARY_ATTRIBUTION,
@@ -23,6 +30,7 @@ import {
   SCRABBLE_SIZE,
   type Placement,
   type Premium,
+  type ScrabbleSkillId,
   type ScrabbleTile,
 } from '../lib/scrabble'
 import { JENGA_PLAYER_UIDS, nextTurnUid } from '../lib/jenga'
@@ -111,6 +119,7 @@ function moveHeadline(entry: {
 }): string {
   if (entry.kind === 'pass') return 'Pass'
   if (entry.kind === 'exchange') return 'Exchange'
+  if (entry.kind === 'skill') return entry.note ?? 'Skill'
   if (entry.kind === 'bust') {
     return entry.note ?? `Tried ${entry.words.join(', ')} — not a word`
   }
@@ -127,12 +136,52 @@ function moveCardClass(kind: string): string {
       return 'border-border bg-surface-raised'
     case 'exchange':
       return 'border-sky-400/25 bg-sky-500/10'
+    case 'skill':
+      return 'border-violet-400/25 bg-violet-500/10'
     case 'play':
       return 'border-emerald-400/25 bg-emerald-500/10'
     default:
       return 'border-border bg-surface'
   }
 }
+
+const SKILL_BUTTONS: {
+  id: ScrabbleSkillId
+  label: string
+  title: string
+  cls: string
+}[] = [
+  {
+    id: 'catBurglar',
+    label: 'Cat Burglar',
+    title: 'Steal a vowel from opponent’s rack',
+    cls: 'border-amber-500/55 bg-amber-500/20 text-app-text hover:bg-amber-500/30',
+  },
+  {
+    id: 'blankStare',
+    label: 'Blank Stare',
+    title: 'Turn one of your tiles into a blank',
+    cls: 'border-zinc-400/55 bg-zinc-500/20 text-app-text hover:bg-zinc-500/30',
+  },
+  {
+    id: 'shelfCheck',
+    label: 'Shelf Check',
+    title: 'Knock a random tile off opponent’s rack into the bag',
+    cls: 'border-orange-500/55 bg-orange-500/20 text-app-text hover:bg-orange-500/30',
+  },
+  {
+    id: 'peekAPaw',
+    label: 'Peek-a-Paw',
+    title: 'Peek at bag tiles and swap one onto your rack',
+    cls: 'border-sky-500/55 bg-sky-500/20 text-app-text hover:bg-sky-500/30',
+  },
+  {
+    id: 'meowtiply',
+    label: 'Meowtiply',
+    title: 'Your next valid play scores ×3',
+    cls: 'border-fuchsia-500/55 bg-fuchsia-500/20 text-app-text hover:bg-fuchsia-500/30',
+  },
+]
 
 function newGameScoreLine(
   finals: Record<string, number> | undefined,
@@ -218,7 +267,6 @@ function TheaterPlayRow({
     boardPx: number | null
     rowRef: RefObject<HTMLDivElement | null>
     rackRef: RefObject<HTMLDivElement | null>
-    sidebarWidth: number
     sidebarWidth: number
     setSidebarWidth: (px: number) => void
     onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -335,6 +383,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState<DraftCell[]>([])
   const [exchangeMode, setExchangeMode] = useState(false)
   const [exchangeIds, setExchangeIds] = useState<Set<string>>(new Set())
+  const [blankStareMode, setBlankStareMode] = useState(false)
+  const [peekKeepId, setPeekKeepId] = useState<string | null>(null)
+  const [peekSwapId, setPeekSwapId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [newGameOpen, setNewGameOpen] = useState(false)
@@ -345,8 +396,16 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     setSelectedId(null)
     setExchangeMode(false)
     setExchangeIds(new Set())
+    setBlankStareMode(false)
     setMessage(null)
   }, [game.roundId, game.turnUid])
+
+  useEffect(() => {
+    if (!game.peek) {
+      setPeekKeepId(null)
+      setPeekSwapId(null)
+    }
+  }, [game.peek])
 
   const opponentUid =
     JENGA_PLAYER_UIDS.find((id) => id === actorUid) !== undefined
@@ -360,6 +419,10 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     if (!ready) return 'Syncing…'
     if (busy) return 'Checking words…'
     if (message) return message
+    if (game.peek) {
+      if (game.peek.uid === actorUid) return 'Peek-a-Paw — pick a tile'
+      return 'Opponent is peeking…'
+    }
     if (game.status === 'finished') {
       if (!game.winnerUid) return 'Draw'
       if (game.hotseat) {
@@ -392,7 +455,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   }
 
   const placeSelectedAt = (row: number, col: number) => {
-    if (!canAct || exchangeMode || busy) return
+    if (!canAct || exchangeMode || blankStareMode || busy) return
+    if (game.peek) return
     if (game.board[cellIndex(row, col)]) return
     if (draft.some((d) => d.row === row && d.col === col)) return
     if (!selectedId) return
@@ -494,6 +558,110 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     setDraft([])
   }
 
+  const mySkills = game.skills[actorUid] ?? {
+    catBurglar: 0,
+    blankStare: 0,
+    shelfCheck: 0,
+    peekAPaw: 0,
+    meowtiply: 0,
+  }
+
+  const runSkill = (id: ScrabbleSkillId) => {
+    if (!canAct || busy || game.peek) return
+    if (draft.length > 0) {
+      setMessage('Recall tiles before using a skill')
+      return
+    }
+    if ((mySkills[id] ?? 0) <= 0) return
+
+    if (id === 'blankStare') {
+      setBlankStareMode(true)
+      setExchangeMode(false)
+      setSelectedId(null)
+      setMessage('Blank Stare — tap a rack tile')
+      return
+    }
+    if (id === 'peekAPaw') {
+      void commitGame((prev) => {
+        const next = beginPeekAPaw(prev, actorUid)
+        if (!next) setMessage('Peek-a-Paw failed (empty bag)')
+        return next ?? prev
+      })
+      return
+    }
+    if (id === 'catBurglar') {
+      void commitGame((prev) => {
+        const next = applyCatBurglar(prev, actorUid)
+        if (!next) setMessage('Cat Burglar failed (no vowels / rack full)')
+        return next ?? prev
+      })
+      return
+    }
+    if (id === 'shelfCheck') {
+      void commitGame((prev) => {
+        const next = applyShelfCheck(prev, actorUid)
+        if (!next) setMessage('Shelf Check failed (empty rack)')
+        return next ?? prev
+      })
+      return
+    }
+    if (id === 'meowtiply') {
+      void commitGame((prev) => {
+        const next = applyMeowtiply(prev, actorUid)
+        if (!next) setMessage('Meowtiply already armed')
+        return next ?? prev
+      })
+    }
+  }
+
+  const onRackTileClick = (tile: ScrabbleTile) => {
+    if (!canAct || busy) return
+    if (blankStareMode) {
+      if (tile.blank) {
+        setMessage('Pick a non-blank tile')
+        return
+      }
+      void commitGame((prev) => {
+        const next = applyBlankStare(prev, actorUid, tile.id)
+        if (!next) setMessage('Blank Stare failed')
+        return next ?? prev
+      })
+      setBlankStareMode(false)
+      setMessage(null)
+      return
+    }
+    if (exchangeMode) {
+      setExchangeIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(tile.id)) next.delete(tile.id)
+        else next.add(tile.id)
+        return next
+      })
+      return
+    }
+    setSelectedId((id) => (id === tile.id ? null : tile.id))
+  }
+
+  const shuffle = () => {
+    if (!canAct || busy || game.peek) return
+    void commitGame((prev) => shuffleRack(prev, actorUid) ?? prev)
+  }
+
+  const peekMine = Boolean(game.peek && game.peek.uid === actorUid)
+  const rackFull = myRack.length >= 7
+  const canConfirmPeek =
+    peekMine &&
+    peekKeepId != null &&
+    (!rackFull || peekSwapId != null)
+
+  const confirmPeek = () => {
+    if (!canConfirmPeek || !peekKeepId) return
+    void commitGame(
+      (prev) =>
+        finishPeekAPaw(prev, actorUid, peekKeepId, peekSwapId) ?? prev,
+    )
+  }
+
   return (
     <ArcadeStage
       title="Scrabble"
@@ -510,7 +678,20 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
                 Shared Scrabble — your rack is private. Place tiles, then Play
-                (words checked online). Exchange or Pass when stuck.
+                (words checked online). Exchange or Pass when stuck. Shuffle
+                rearranges your rack for free.
+              </p>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted">
+                Skills (2 uses each, no refill):{' '}
+                <span className="text-white/80">Cat Burglar</span> steals a
+                vowel; <span className="text-white/80">Blank Stare</span> makes
+                one tile blank;{' '}
+                <span className="text-white/80">Shelf Check</span> knocks an
+                opponent tile into the bag;{' '}
+                <span className="text-white/80">Peek-a-Paw</span> peeks the bag
+                and swaps one tile;{' '}
+                <span className="text-white/80">Meowtiply</span> triples your
+                next valid play.
               </p>
             </div>
           )}
@@ -528,10 +709,40 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   Opponent rack: {game.racks[opponentUid]?.length ?? 0}
                 </span>
               )}
+              {game.meowtiplyFor === actorUid ? (
+                <span className="rounded-md border border-fuchsia-500/40 bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-app-text">
+                  Meowtiply armed
+                </span>
+              ) : null}
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {SKILL_BUTTONS.map((btn) => {
+                const left = mySkills[btn.id] ?? 0
+                return (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    title={btn.title}
+                    disabled={
+                      !canAct ||
+                      busy ||
+                      left <= 0 ||
+                      Boolean(game.peek) ||
+                      (btn.id === 'meowtiply' &&
+                        game.meowtiplyFor === actorUid)
+                    }
+                    onClick={() => runSkill(btn.id)}
+                    className={[
+                      'rounded-md border px-2 py-1 text-[10px] font-medium leading-tight transition disabled:opacity-40',
+                      btn.cls,
+                    ].join(' ')}
+                  >
+                    {btn.label} ({left})
+                  </button>
+                )
+              })}
               {game.hotseat ? (
-                <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+                <span className="rounded-md border border-amber-500/55 bg-amber-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-app-text">
                   Debug hotseat
                 </span>
               ) : null}
@@ -642,29 +853,28 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                 className="mt-3 flex shrink-0 flex-col items-start gap-2"
               >
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {(exchangeMode ? myRack : rackVisible).map((tile) => {
+                  {(exchangeMode || blankStareMode
+                    ? myRack
+                    : rackVisible
+                  ).map((tile) => {
                     const selected = exchangeMode
                       ? exchangeIds.has(tile.id)
-                      : selectedId === tile.id
+                      : blankStareMode
+                        ? false
+                        : selectedId === tile.id
                     return (
                       <button
                         key={tile.id}
                         type="button"
-                        disabled={!canAct || busy}
-                        onClick={() => {
-                          if (exchangeMode) {
-                            setExchangeIds((prev) => {
-                              const next = new Set(prev)
-                              if (next.has(tile.id)) next.delete(tile.id)
-                              else next.add(tile.id)
-                              return next
-                            })
-                            return
-                          }
-                          setSelectedId((id) =>
-                            id === tile.id ? null : tile.id,
-                          )
-                        }}
+                        disabled={
+                          !canAct ||
+                          busy ||
+                          Boolean(game.peek) ||
+                          (!exchangeMode &&
+                            !blankStareMode &&
+                            draftIds.has(tile.id))
+                        }
+                        onClick={() => onRackTileClick(tile)}
                       >
                         <TileFace
                           letter={tile.letter}
@@ -702,7 +912,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                         type="button"
                         disabled={!canAct || busy || game.bag.length === 0}
                         onClick={confirmExchange}
-                        className="rounded-lg border border-sky-400/40 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-100 hover:bg-sky-500/25 disabled:opacity-40"
+                        className="rounded-lg border border-sky-500/55 bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-sky-500/30 disabled:opacity-40"
                       >
                         Confirm exchange
                       </button>
@@ -717,15 +927,39 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                         Cancel
                       </button>
                     </>
+                  ) : blankStareMode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBlankStareMode(false)
+                        setMessage(null)
+                      }}
+                      className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white"
+                    >
+                      Cancel Blank Stare
+                    </button>
                   ) : (
                     <>
                       <button
                         type="button"
                         disabled={!canAct || busy || draft.length === 0}
                         onClick={() => void play()}
-                        className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-40"
+                        className="rounded-lg border border-emerald-500/55 bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-emerald-500/30 disabled:opacity-40"
                       >
                         Play
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !canAct ||
+                          busy ||
+                          Boolean(game.peek) ||
+                          rackVisible.length < 2
+                        }
+                        onClick={shuffle}
+                        className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
+                      >
+                        Shuffle
                       </button>
                       <button
                         type="button"
@@ -737,9 +971,15 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                       </button>
                       <button
                         type="button"
-                        disabled={!canAct || busy || game.bag.length === 0}
+                        disabled={
+                          !canAct ||
+                          busy ||
+                          game.bag.length === 0 ||
+                          Boolean(game.peek)
+                        }
                         onClick={() => {
                           recall()
+                          setBlankStareMode(false)
                           setExchangeMode(true)
                         }}
                         className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
@@ -748,7 +988,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                       </button>
                       <button
                         type="button"
-                        disabled={!canAct || busy}
+                        disabled={!canAct || busy || Boolean(game.peek)}
                         onClick={pass}
                         className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white disabled:opacity-40"
                       >
@@ -878,7 +1118,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                       'text-sm font-semibold leading-none',
                                       entry.kind === 'play'
                                         ? 'text-white'
-                                        : 'text-muted',
+                                        : entry.kind === 'skill'
+                                          ? 'text-violet-100'
+                                          : 'text-muted',
                                     ].join(' ')}
                                   >
                                     {moveHeadline(entry)}
@@ -897,6 +1139,11 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                 {entry.kind === 'exchange' ? (
                                   <span className="self-start rounded bg-sky-500/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
                                     swap
+                                  </span>
+                                ) : null}
+                                {entry.kind === 'skill' ? (
+                                  <span className="self-start rounded bg-violet-500/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                                    skill
                                   </span>
                                 ) : null}
                               </div>
@@ -939,6 +1186,68 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
           </div>
             )}
           </TheaterPlayRow>
+
+          {peekMine && game.peek ? (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+              <div className="w-full max-w-md rounded-2xl border border-sky-500/40 bg-surface-raised p-4 shadow-xl">
+                <h3 className="text-sm font-semibold text-white">Peek-a-Paw</h3>
+                <p className="mt-1 text-[11px] text-muted">
+                  Pick a tile to keep
+                  {rackFull
+                    ? ', then choose a rack tile to send back to the bag.'
+                    : '. Optionally swap a rack tile back into the bag.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {game.peek.tiles.map((tile) => (
+                    <button
+                      key={tile.id}
+                      type="button"
+                      onClick={() => setPeekKeepId(tile.id)}
+                    >
+                      <TileFace
+                        letter={tile.letter}
+                        blank={tile.blank}
+                        selected={peekKeepId === tile.id}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {rackFull ? 'Swap from rack' : 'Optional rack swap'}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {myRack.map((tile) => (
+                    <button
+                      key={tile.id}
+                      type="button"
+                      onClick={() =>
+                        setPeekSwapId((id) =>
+                          id === tile.id ? null : tile.id,
+                        )
+                      }
+                    >
+                      <TileFace
+                        letter={tile.letter}
+                        blank={tile.blank}
+                        selected={peekSwapId === tile.id}
+                        small
+                      />
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!canConfirmPeek || busy}
+                    onClick={confirmPeek}
+                    className="rounded-lg border border-sky-500/55 bg-sky-500/20 px-3 py-2 text-sm font-medium text-app-text hover:bg-sky-500/30 disabled:opacity-40"
+                  >
+                    Keep tile
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {newGameOpen ? (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">

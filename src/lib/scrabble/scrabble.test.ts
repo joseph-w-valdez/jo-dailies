@@ -9,10 +9,20 @@ import {
 } from '../scrabble/rules'
 import { createFullBag, drawTiles, letterValue } from '../scrabble/tiles'
 import {
+  applyBlankStare,
+  applyCatBurglar,
+  applyMeowtiply,
   applyPass,
   applyPlay,
+  applyShelfCheck,
+  beginPeekAPaw,
   createInitialScrabble,
+  finishPeekAPaw,
+  SCRABBLE_SKILL_MAX,
+  shuffleRack,
   startNewScrabble,
+  type ScrabbleState,
+  type ScrabbleTile,
 } from '../scrabble/state'
 import { JENGA_PLAYER_UIDS } from '../jenga'
 
@@ -186,3 +196,166 @@ describe('scrabble turns', () => {
 function cellIndex(row: number, col: number): number {
   return row * SCRABBLE_SIZE + col
 }
+
+function tile(id: string, letter: string, blank = false): ScrabbleTile {
+  return { id, letter, blank }
+}
+
+function withRacks(
+  state: ScrabbleState,
+  racks: Record<string, ScrabbleTile[]>,
+): ScrabbleState {
+  return { ...state, racks: { ...state.racks, ...racks } }
+}
+
+describe('scrabble skills', () => {
+  const a = JENGA_PLAYER_UIDS[0]!
+  const b = JENGA_PLAYER_UIDS[1]!
+
+  it('starts with 2 charges per skill and no meowtiply/peek', () => {
+    const state = createInitialScrabble(a)
+    expect(state.skills[a]?.catBurglar).toBe(SCRABBLE_SKILL_MAX)
+    expect(state.skills[b]?.meowtiply).toBe(SCRABBLE_SKILL_MAX)
+    expect(state.meowtiplyFor).toBeNull()
+    expect(state.peek).toBeNull()
+  })
+
+  it('shuffleRack reorders without spending charges', () => {
+    let state = createInitialScrabble(a)
+    const ordered = [
+      tile('1', 'A'),
+      tile('2', 'B'),
+      tile('3', 'C'),
+      tile('4', 'D'),
+    ]
+    state = withRacks(state, { [a]: ordered })
+    const next = shuffleRack(state, a, () => 0)
+    expect(next).not.toBeNull()
+    expect(next!.skills[a]?.catBurglar).toBe(SCRABBLE_SKILL_MAX)
+    // random() => 0 always swaps with index 0
+    expect(next!.racks[a]!.map((t) => t.id)).toEqual(['2', '3', '4', '1'])
+    expect(next!.moveLog.length).toBe(state.moveLog.length)
+  })
+
+  it('Cat Burglar steals a vowel and spends a charge', () => {
+    let state = createInitialScrabble(a)
+    state = withRacks(state, {
+      [a]: [tile('m1', 'B'), tile('m2', 'C')],
+      [b]: [tile('o1', 'Q'), tile('o2', 'E'), tile('o3', 'Z')],
+    })
+    const bagBefore = state.bag.length
+    const next = applyCatBurglar(state, a, () => 0)
+    expect(next).not.toBeNull()
+    expect(next!.skills[a]?.catBurglar).toBe(SCRABBLE_SKILL_MAX - 1)
+    expect(next!.racks[a]!.some((t) => t.id === 'o2')).toBe(true)
+    expect(next!.racks[b]!.some((t) => t.id === 'o2')).toBe(false)
+    expect(next!.racks[b]).toHaveLength(3)
+    expect(next!.bag.length).toBe(bagBefore - 1)
+    expect(next!.moveLog.at(-1)?.kind).toBe('skill')
+  })
+
+  it('Blank Stare turns a letter into a blank', () => {
+    let state = createInitialScrabble(a)
+    state = withRacks(state, {
+      [a]: [tile('x', 'X'), tile('y', 'Y')],
+    })
+    const next = applyBlankStare(state, a, 'x')
+    expect(next).not.toBeNull()
+    const blanked = next!.racks[a]!.find((t) => t.id === 'x')!
+    expect(blanked.blank).toBe(true)
+    expect(blanked.letter).toBe('')
+    expect(next!.skills[a]?.blankStare).toBe(SCRABBLE_SKILL_MAX - 1)
+  })
+
+  it('Shelf Check knocks an opponent tile into the bag', () => {
+    let state = createInitialScrabble(a)
+    state = withRacks(state, {
+      [b]: [tile('k', 'K'), tile('l', 'L')],
+    })
+    const bagBefore = state.bag.length
+    const next = applyShelfCheck(state, a, () => 0)
+    expect(next).not.toBeNull()
+    expect(next!.racks[b]!.map((t) => t.id)).toEqual(['l'])
+    expect(next!.bag.length).toBe(bagBefore + 1)
+    expect(next!.bag.some((t) => t.id === 'k')).toBe(true)
+    expect(next!.skills[a]?.shelfCheck).toBe(SCRABBLE_SKILL_MAX - 1)
+  })
+
+  it('Peek-a-Paw draws tiles then finish keeps one', () => {
+    let state = createInitialScrabble(a)
+    state = withRacks(state, {
+      [a]: [tile('r1', 'A'), tile('r2', 'B')],
+    })
+    const bagBefore = state.bag.length
+    const mid = beginPeekAPaw(state, a)
+    expect(mid).not.toBeNull()
+    expect(mid!.peek?.uid).toBe(a)
+    expect(mid!.peek!.tiles.length).toBeGreaterThan(0)
+    expect(mid!.peek!.tiles.length).toBeLessThanOrEqual(3)
+    expect(mid!.bag.length).toBe(bagBefore - mid!.peek!.tiles.length)
+    expect(mid!.skills[a]?.peekAPaw).toBe(SCRABBLE_SKILL_MAX - 1)
+
+    const keep = mid!.peek!.tiles[0]!
+    const done = finishPeekAPaw(mid!, a, keep.id, null)
+    expect(done).not.toBeNull()
+    expect(done!.peek).toBeNull()
+    expect(done!.racks[a]!.some((t) => t.id === keep.id)).toBe(true)
+    expect(done!.racks[a]).toHaveLength(3)
+  })
+
+  it('Meowtiply triples the next valid play score', () => {
+    let state = createInitialScrabble(a)
+    state = withRacks(state, {
+      [a]: [
+        tile('a', 'A'),
+        tile('t', 'T'),
+        ...state.racks[a]!.slice(0, 5),
+      ],
+    })
+    const armed = applyMeowtiply(state, a)
+    expect(armed).not.toBeNull()
+    expect(armed!.meowtiplyFor).toBe(a)
+    expect(armed!.skills[a]?.meowtiply).toBe(SCRABBLE_SKILL_MAX - 1)
+
+    const placements: Placement[] = [
+      {
+        row: CENTER,
+        col: CENTER,
+        letter: 'A',
+        tileId: 'a',
+        blank: false,
+      },
+      {
+        row: CENTER,
+        col: CENTER + 1,
+        letter: 'T',
+        tileId: 't',
+        blank: false,
+      },
+    ]
+    const plain = applyPlay(state, a, placements)!
+    const boosted = applyPlay(armed!, a, placements)!
+    expect(boosted.scores[a]).toBe((plain.scores[a] ?? 0) * 3)
+    expect(boosted.meowtiplyFor).toBeNull()
+    expect(boosted.moveLog.at(-1)?.note).toMatch(/Meowtiply/i)
+  })
+
+  it('skills fail when charges are spent', () => {
+    let state = createInitialScrabble(a)
+    state = {
+      ...state,
+      skills: {
+        ...state.skills,
+        [a]: {
+          ...state.skills[a]!,
+          catBurglar: 0,
+        },
+      },
+    }
+    state = withRacks(state, {
+      [a]: [tile('m1', 'B')],
+      [b]: [tile('o1', 'A')],
+    })
+    expect(applyCatBurglar(state, a)).toBeNull()
+  })
+})

@@ -32,6 +32,42 @@ export type ScrabbleMoveKind =
   | 'exchange'
   | 'bust'
   | 'newGame'
+  | 'skill'
+
+export type ScrabbleSkillId =
+  | 'catBurglar'
+  | 'blankStare'
+  | 'shelfCheck'
+  | 'peekAPaw'
+  | 'meowtiply'
+
+export type ScrabbleSkillCharges = Record<ScrabbleSkillId, number>
+
+export const SCRABBLE_SKILL_MAX = 2
+
+export const SCRABBLE_SKILL_IDS: ScrabbleSkillId[] = [
+  'catBurglar',
+  'blankStare',
+  'shelfCheck',
+  'peekAPaw',
+  'meowtiply',
+]
+
+export function emptySkillCharges(): ScrabbleSkillCharges {
+  return {
+    catBurglar: SCRABBLE_SKILL_MAX,
+    blankStare: SCRABBLE_SKILL_MAX,
+    shelfCheck: SCRABBLE_SKILL_MAX,
+    peekAPaw: SCRABBLE_SKILL_MAX,
+    meowtiply: SCRABBLE_SKILL_MAX,
+  }
+}
+
+function skillsForPlayers(): Record<string, ScrabbleSkillCharges> {
+  const out: Record<string, ScrabbleSkillCharges> = {}
+  for (const uid of JENGA_PLAYER_UIDS) out[uid] = emptySkillCharges()
+  return out
+}
 
 /** One turn in the shared move history panel. */
 export interface ScrabbleMoveLogEntry {
@@ -50,6 +86,11 @@ export interface ScrabbleMoveLogEntry {
   at: number
 }
 
+export interface ScrabblePeek {
+  uid: string
+  tiles: ScrabbleTile[]
+}
+
 export interface ScrabbleState {
   board: ScrabbleBoard
   bag: ScrabbleTile[]
@@ -63,6 +104,12 @@ export interface ScrabbleState {
   lastPlayWords: string[]
   /** Chronological turns for the scoreboard panel. */
   moveLog: ScrabbleMoveLogEntry[]
+  /** Per-player skill charges (max 2, no refill). */
+  skills: Record<string, ScrabbleSkillCharges>
+  /** Seat with an armed Meowtiply ×3 on their next valid play. */
+  meowtiplyFor: string | null
+  /** Active Peek-a-Paw reveal (tiles held out of the bag). */
+  peek: ScrabblePeek | null
   cats: [string, string]
   /** Debug: one human plays both seats. */
   hotseat: boolean
@@ -121,8 +168,45 @@ export function applyBust(
     ),
   ]
   if (words.length === 0) return null
+  let racks = state.racks
+  let note = pickBustRoast(words)
+  let meowtiplyFor = state.meowtiplyFor
+  if (meowtiplyFor === uid) {
+    meowtiplyFor = null
+    note = `${note} Meowtiply fizzled.`
+    const rack = [...(state.racks[uid] ?? [])]
+    if (rack.length > 0) {
+      const idx = Math.floor(Math.random() * rack.length)
+      const [dropped] = rack.splice(idx, 1)
+      if (dropped) {
+        note = `${note} Lost ${dropped.blank ? '?' : dropped.letter} to the bag.`
+        racks = {
+          ...state.racks,
+          [uid]: rack,
+        }
+        return {
+          ...state,
+          bag: [...state.bag, dropped],
+          racks,
+          meowtiplyFor,
+          moveLog: pushMove(state.moveLog, {
+            uid,
+            kind: 'bust',
+            words,
+            score: 0,
+            total: state.scores[uid] ?? 0,
+            definitions: [],
+            note,
+          }),
+          updatedAt: Date.now(),
+        }
+      }
+    }
+  }
   return {
     ...state,
+    racks,
+    meowtiplyFor,
     moveLog: pushMove(state.moveLog, {
       uid,
       kind: 'bust',
@@ -130,7 +214,7 @@ export function applyBust(
       score: 0,
       total: state.scores[uid] ?? 0,
       definitions: [],
-      note: pickBustRoast(words),
+      note,
     }),
     updatedAt: Date.now(),
   }
@@ -169,6 +253,9 @@ export function createInitialScrabble(
     lastPlayScore: 0,
     lastPlayWords: [],
     moveLog: [],
+    skills: skillsForPlayers(),
+    meowtiplyFor: null,
+    peek: null,
     cats: pickTwoJengaCats(),
     hotseat: Boolean(opts?.hotseat),
     version: 1,
@@ -252,6 +339,7 @@ export function applyPass(
 ): ScrabbleState | null {
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  if (state.peek) return null
   const passStreak = state.passStreak + 1
   const moveLog = pushMove(state.moveLog, {
     uid,
@@ -261,16 +349,20 @@ export function applyPass(
     total: state.scores[uid] ?? 0,
     definitions: [],
   })
-  if (passStreak >= 2) {
-    return settleEndgame({ ...state, passStreak, moveLog }, null)
-  }
-  return {
+  const cleared = {
     ...state,
     passStreak,
+    meowtiplyFor: state.meowtiplyFor === uid ? null : state.meowtiplyFor,
+    moveLog,
+  }
+  if (passStreak >= 2) {
+    return settleEndgame(cleared, null)
+  }
+  return {
+    ...cleared,
     turnUid: nextTurnUid(uid),
     lastPlayScore: 0,
     lastPlayWords: [],
-    moveLog,
     updatedAt: Date.now(),
   }
 }
@@ -282,6 +374,7 @@ export function applyExchange(
 ): ScrabbleState | null {
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  if (state.peek) return null
   if (state.bag.length === 0) return null
   if (tileIds.length === 0) return null
   const rack = state.racks[uid] ?? []
@@ -297,10 +390,8 @@ export function applyExchange(
   if (returning.length > state.bag.length) return null
 
   let bag = state.bag.slice()
-  // Draw replacements first from current bag, then shuffle returns back in.
   const { drawn, bag: afterDraw } = drawTiles(bag, returning.length)
   bag = afterDraw.concat(returning)
-  // Light reshuffle of returned tiles into bag
   for (let i = bag.length - 1; i > bag.length - returning.length - 1 && i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
     const tmp = bag[i]!
@@ -317,6 +408,7 @@ export function applyExchange(
     },
     turnUid: nextTurnUid(uid),
     passStreak: 0,
+    meowtiplyFor: state.meowtiplyFor === uid ? null : state.meowtiplyFor,
     lastPlayScore: 0,
     lastPlayWords: [],
     moveLog: pushMove(state.moveLog, {
@@ -343,6 +435,7 @@ export function applyPlay(
 ): ScrabbleState | null {
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  if (state.peek) return null
   const geo = validatePlacementGeometry(state.board, placements)
   if (geo) return null
 
@@ -361,7 +454,9 @@ export function applyPlay(
   const words = extractFormedWords(state.board, placements)
   if (words.length === 0) return null
 
-  const playScore = scorePlay(state.board, placements, words)
+  let playScore = scorePlay(state.board, placements, words)
+  const meowtiply = state.meowtiplyFor === uid
+  if (meowtiply) playScore *= 3
   const board = applyPlacementsToBoard(state.board, placements)
   const usedIds = new Set(placements.map((p) => p.tileId))
   const remaining = rack.filter((t) => !usedIds.has(t.id))
@@ -393,6 +488,7 @@ export function applyPlay(
     },
     turnUid: nextTurnUid(uid),
     passStreak: 0,
+    meowtiplyFor: null,
     lastPlayScore: playScore,
     lastPlayWords: formedWords,
     moveLog: pushMove(state.moveLog, {
@@ -402,17 +498,274 @@ export function applyPlay(
       score: playScore,
       total: nextTotal,
       definitions,
+      note: meowtiply ? 'Meowtiply ×3' : undefined,
     }),
     updatedAt: Date.now(),
   }
 
   next = finishIfNeeded(next, uid)
-  // If emptied rack with empty bag, finishIfNeeded already settled and
-  // shouldn't advance turn — settleEndgame sets finished.
   if (next.status === 'finished') {
     return { ...next, turnUid: uid }
   }
   return next
+}
+
+const VOWELS = new Set(['A', 'E', 'I', 'O', 'U'])
+
+function chargesFor(
+  state: ScrabbleState,
+  uid: string,
+): ScrabbleSkillCharges {
+  return state.skills[uid] ?? emptySkillCharges()
+}
+
+function spendCharge(
+  state: ScrabbleState,
+  uid: string,
+  skill: ScrabbleSkillId,
+): ScrabbleSkillCharges | null {
+  const cur = chargesFor(state, uid)
+  const left = cur[skill] ?? 0
+  if (left <= 0) return null
+  return { ...cur, [skill]: left - 1 }
+}
+
+function skillLog(
+  state: ScrabbleState,
+  uid: string,
+  note: string,
+): ScrabbleMoveLogEntry[] {
+  return pushMove(state.moveLog, {
+    uid,
+    kind: 'skill',
+    words: [],
+    score: 0,
+    total: state.scores[uid] ?? 0,
+    definitions: [],
+    note,
+  })
+}
+
+function canUseSkill(state: ScrabbleState, uid: string): boolean {
+  return (
+    state.status === 'playing' &&
+    state.turnUid === uid &&
+    state.peek === null
+  )
+}
+
+/** Free rack reorder — no charges, no log. */
+export function shuffleRack(
+  state: ScrabbleState,
+  uid: string,
+  random: () => number = Math.random,
+): ScrabbleState | null {
+  if (state.status !== 'playing') return null
+  if (state.turnUid !== uid) return null
+  if (state.peek) return null
+  const rack = [...(state.racks[uid] ?? [])]
+  if (rack.length < 2) return null
+  for (let i = rack.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1))
+    const tmp = rack[i]!
+    rack[i] = rack[j]!
+    rack[j] = tmp
+  }
+  return {
+    ...state,
+    racks: { ...state.racks, [uid]: rack },
+    updatedAt: Date.now(),
+  }
+}
+
+/** Steal a random vowel from the opponent. */
+export function applyCatBurglar(
+  state: ScrabbleState,
+  uid: string,
+  random: () => number = Math.random,
+): ScrabbleState | null {
+  if (!canUseSkill(state, uid)) return null
+  const nextCharges = spendCharge(state, uid, 'catBurglar')
+  if (!nextCharges) return null
+  const mine = state.racks[uid] ?? []
+  if (mine.length >= RACK_SIZE) return null
+  const foe = nextTurnUid(uid)
+  const their = state.racks[foe] ?? []
+  const vowelIdxs: number[] = []
+  their.forEach((t, i) => {
+    if (!t.blank && VOWELS.has(t.letter)) vowelIdxs.push(i)
+  })
+  if (vowelIdxs.length === 0) return null
+  const pick = vowelIdxs[Math.floor(random() * vowelIdxs.length)]!
+  const stolen = their[pick]!
+  const theirNext = their.filter((_, i) => i !== pick)
+  let bag = state.bag
+  let theirFinal = theirNext
+  if (bag.length > 0) {
+    const { drawn, bag: rest } = drawTiles(bag, 1)
+    bag = rest
+    theirFinal = [...theirNext, ...drawn]
+  }
+  return {
+    ...state,
+    bag,
+    racks: {
+      ...state.racks,
+      [uid]: [...mine, stolen],
+      [foe]: theirFinal,
+    },
+    skills: { ...state.skills, [uid]: nextCharges },
+    moveLog: skillLog(
+      state,
+      uid,
+      `Cat Burglar — stole ${stolen.letter}`,
+    ),
+    updatedAt: Date.now(),
+  }
+}
+
+/** Turn one non-blank rack tile into a blank. */
+export function applyBlankStare(
+  state: ScrabbleState,
+  uid: string,
+  tileId: string,
+): ScrabbleState | null {
+  if (!canUseSkill(state, uid)) return null
+  const nextCharges = spendCharge(state, uid, 'blankStare')
+  if (!nextCharges) return null
+  const rack = state.racks[uid] ?? []
+  const idx = rack.findIndex((t) => t.id === tileId)
+  if (idx < 0) return null
+  const tile = rack[idx]!
+  if (tile.blank) return null
+  const nextRack = rack.slice()
+  nextRack[idx] = { ...tile, blank: true, letter: '' }
+  return {
+    ...state,
+    racks: { ...state.racks, [uid]: nextRack },
+    skills: { ...state.skills, [uid]: nextCharges },
+    moveLog: skillLog(
+      state,
+      uid,
+      `Blank Stare — ${tile.letter} is now a blank`,
+    ),
+    updatedAt: Date.now(),
+  }
+}
+
+/** Knock a random opponent tile into the bag (no redraw). */
+export function applyShelfCheck(
+  state: ScrabbleState,
+  uid: string,
+  random: () => number = Math.random,
+): ScrabbleState | null {
+  if (!canUseSkill(state, uid)) return null
+  const nextCharges = spendCharge(state, uid, 'shelfCheck')
+  if (!nextCharges) return null
+  const foe = nextTurnUid(uid)
+  const their = state.racks[foe] ?? []
+  if (their.length === 0) return null
+  const idx = Math.floor(random() * their.length)
+  const dropped = their[idx]!
+  const theirNext = their.filter((_, i) => i !== idx)
+  return {
+    ...state,
+    bag: [...state.bag, dropped],
+    racks: { ...state.racks, [foe]: theirNext },
+    skills: { ...state.skills, [uid]: nextCharges },
+    moveLog: skillLog(
+      state,
+      uid,
+      `Shelf Check — knocked ${dropped.blank ? '?' : dropped.letter} off`,
+    ),
+    updatedAt: Date.now(),
+  }
+}
+
+/** Start Peek-a-Paw — holds 3 bag tiles for the seat to choose. */
+export function beginPeekAPaw(
+  state: ScrabbleState,
+  uid: string,
+): ScrabbleState | null {
+  if (!canUseSkill(state, uid)) return null
+  const nextCharges = spendCharge(state, uid, 'peekAPaw')
+  if (!nextCharges) return null
+  if (state.bag.length === 0) return null
+  const { drawn, bag } = drawTiles(state.bag, Math.min(3, state.bag.length))
+  if (drawn.length === 0) return null
+  return {
+    ...state,
+    bag,
+    peek: { uid, tiles: drawn },
+    skills: { ...state.skills, [uid]: nextCharges },
+    moveLog: skillLog(state, uid, 'Peek-a-Paw — peering into the bag'),
+    updatedAt: Date.now(),
+  }
+}
+
+/**
+ * Finish Peek-a-Paw: keep one peeked tile, optionally swap a rack tile back.
+ * Other peek tiles return to the bag.
+ */
+export function finishPeekAPaw(
+  state: ScrabbleState,
+  uid: string,
+  keepTileId: string,
+  swapRackTileId: string | null,
+): ScrabbleState | null {
+  if (state.status !== 'playing') return null
+  if (state.turnUid !== uid) return null
+  if (!state.peek || state.peek.uid !== uid) return null
+  const peekTiles = state.peek.tiles
+  const keep = peekTiles.find((t) => t.id === keepTileId)
+  if (!keep) return null
+  const leftovers = peekTiles.filter((t) => t.id !== keepTileId)
+  let rack = [...(state.racks[uid] ?? [])]
+  let bag = [...state.bag, ...leftovers]
+
+  if (swapRackTileId) {
+    const idx = rack.findIndex((t) => t.id === swapRackTileId)
+    if (idx < 0) return null
+    const [returned] = rack.splice(idx, 1)
+    if (returned) bag.push(returned)
+    rack.push(keep)
+  } else {
+    if (rack.length >= RACK_SIZE) return null
+    rack.push(keep)
+  }
+
+  for (let i = bag.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = bag[i]!
+    bag[i] = bag[j]!
+    bag[j] = tmp
+  }
+
+  return {
+    ...state,
+    bag,
+    racks: { ...state.racks, [uid]: rack },
+    peek: null,
+    updatedAt: Date.now(),
+  }
+}
+
+/** Arm ×3 on the next valid play. */
+export function applyMeowtiply(
+  state: ScrabbleState,
+  uid: string,
+): ScrabbleState | null {
+  if (!canUseSkill(state, uid)) return null
+  if (state.meowtiplyFor === uid) return null
+  const nextCharges = spendCharge(state, uid, 'meowtiply')
+  if (!nextCharges) return null
+  return {
+    ...state,
+    meowtiplyFor: uid,
+    skills: { ...state.skills, [uid]: nextCharges },
+    moveLog: skillLog(state, uid, 'Meowtiply — next play ×3'),
+    updatedAt: Date.now(),
+  }
 }
 
 /** Words that would be formed — for dictionary check before commit. */
@@ -497,7 +850,8 @@ export function normalizeScrabble(
         m.kind === 'pass' ||
         m.kind === 'exchange' ||
         m.kind === 'bust' ||
-        m.kind === 'newGame'
+        m.kind === 'newGame' ||
+        m.kind === 'skill'
           ? m.kind
           : null
       if (!kind) continue
@@ -544,6 +898,35 @@ export function normalizeScrabble(
       if (moveLog.length >= MOVE_LOG_MAX) break
     }
   }
+
+  const skills: Record<string, ScrabbleSkillCharges> = skillsForPlayers()
+  const skillsRaw =
+    s.skills && typeof s.skills === 'object'
+      ? (s.skills as Record<string, unknown>)
+      : {}
+  for (const uid of JENGA_PLAYER_UIDS) {
+    const raw = skillsRaw[uid]
+    const base = emptySkillCharges()
+    if (raw && typeof raw === 'object') {
+      const r = raw as Record<string, unknown>
+      for (const id of SCRABBLE_SKILL_IDS) {
+        base[id] = Math.max(
+          0,
+          Math.min(SCRABBLE_SKILL_MAX, Math.floor(clampNum(r[id], SCRABBLE_SKILL_MAX))),
+        )
+      }
+    }
+    skills[uid] = base
+  }
+
+  let peek: ScrabblePeek | null = null
+  if (s.peek && typeof s.peek === 'object') {
+    const p = s.peek as Record<string, unknown>
+    const peekUid = typeof p.uid === 'string' ? p.uid : ''
+    const tiles = normalizeRack(p.tiles)
+    if (peekUid && tiles.length > 0) peek = { uid: peekUid, tiles }
+  }
+
   return {
     board: normalizeBoard(s.board),
     bag,
@@ -559,6 +942,12 @@ export function normalizeScrabble(
     lastPlayScore: Math.floor(clampNum(s.lastPlayScore, 0)),
     lastPlayWords,
     moveLog,
+    skills,
+    meowtiplyFor:
+      typeof s.meowtiplyFor === 'string' && s.meowtiplyFor
+        ? s.meowtiplyFor
+        : null,
+    peek,
     cats: normalizeJengaCats(
       s.cats,
       clampNum(s.version, 1) * 1009 + clampNum(s.updatedAt, 1),
