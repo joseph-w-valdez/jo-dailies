@@ -78,7 +78,9 @@ export function emptyPlayerBoard(): BsPlayerBoard {
   return { ships: [], received: emptyMarks(), ready: false }
 }
 
-const JENGA_CAT_ICON_SET = new Set(JENGA_CAT_THEMES.map((t) => t.icon))
+const JENGA_CAT_ICON_SET = new Set<string>(
+  JENGA_CAT_THEMES.map((t) => t.icon),
+)
 
 function unitFromSeed(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
