@@ -83,7 +83,7 @@ interface WhiteboardStore {
 }
 
 export const WHITEBOARD_KEY = 'jo-dailies:whiteboard:v1'
-export const MAX_WHITEBOARD_STROKES = 200
+export const MAX_WHITEBOARD_STROKES = 1000
 export const WHITEBOARD_WIDTH_REF = 1000
 export const WHITEBOARD_TEXT_FONT =
   '"Segoe Print", "Bradley Hand", "Comic Sans MS", cursive'
