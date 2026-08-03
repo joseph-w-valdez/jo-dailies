@@ -21,8 +21,25 @@ function CatDisc({
 }: {
   icon: string
   color: string
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'fill'
 }) {
+  if (size === 'fill') {
+    return (
+      <span
+        className="relative block h-full w-full rounded-full shadow-inner"
+        style={{ backgroundColor: color }}
+        aria-hidden
+      >
+        <span className="absolute inset-[12%] rounded-full bg-white/95" />
+        <img
+          src={petIdleSrc(icon)}
+          alt=""
+          className="relative z-[1] h-full w-full rounded-full object-cover p-[15%]"
+          draggable={false}
+        />
+      </span>
+    )
+  }
   const dim = size === 'sm' ? 'h-7 w-7' : 'h-10 w-10 sm:h-11 sm:w-11'
   const face = size === 'sm' ? 'h-[72%] w-[72%]' : 'h-[70%] w-[70%]'
   return (
@@ -87,7 +104,11 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
       meta={<p className="text-sm font-medium text-golden">{statusLabel}</p>}
     >
       {({ immersive }) => (
-        <>
+        <div
+          className={
+            immersive ? 'flex min-h-0 flex-1 flex-col' : undefined
+          }
+        >
           {immersive ? null : (
             <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
@@ -117,7 +138,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               {([0, 1] as const).map((seat) => {
                 const theme = themes[seat]!
@@ -159,15 +180,29 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
           <div
             className={[
               'mt-3 flex justify-center',
-              immersive ? 'min-h-0 flex-1 items-center' : '',
+              immersive
+                ? 'min-h-0 flex-1 items-center'
+                : '',
             ].join(' ')}
           >
             <div
-              className="w-full max-w-md rounded-2xl border border-amber-700/40 bg-[#f0b429] p-2.5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.18)] sm:p-3"
+              className={[
+                'rounded-2xl border border-amber-700/40 bg-[#f0b429] shadow-[inset_0_2px_8px_rgba(0,0,0,0.18)]',
+                immersive
+                  ? 'flex h-full max-h-full w-auto max-w-full flex-col aspect-[7/7.35] p-2 sm:p-3'
+                  : 'w-full max-w-md p-2.5 sm:p-3',
+              ].join(' ')}
               role="grid"
               aria-label="Connect Four board"
             >
-              <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+              <div
+                className={[
+                  'grid grid-cols-7',
+                  immersive
+                    ? 'min-h-0 shrink-0 grow-[1] basis-0 gap-1 sm:gap-1.5'
+                    : 'gap-1 sm:gap-1.5',
+                ].join(' ')}
+              >
                 {Array.from({ length: C4_COLS }, (_, col) => {
                   const open = dropRow(game.grid, col) >= 0
                   return (
@@ -180,7 +215,10 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                       onMouseLeave={() => setHoverCol(null)}
                       onFocus={() => setHoverCol(col)}
                       onBlur={() => setHoverCol(null)}
-                      className="flex h-7 items-center justify-center rounded-md text-[10px] font-semibold text-amber-950/55 transition hover:bg-black/10 disabled:opacity-30 sm:h-8"
+                      className={[
+                        'flex items-center justify-center rounded-md text-[10px] font-semibold text-amber-950/55 transition hover:bg-black/10 disabled:opacity-30',
+                        immersive ? 'h-full min-h-0 w-full' : 'h-7 sm:h-8',
+                      ].join(' ')}
                       aria-label={`Drop in column ${col + 1}`}
                     >
                       ▼
@@ -188,7 +226,21 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                   )
                 })}
               </div>
-              <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-1.5">
+              <div
+                className={[
+                  'mt-1 grid grid-cols-7',
+                  immersive
+                    ? 'min-h-0 grow-[6] basis-0 gap-1 sm:gap-1.5'
+                    : 'gap-1 sm:gap-1.5',
+                ].join(' ')}
+                style={
+                  immersive
+                    ? {
+                        gridTemplateRows: `repeat(${C4_ROWS}, minmax(0, 1fr))`,
+                      }
+                    : undefined
+                }
+              >
                 {Array.from({ length: C4_ROWS }, (_, row) =>
                   Array.from({ length: C4_COLS }, (_, col) => {
                     const cell: C4Cell =
@@ -210,7 +262,10 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                         onMouseEnter={() => setHoverCol(col)}
                         onMouseLeave={() => setHoverCol(null)}
                         className={[
-                          'aspect-square rounded-full border border-amber-900/25 bg-[#1a1208]/flex items-center justify-center p-0.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.45)] transition',
+                          'rounded-full border border-amber-900/25 bg-[#1a1208] flex items-center justify-center shadow-[inset_0_2px_4px_rgba(0,0,0,0.45)] transition',
+                          immersive
+                            ? 'min-h-0 min-w-0 p-[4%]'
+                            : 'aspect-square p-0.5',
                           canPlay ? 'hover:border-amber-950/50' : '',
                           isPreview ? 'opacity-55' : '',
                         ].join(' ')}
@@ -224,7 +279,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                           <CatDisc
                             icon={theme.icon}
                             color={theme.color}
-                            size="md"
+                            size={immersive ? 'fill' : 'md'}
                           />
                         ) : null}
                       </button>
@@ -234,7 +289,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </ArcadeStage>
   )

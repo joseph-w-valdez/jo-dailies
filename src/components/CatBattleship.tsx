@@ -46,6 +46,7 @@ function GridBoard({
   onHover,
   disabled,
   label,
+  fill = false,
 }: {
   size?: number
   cellClass: (x: number, y: number) => string
@@ -55,11 +56,23 @@ function GridBoard({
   onHover?: (cell: { x: number; y: number } | null) => void
   disabled?: boolean
   label: string
+  /** Grow to fill a square parent (theater / fullscreen). */
+  fill?: boolean
 }) {
   return (
     <div
-      className="inline-grid gap-0.5 rounded-xl border border-border bg-surface/80 p-1.5"
-      style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
+      className={[
+        'gap-0.5 rounded-xl border border-border bg-surface/80 p-1.5',
+        fill
+          ? 'grid h-full w-full min-h-0 min-w-0'
+          : 'inline-grid',
+      ].join(' ')}
+      style={{
+        gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+        gridTemplateRows: fill
+          ? `repeat(${size}, minmax(0, 1fr))`
+          : undefined,
+      }}
       role="grid"
       aria-label={label}
       onMouseLeave={() => onHover?.(null)}
@@ -76,7 +89,10 @@ function GridBoard({
             onMouseEnter={() => onHover?.({ x, y })}
             style={cellStyle?.(x, y)}
             className={[
-              'relative aspect-square min-h-[1.35rem] min-w-[1.35rem] overflow-hidden rounded-sm border border-black/20 p-0 sm:min-h-[1.55rem] sm:min-w-[1.55rem]',
+              'relative overflow-hidden rounded-sm border border-black/20 p-0',
+              fill
+                ? 'min-h-0 min-w-0'
+                : 'aspect-square min-h-[1.35rem] min-w-[1.35rem] sm:min-h-[1.55rem] sm:min-w-[1.55rem]',
               cellClass(x, y),
               onCell && !disabled ? 'hover:brightness-110' : '',
             ].join(' ')}
@@ -210,7 +226,7 @@ function CattleshipCoach({
       : face.idle
 
   return (
-    <div className="relative mx-auto flex w-[5.5rem] flex-col items-center">
+    <div className="relative mx-auto flex w-full max-w-[5.5rem] flex-col items-center sm:max-w-[6.5rem]">
       {quote ? (
         <div
           key={quoteKey}
@@ -425,7 +441,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
       meta={<p className="text-sm font-medium text-golden">{statusLabel}</p>}
     >
       {({ immersive }) => (
-        <>
+        <div
+          className={
+            immersive ? 'flex min-h-0 flex-1 flex-col' : undefined
+          }
+        >
           {immersive ? null : (
             <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
@@ -455,7 +475,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <img
                 src={petIdleSrc(myPet)}
@@ -481,11 +501,11 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
           {game.status === 'placing' ? (
             <div
               className={[
-                'mt-3 flex flex-col items-center gap-3',
-                immersive ? 'min-h-0 flex-1 justify-center' : '',
+                'mt-3 flex flex-col items-center gap-2',
+                immersive ? 'min-h-0 flex-1' : 'gap-3',
               ].join(' ')}
             >
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
                   disabled={Boolean(myBoard?.ready) || !canPlaceSelected}
@@ -511,7 +531,12 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                   Lock In
                 </button>
               </div>
-              <div className="grid w-full max-w-md grid-cols-3 gap-1.5">
+              <div
+                className={[
+                  'grid grid-cols-3 gap-1.5',
+                  immersive ? 'w-full max-w-lg shrink-0' : 'w-full max-w-md',
+                ].join(' ')}
+              >
                 {BS_FLEET.map((d) => {
                   const icon = game.shipCats[d.id]
                   const theme = icon ? themeForCatIcon(icon) : null
@@ -569,15 +594,31 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                   )
                 })}
               </div>
-              <GridBoard
-                  label="Your fleet placement"
-                  disabled={Boolean(myBoard?.ready)}
-                  onHover={(cell) => setHover(cell)}
-                  onCell={onOwnCell}
-                  cellClass={ownCellClass}
-                  cellContent={ownCellContent}
-                />
-              <p className="text-[11px] text-muted">
+              <div
+                className={[
+                  'flex min-h-0 w-full items-center justify-center',
+                  immersive ? 'flex-1' : '',
+                ].join(' ')}
+              >
+                <div
+                  className={
+                    immersive
+                      ? 'aspect-square h-full max-h-full w-auto max-w-full'
+                      : undefined
+                  }
+                >
+                  <GridBoard
+                    label="Your fleet placement"
+                    disabled={Boolean(myBoard?.ready)}
+                    onHover={(cell) => setHover(cell)}
+                    onCell={onOwnCell}
+                    cellClass={ownCellClass}
+                    cellContent={ownCellContent}
+                    fill={immersive}
+                  />
+                </div>
+              </div>
+              <p className="shrink-0 text-[11px] text-muted">
                 Opponent:{' '}
                 {theirBoard?.ready ? 'locked in' : 'still placing…'}
               </p>
@@ -585,44 +626,92 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
           ) : (
             <div
               className={[
-                'mt-3 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr]',
-                immersive ? 'min-h-0 flex-1 content-center' : '',
+                'mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-4',
+                immersive
+                  ? 'min-h-0 flex-1 items-stretch'
+                  : '',
               ].join(' ')}
             >
-              <div className="flex flex-col items-center gap-2">
-                <FleetVitalsBar
-                  label="Your waters"
-                  vitals={boardVitals(myBoard)}
-                />
-                <GridBoard
-                  label="Your waters"
-                  disabled
-                  cellClass={ownCellClass}
-                  cellContent={ownCellContent}
-                />
+              <div
+                className={[
+                  'flex min-h-0 flex-col items-center gap-2',
+                  immersive ? 'h-full' : '',
+                ].join(' ')}
+              >
+                <div className="w-full max-w-[min(100%,17rem)] shrink-0 sm:max-w-none">
+                  <FleetVitalsBar
+                    label="Your waters"
+                    vitals={boardVitals(myBoard)}
+                  />
+                </div>
+                <div
+                  className={[
+                    'flex min-h-0 w-full items-center justify-center',
+                    immersive ? 'flex-1' : '',
+                  ].join(' ')}
+                >
+                  <div
+                    className={
+                      immersive
+                        ? 'aspect-square h-full max-h-full w-auto max-w-full'
+                        : undefined
+                    }
+                  >
+                    <GridBoard
+                      label="Your waters"
+                      disabled
+                      cellClass={ownCellClass}
+                      cellContent={ownCellContent}
+                      fill={immersive}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="order-first flex items-end justify-center self-center pb-1 sm:order-none sm:pb-2">
+              <div className="order-first flex shrink-0 items-center justify-center self-center sm:order-none">
                 <CattleshipCoach
                   species={myPet}
                   quote={coachQuote}
                   quoteKey={coachQuoteKey}
                 />
               </div>
-              <div className="flex flex-col items-center gap-2">
-                <FleetVitalsBar
-                  label="Enemy waters"
-                  vitals={boardVitals(theirBoard)}
-                />
-                <GridBoard
-                  label="Enemy waters"
-                  disabled={!canShoot}
-                  onCell={shoot}
-                  cellClass={enemyCellClass}
-                />
+              <div
+                className={[
+                  'flex min-h-0 flex-col items-center gap-2',
+                  immersive ? 'h-full' : '',
+                ].join(' ')}
+              >
+                <div className="w-full max-w-[min(100%,17rem)] shrink-0 sm:max-w-none">
+                  <FleetVitalsBar
+                    label="Enemy waters"
+                    vitals={boardVitals(theirBoard)}
+                  />
+                </div>
+                <div
+                  className={[
+                    'flex min-h-0 w-full items-center justify-center',
+                    immersive ? 'flex-1' : '',
+                  ].join(' ')}
+                >
+                  <div
+                    className={
+                      immersive
+                        ? 'aspect-square h-full max-h-full w-auto max-w-full'
+                        : undefined
+                    }
+                  >
+                    <GridBoard
+                      label="Enemy waters"
+                      disabled={!canShoot}
+                      onCell={shoot}
+                      cellClass={enemyCellClass}
+                      fill={immersive}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </ArcadeStage>
   )
