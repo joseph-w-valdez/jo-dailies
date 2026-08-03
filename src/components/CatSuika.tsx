@@ -1300,12 +1300,13 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
       const nextTier = a.tier + 1
       const mid = createPiece(nextTier, (ta.x + tb.x) / 2, (ta.y + tb.y) / 2)
       scoreBonusRef.current += SUIKA_TIERS[nextTier]?.score ?? nextTier + 1
-      return [
+      const next: LocalPiece[] = [
         ...prev.map((p) =>
           p.id === idA || p.id === idB ? { ...p, merging: true } : p,
         ),
         mid,
-      ].filter((p) => !p.merging)
+      ]
+      return next.filter((p) => !p.merging)
     })
   }, [])
 

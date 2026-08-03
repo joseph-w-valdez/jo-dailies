@@ -40,7 +40,7 @@ import { petIdleSrc } from '../lib/petAssets'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 
-const CAT_THEME_BY_ICON = new Map(
+const CAT_THEME_BY_ICON = new Map<string, { src: string; color: string }>(
   JENGA_CAT_THEMES.map((theme) => [
     theme.icon,
     { src: petIdleSrc(theme.icon), color: theme.color },
