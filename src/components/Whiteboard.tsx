@@ -110,7 +110,7 @@ export function Whiteboard() {
   const [panelCollapsed, setPanelCollapsed] = useState(() => loadPanelCollapsed())
   const [tool, setTool] = useState<WhiteboardTool>('pen')
   const [color, setColor] = useState<string>(WHITEBOARD_COLORS[0])
-  const [sizeWidth, setSizeWidth] = useState(WHITEBOARD_SIZES[1].width)
+  const [sizeWidth, setSizeWidth] = useState<number>(WHITEBOARD_SIZES[1].width)
   const [confirmClear, setConfirmClear] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
