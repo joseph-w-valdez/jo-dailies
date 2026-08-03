@@ -6,6 +6,7 @@ export type WhiteboardTool =
   | 'rect'
   | 'ellipse'
   | 'fill'
+  | 'text'
 
 export interface WhiteboardPoint {
   x: number
@@ -15,18 +16,25 @@ export interface WhiteboardPoint {
 export interface WhiteboardStroke {
   id: string
   tool: WhiteboardTool
-  /** CSS color for ink tools; ignored for erase. */
+  /** CSS color for ink / text; ignored for erase. */
   color: string
-  /** Stroke width in CSS px at a 1000px-wide board. */
+  /** Stroke width in CSS px at a 1000px-wide board (also used for eraser size). */
   width: number
   /**
    * pen/erase/highlighter: path points
    * line/rect/ellipse: [start, end]
-   * fill: [{ x, y }] seed
+   * fill / text: [{ x, y }] anchor
    */
   points: WhiteboardPoint[]
   /** For rect/ellipse — paint interior. */
   filled?: boolean
+  /** Text tool content. */
+  text?: string
+  /** Text size in CSS px at a 1000px-wide board. */
+  fontSize?: number
+  /** Text background pill. */
+  background?: boolean
+  backgroundColor?: string
   createdAt: number
 }
 
@@ -38,6 +46,8 @@ interface WhiteboardStore {
 export const WHITEBOARD_KEY = 'jo-dailies:whiteboard:v1'
 export const MAX_WHITEBOARD_STROKES = 200
 export const WHITEBOARD_WIDTH_REF = 1000
+export const WHITEBOARD_TEXT_FONT =
+  '"Segoe Print", "Bradley Hand", "Comic Sans MS", cursive'
 
 export const WHITEBOARD_COLORS = [
   '#111827',
@@ -61,6 +71,12 @@ export const WHITEBOARD_SIZES = [
   { id: 'thick', width: 12 },
 ] as const
 
+export const WHITEBOARD_FONT_SIZES = [
+  { id: 'S', size: 18 },
+  { id: 'M', size: 28 },
+  { id: 'L', size: 42 },
+] as const
+
 export const FREEHAND_TOOLS: WhiteboardTool[] = ['pen', 'erase', 'highlighter']
 export const SHAPE_TOOLS: WhiteboardTool[] = ['line', 'rect', 'ellipse']
 
@@ -72,6 +88,7 @@ const TOOL_SET = new Set<WhiteboardTool>([
   'rect',
   'ellipse',
   'fill',
+  'text',
 ])
 
 const COLOR_SET = new Set<string>(WHITEBOARD_COLORS)
@@ -120,6 +137,9 @@ export function normalizeWhiteboardStroke(
   if (points.length === 0) return null
   const tool = normalizeTool(s.tool)
   if (tool === 'fill' && points.length < 1) return null
+  if (tool === 'text') {
+    if (typeof s.text !== 'string' || !s.text.trim()) return null
+  }
   if (
     (tool === 'line' || tool === 'rect' || tool === 'ellipse') &&
     points.length < 2
@@ -129,12 +149,16 @@ export function normalizeWhiteboardStroke(
   const color = normalizeColor(s.color)
   const width =
     typeof s.width === 'number' && Number.isFinite(s.width) && s.width > 0
-      ? Math.min(48, s.width)
+      ? Math.min(80, s.width)
       : 6
   const createdAt =
     typeof s.createdAt === 'number' && Number.isFinite(s.createdAt)
       ? s.createdAt
       : 0
+  const fontSize =
+    typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) && s.fontSize > 0
+      ? Math.min(96, s.fontSize)
+      : undefined
   return {
     id: s.id,
     tool,
@@ -142,6 +166,12 @@ export function normalizeWhiteboardStroke(
     width,
     points,
     filled: s.filled === true,
+    text: typeof s.text === 'string' ? s.text : undefined,
+    fontSize,
+    background: s.background === true,
+    backgroundColor: s.backgroundColor
+      ? normalizeColor(s.backgroundColor)
+      : undefined,
     createdAt,
   }
 }
@@ -401,6 +431,82 @@ function paintShape(
   }
 }
 
+function paintText(
+  ctx: CanvasRenderingContext2D,
+  stroke: WhiteboardStroke,
+  cssWidth: number,
+  cssHeight: number,
+): void {
+  const text = stroke.text?.trim()
+  if (!text) return
+  const anchor = stroke.points[0]!
+  const scale = cssWidth / WHITEBOARD_WIDTH_REF
+  const fontSize = Math.max(10, (stroke.fontSize ?? 28) * scale)
+  const x = anchor.x * cssWidth
+  const y = anchor.y * cssHeight
+  const lines = text.split('\n')
+  const lineStep = fontSize * 1.15
+  // Uniform inset that grows with text size (S/M/L).
+  const paddingY = Math.max(5, fontSize * 0.28)
+  const paddingX = Math.max(7, fontSize * 0.38)
+
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalAlpha = 1
+  ctx.font = `${fontSize}px ${WHITEBOARD_TEXT_FONT}`
+  ctx.textBaseline = 'alphabetic'
+  ctx.textAlign = 'left'
+
+  let maxWidth = 0
+  let ascent = fontSize * 0.8
+  let descent = fontSize * 0.2
+  let measuredInk = false
+  for (const line of lines) {
+    const metrics = ctx.measureText(line || ' ')
+    maxWidth = Math.max(maxWidth, metrics.width)
+    if (
+      typeof metrics.actualBoundingBoxAscent === 'number' &&
+      typeof metrics.actualBoundingBoxDescent === 'number'
+    ) {
+      if (!measuredInk) {
+        ascent = metrics.actualBoundingBoxAscent
+        descent = metrics.actualBoundingBoxDescent
+        measuredInk = true
+      } else {
+        ascent = Math.max(ascent, metrics.actualBoundingBoxAscent)
+        descent = Math.max(descent, metrics.actualBoundingBoxDescent)
+      }
+    }
+  }
+
+  // Pad around the real glyph ink (not the em square), so top/bottom match.
+  const contentHeight = (lines.length - 1) * lineStep + ascent + descent
+  const boxW = maxWidth + paddingX * 2
+  const boxH = contentHeight + paddingY * 2
+  // First-line ink top sits at `y`; alphabetic baseline is `y + ascent`.
+  const baseline0 = y + ascent
+
+  if (stroke.background) {
+    const bg = stroke.backgroundColor || '#fef3c7'
+    ctx.fillStyle = bg
+    const r = Math.min(10, fontSize * 0.3)
+    const left = x - paddingX
+    const top = y - paddingY
+    ctx.beginPath()
+    ctx.moveTo(left + r, top)
+    ctx.arcTo(left + boxW, top, left + boxW, top + boxH, r)
+    ctx.arcTo(left + boxW, top + boxH, left, top + boxH, r)
+    ctx.arcTo(left, top + boxH, left, top, r)
+    ctx.arcTo(left, top, left + boxW, top, r)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  ctx.fillStyle = stroke.color
+  lines.forEach((line, index) => {
+    ctx.fillText(line, x, baseline0 + index * lineStep)
+  })
+}
+
 export function paintWhiteboardStroke(
   ctx: CanvasRenderingContext2D,
   stroke: WhiteboardStroke,
@@ -410,11 +516,12 @@ export function paintWhiteboardStroke(
   if (stroke.points.length === 0 || cssWidth <= 0 || cssHeight <= 0) return
   ctx.save()
   if (stroke.tool === 'fill') {
-    // Flood fill uses device pixels; temporarily reset transform.
     const transform = ctx.getTransform()
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     floodFillCanvas(ctx, stroke.points[0]!, stroke.color)
     ctx.setTransform(transform)
+  } else if (stroke.tool === 'text') {
+    paintText(ctx, stroke, cssWidth, cssHeight)
   } else if (
     stroke.tool === 'pen' ||
     stroke.tool === 'erase' ||

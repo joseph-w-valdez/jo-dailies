@@ -13,7 +13,9 @@ import {
   redrawWhiteboard,
   SHAPE_TOOLS,
   WHITEBOARD_COLORS,
+  WHITEBOARD_FONT_SIZES,
   WHITEBOARD_SIZES,
+  WHITEBOARD_TEXT_FONT,
   type WhiteboardPoint,
   type WhiteboardStroke,
   type WhiteboardTool,
@@ -67,6 +69,7 @@ function markerCursor(ink: string): string {
 function canvasCursor(tool: WhiteboardTool, color: string): string {
   if (tool === 'erase') return ERASER_CURSOR
   if (tool === 'fill') return BUCKET_CURSOR
+  if (tool === 'text') return 'text'
   if (SHAPE_TOOLS.includes(tool)) return 'crosshair'
   return markerCursor(color)
 }
@@ -196,11 +199,21 @@ export function Whiteboard() {
   const [tool, setTool] = useState<WhiteboardTool>('pen')
   const [color, setColor] = useState<string>(WHITEBOARD_COLORS[0])
   const [sizeWidth, setSizeWidth] = useState<number>(WHITEBOARD_SIZES[1].width)
+  const [fontSize, setFontSize] = useState<number>(WHITEBOARD_FONT_SIZES[1].size)
   const [shapeFilled, setShapeFilled] = useState(true)
+  const [textBackground, setTextBackground] = useState(true)
+  const [bgColor, setBgColor] = useState<string>('#fef3c7')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [textDraft, setTextDraft] = useState<{
+    id: string
+    x: number
+    y: number
+    value: string
+  } | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const textInputRef = useRef<HTMLTextAreaElement>(null)
   const strokesRef = useRef(strokes)
   const livePeersRef = useRef(livePeers)
   const draftRef = useRef<WhiteboardStroke | null>(null)
@@ -209,14 +222,23 @@ export function Whiteboard() {
   const toolRef = useRef(tool)
   const colorRef = useRef(color)
   const sizeWidthRef = useRef(sizeWidth)
+  const fontSizeRef = useRef(fontSize)
   const shapeFilledRef = useRef(shapeFilled)
+  const textBackgroundRef = useRef(textBackground)
+  const bgColorRef = useRef(bgColor)
+  const textDraftRef = useRef(textDraft)
+  const ignoreTextBlurRef = useRef(false)
 
   strokesRef.current = strokes
   livePeersRef.current = livePeers
   toolRef.current = tool
   colorRef.current = color
   sizeWidthRef.current = sizeWidth
+  fontSizeRef.current = fontSize
   shapeFilledRef.current = shapeFilled
+  textBackgroundRef.current = textBackground
+  bgColorRef.current = bgColor
+  textDraftRef.current = textDraft
 
   useEffect(() => {
     savePanelCollapsed(panelCollapsed)
@@ -307,6 +329,37 @@ export function Whiteboard() {
     paintAll()
   }, [strokes, livePeers, panelCollapsed])
 
+  useEffect(() => {
+    if (!textDraft) return
+    ignoreTextBlurRef.current = true
+    const id = window.setTimeout(() => {
+      textInputRef.current?.focus()
+      ignoreTextBlurRef.current = false
+    }, 30)
+    return () => window.clearTimeout(id)
+  }, [textDraft?.id])
+
+  const commitTextDraft = () => {
+    const current = textDraftRef.current
+    if (!current) return
+    const value = current.value.trim()
+    textDraftRef.current = null
+    setTextDraft(null)
+    if (!value) return
+    appendStroke({
+      id: current.id,
+      tool: 'text',
+      color: colorRef.current,
+      width: sizeWidthRef.current,
+      points: [{ x: current.x, y: current.y }],
+      text: value,
+      fontSize: fontSizeRef.current,
+      background: textBackgroundRef.current,
+      backgroundColor: bgColorRef.current,
+      createdAt: Date.now(),
+    })
+  }
+
   const pointFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return null
@@ -323,6 +376,24 @@ export function Whiteboard() {
     const point = pointFromEvent(event)
     if (!point) return
     const activeTool = toolRef.current
+
+    if (textDraftRef.current) {
+      commitTextDraft()
+      return
+    }
+
+    if (activeTool === 'text') {
+      event.preventDefault()
+      const draft = {
+        id: newWhiteboardStrokeId(),
+        x: point.x,
+        y: point.y,
+        value: '',
+      }
+      textDraftRef.current = draft
+      setTextDraft(draft)
+      return
+    }
 
     if (activeTool === 'fill') {
       appendStroke({
@@ -407,7 +478,15 @@ export function Whiteboard() {
     tool !== 'erase' &&
     (FREEHAND_TOOLS.includes(tool) ||
       SHAPE_TOOLS.includes(tool) ||
-      tool === 'fill')
+      tool === 'fill' ||
+      tool === 'text')
+
+  const brushSizes =
+    tool === 'text'
+      ? null
+      : tool === 'fill'
+        ? null
+        : WHITEBOARD_SIZES
 
   return (
     <section className="rounded-2xl border border-border bg-surface-raised p-4">
@@ -504,6 +583,12 @@ export function Whiteboard() {
               >
                 Fill
               </ToolButton>
+              <ToolButton
+                active={tool === 'text'}
+                onClick={() => setTool('text')}
+              >
+                Text
+              </ToolButton>
             </div>
 
             {(tool === 'rect' || tool === 'ellipse') && (
@@ -518,9 +603,81 @@ export function Whiteboard() {
               </label>
             )}
 
-            {tool !== 'fill' ? (
+            {tool === 'text' ? (
+              <>
+                <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
+                  {WHITEBOARD_FONT_SIZES.map((size) => (
+                    <button
+                      key={size.id}
+                      type="button"
+                      onClick={() => setFontSize(size.size)}
+                      className={[
+                        'rounded-lg px-2.5 py-1 text-xs font-medium transition',
+                        fontSize === size.size
+                          ? 'bg-white/10 text-white'
+                          : 'text-muted hover:text-white',
+                      ].join(' ')}
+                    >
+                      {size.id}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={textBackground}
+                    onChange={(event) => setTextBackground(event.target.checked)}
+                    className="size-3.5 accent-golden"
+                  />
+                  Background
+                </label>
+                {textBackground ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-muted">
+                      bg
+                    </span>
+                    {['#fef3c7', '#ffffff', '#fce7f3', '#dbeafe', '#111827'].map(
+                      (swatch) => (
+                        <button
+                          key={swatch}
+                          type="button"
+                          aria-label={`Background ${swatch}`}
+                          onClick={() => setBgColor(swatch)}
+                          className={[
+                            'size-5 rounded-full border-2 transition',
+                            bgColor.toLowerCase() === swatch
+                              ? 'border-white scale-110'
+                              : 'border-transparent opacity-80 hover:opacity-100',
+                          ].join(' ')}
+                          style={{ backgroundColor: swatch }}
+                        />
+                      ),
+                    )}
+                    <label
+                      className="relative size-5 cursor-pointer overflow-hidden rounded-full border border-border"
+                      title="Custom background"
+                    >
+                      <span
+                        className="absolute inset-0"
+                        style={{ backgroundColor: bgColor }}
+                      />
+                      <input
+                        type="color"
+                        value={
+                          /^#[0-9a-fA-F]{6}$/.test(bgColor) ? bgColor : '#fef3c7'
+                        }
+                        onChange={(event) => setBgColor(event.target.value)}
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            {brushSizes ? (
               <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
-                {WHITEBOARD_SIZES.map((size) => (
+                {brushSizes.map((size) => (
                   <button
                     key={size.id}
                     type="button"
@@ -631,6 +788,47 @@ export function Whiteboard() {
               onPointerUp={endStroke}
               onPointerCancel={endStroke}
             />
+            {textDraft ? (
+              <textarea
+                ref={textInputRef}
+                value={textDraft.value}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setTextDraft((current) => {
+                    if (!current) return current
+                    const next = { ...current, value }
+                    textDraftRef.current = next
+                    return next
+                  })
+                }}
+                onBlur={() => {
+                  if (ignoreTextBlurRef.current) return
+                  commitTextDraft()
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    textDraftRef.current = null
+                    setTextDraft(null)
+                  } else if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    commitTextDraft()
+                  }
+                }}
+                placeholder="Type here…"
+                className="absolute z-10 min-h-0 min-w-[4rem] max-w-[70%] resize-none rounded-lg border-2 border-sky-400/80 bg-amber-50 px-2 py-1.5 text-sm leading-[1.15] text-gray-900 outline-none shadow-lg"
+                style={{
+                  left: `${textDraft.x * 100}%`,
+                  top: `${textDraft.y * 100}%`,
+                  color,
+                  backgroundColor: textBackground ? bgColor : '#fffbeb',
+                  fontFamily: WHITEBOARD_TEXT_FONT,
+                  fontSize: `${Math.max(14, fontSize * 0.9)}px`,
+                  padding: `${Math.max(5, fontSize * 0.28 * 0.9)}px ${Math.max(7, fontSize * 0.38 * 0.9)}px`,
+                  transform: 'translate(0, 0)',
+                }}
+              />
+            ) : null}
           </div>
         </>
       ) : null}
