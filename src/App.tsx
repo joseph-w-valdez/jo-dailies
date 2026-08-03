@@ -10,7 +10,9 @@ import { NoticeRail } from './components/NoticeRail'
 import { PetCare } from './components/PetCare'
 import { ScrollTopButton } from './components/ScrollTopButton'
 import { StreakBar } from './components/StreakBar'
+import { TogetherTodos } from './components/TogetherTodos'
 import { Watchlist } from './components/Watchlist'
+import { Whiteboard } from './components/Whiteboard'
 import { GAMES, GAME_COUNT } from './games'
 import { useDailies } from './hooks/useDailies'
 import { useFirebaseAuth } from './hooks/firebaseAuthContext'
@@ -161,6 +163,10 @@ function Dashboard() {
               onToggle={(entryId) => toggle(selectedKey, entryId)}
             />
           </div>
+
+          <TogetherTodos />
+
+          <Whiteboard />
 
           <PetCare valorantStoreDone={isDone(today, 'valorant-store')} />
         </div>
