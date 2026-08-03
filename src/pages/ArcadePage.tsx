@@ -9,8 +9,27 @@ const Jenga = lazy(() =>
 const CatSuika = lazy(() =>
   import('../components/CatSuika').then((m) => ({ default: m.CatSuika })),
 )
+const CatConnect4 = lazy(() =>
+  import('../components/CatConnect4').then((m) => ({ default: m.CatConnect4 })),
+)
+const CatBattleship = lazy(() =>
+  import('../components/CatBattleship').then((m) => ({
+    default: m.CatBattleship,
+  })),
+)
 
-type ArcadeGame = 'jenga' | 'suika'
+type ArcadeGame = 'jenga' | 'suika' | 'connect4' | 'battleship'
+
+const TILES: {
+  id: ArcadeGame
+  title: string
+  blurb: string
+}[] = [
+  { id: 'jenga', title: 'Jenga', blurb: 'Shared tower' },
+  { id: 'suika', title: 'Suika', blurb: 'Cat merge' },
+  { id: 'connect4', title: 'Connect Four', blurb: 'Shared drops' },
+  { id: 'battleship', title: 'Cattleship', blurb: 'Fog duel' },
+]
 
 export function ArcadePage() {
   const { trailEnabled } = useCursorTrailSetting()
@@ -31,8 +50,12 @@ export function ArcadePage() {
           >
             {active === 'jenga' ? (
               <Jenga onClose={() => setActive(null)} />
-            ) : (
+            ) : active === 'suika' ? (
               <CatSuika onClose={() => setActive(null)} />
+            ) : active === 'connect4' ? (
+              <CatConnect4 onClose={() => setActive(null)} />
+            ) : (
+              <CatBattleship onClose={() => setActive(null)} />
             )}
           </Suspense>
         ) : (
@@ -42,30 +65,21 @@ export function ArcadePage() {
               Pick a game — nothing loads until you open it.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setActive('jenga')}
-                className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-white/30 hover:bg-surface"
-              >
-                <span className="block text-base font-semibold text-white">
-                  Jenga
-                </span>
-                <span className="mt-1 block text-[11px] text-muted">
-                  Shared tower
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActive('suika')}
-                className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-white/30 hover:bg-surface"
-              >
-                <span className="block text-base font-semibold text-white">
-                  Suika
-                </span>
-                <span className="mt-1 block text-[11px] text-muted">
-                  Cat merge
-                </span>
-              </button>
+              {TILES.map((tile) => (
+                <button
+                  key={tile.id}
+                  type="button"
+                  onClick={() => setActive(tile.id)}
+                  className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-white/30 hover:bg-surface"
+                >
+                  <span className="block text-base font-semibold text-white">
+                    {tile.title}
+                  </span>
+                  <span className="mt-1 block text-[11px] text-muted">
+                    {tile.blurb}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         )}

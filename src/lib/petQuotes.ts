@@ -591,3 +591,48 @@ export function petQuote(
 ): string {
   return petQuoteDetailed(species, needs, avoid, source, valorantStoreDone).text
 }
+
+const CATTLESHIP_HIT_QUOTES = [
+  'Sink em good!',
+  'Direct hit — nice shot!',
+  'Claw marks on that hull!',
+  'Boom! Right on the whiskers!',
+  'They’re feeling that one!',
+] as const
+
+const CATTLESHIP_SINK_QUOTES = [
+  'Ship down! Sink em good!',
+  'One less boat in the sea!',
+  'Splash! That’s a sink!',
+  'Fleet’s looking thinner…',
+  'They’ll need a bigger litter box!',
+] as const
+
+const CATTLESHIP_MISS_QUOTES = [
+  "Don't worry, there's more fish in the sea...",
+  'Splash — just water. Try again!',
+  'Missed! The ocean is big.',
+  'Empty waves… next one’s yours.',
+  'A polite miss. Reload those paws.',
+] as const
+
+function pickExcitedLine(
+  pool: readonly string[],
+  avoid?: string,
+): PetQuoteResult {
+  const choices = avoid ? pool.filter((t) => t !== avoid) : [...pool]
+  const text = (choices.length > 0 ? choices : pool)[
+    Math.floor(Math.random() * (choices.length > 0 ? choices.length : pool.length))
+  ]!
+  return { text, mood: 'excited' }
+}
+
+/** Coach lines after you fire in Cattleship. */
+export function cattleshipShotQuote(
+  kind: 'hit' | 'miss' | 'sink',
+  avoid?: string,
+): PetQuoteResult {
+  if (kind === 'miss') return pickExcitedLine(CATTLESHIP_MISS_QUOTES, avoid)
+  if (kind === 'sink') return pickExcitedLine(CATTLESHIP_SINK_QUOTES, avoid)
+  return pickExcitedLine(CATTLESHIP_HIT_QUOTES, avoid)
+}
