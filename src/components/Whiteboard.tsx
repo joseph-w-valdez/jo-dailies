@@ -9,6 +9,7 @@ import { useWhiteboard } from '../hooks/useWhiteboard'
 import {
   FREEHAND_TOOLS,
   MAX_TEXT_SCALE,
+  MAX_WHITEBOARD_STROKES,
   MIN_TEXT_SCALE,
   measureTextStrokeLayout,
   newWhiteboardStrokeId,
@@ -886,7 +887,7 @@ export function Whiteboard() {
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="text-[11px] text-muted tabular-nums">
-            {strokes.length} mark{strokes.length === 1 ? '' : 's'}
+            {strokes.length}/{MAX_WHITEBOARD_STROKES}
             {liveEnabled ? ' · live' : ''}
           </span>
           <button
@@ -923,7 +924,8 @@ export function Whiteboard() {
           <p className="mt-1 text-xs text-muted">
             {liveEnabled
               ? 'Doodle together — ink streams live while you draw. Tap a text box to move, flip, rotate, resize, or delete it.'
-              : 'Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it.'}
+              : 'Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it.'}{' '}
+            Oldest marks drop off when you hit {MAX_WHITEBOARD_STROKES}.
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
