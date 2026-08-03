@@ -90,7 +90,11 @@ export function useSharedJenga() {
             prev.version === remote.version &&
             prev.updatedAt === remote.updatedAt &&
             prev.status === remote.status &&
-            prev.turnUid === remote.turnUid
+            prev.turnUid === remote.turnUid &&
+            prev.endReason === remote.endReason &&
+            prev.explodeCount === remote.explodeCount &&
+            prev.meteorCount === remote.meteorCount &&
+            prev.roundId === remote.roundId
           ) {
             return prev
           }
@@ -164,16 +168,32 @@ export function useSharedJenga() {
     }
   }, [user])
 
-  const commitGame = useCallback(async (next: JengaGameState) => {
-    pendingVersionRef.current = next.version
-    setGame(next)
-    saveJengaLocal(next)
-    try {
-      await setDoc(gameDocRef(), next)
-    } catch (error: unknown) {
-      console.error('Could not save jenga', error)
-    }
-  }, [])
+  const commitGame = useCallback(
+    async (
+      next:
+        | JengaGameState
+        | ((prev: JengaGameState) => JengaGameState),
+    ) => {
+      const base = typeof next === 'function' ? next(gameRef.current) : next
+      // Always advance past the latest known version so rapid chaos clicks
+      // (meteor → explode) can't clobber each other with the same version.
+      const resolved: JengaGameState = {
+        ...base,
+        version: Math.max(base.version, gameRef.current.version + 1),
+        updatedAt: Date.now(),
+      }
+      gameRef.current = resolved
+      pendingVersionRef.current = resolved.version
+      setGame(resolved)
+      saveJengaLocal(resolved)
+      try {
+        await setDoc(gameDocRef(), resolved)
+      } catch (error: unknown) {
+        console.error('Could not save jenga', error)
+      }
+    },
+    [],
+  )
 
   const resetGame = useCallback(async () => {
     const turnUid = user?.uid ?? gameRef.current.turnUid

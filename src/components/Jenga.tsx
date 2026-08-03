@@ -822,6 +822,8 @@ function JengaWorld({
     }
     return out
   }, [culledBrickIds, game.bricks])
+  const readBricksRef = useRef(readBricks)
+  readBricksRef.current = readBricks
 
   const beginSettle = useCallback(
     (movedId: string | null) => {
@@ -971,7 +973,7 @@ function JengaWorld({
       setSelectedId(null)
       setOrbitEnabled(true)
       clearGhost()
-      const aim = averageBrickCenter(readBricks())
+      const aim = averageBrickCenter(readBricksRef.current())
       setMeteorStrikes((prev) =>
         prev.some((s) => s.id === target)
           ? prev
@@ -983,7 +985,7 @@ function JengaWorld({
     return () => {
       cancelled = true
     }
-  }, [canPlay, clearGhost, game.meteorCount, keepPhysics, readBricks])
+  }, [canPlay, clearGhost, game.meteorCount, keepPhysics])
 
   const onMeteorImpact = useCallback(
     (origin: { x: number; y: number; z: number }) => {
@@ -1399,33 +1401,33 @@ export function Jenga() {
     setExplodeChaos(true)
     setChaosKind('explode')
     if (!uid) return
-    void commitGame({
-      ...game,
+    void commitGame((g) => ({
+      ...g,
       status: 'collapsed',
       endReason: 'explode',
       winnerUid:
-        game.status === 'playing' ? nextTurnUid(uid) : game.winnerUid,
-      explodeCount: game.explodeCount + 1,
+        g.status === 'playing' ? nextTurnUid(uid) : g.winnerUid,
+      explodeCount: g.explodeCount + 1,
       updatedAt: Date.now(),
-      version: game.version + 1,
-    })
-  }, [commitGame, game, uid])
+      version: g.version + 1,
+    }))
+  }, [commitGame, uid])
 
   const fireMeteor = useCallback(() => {
     setExplodeChaos(true)
     setChaosKind('meteor')
     if (!uid) return
-    void commitGame({
-      ...game,
+    void commitGame((g) => ({
+      ...g,
       status: 'collapsed',
       endReason: 'meteor',
       winnerUid:
-        game.status === 'playing' ? nextTurnUid(uid) : game.winnerUid,
-      meteorCount: game.meteorCount + 1,
+        g.status === 'playing' ? nextTurnUid(uid) : g.winnerUid,
+      meteorCount: g.meteorCount + 1,
       updatedAt: Date.now(),
-      version: game.version + 1,
-    })
-  }, [commitGame, game, uid])
+      version: g.version + 1,
+    }))
+  }, [commitGame, uid])
 
   const confirmFirstExplode = useCallback(() => {
     setConfirmExplode(false)
