@@ -5,7 +5,7 @@ const LINKS = [
   { to: '/', label: 'Home', end: true },
   {
     to: '/arcade',
-    label: 'UNDER CONSTRUCTION. DO NOT CLICK THIS IF U SEE IT JOHA',
+    label: 'Arcade',
     end: false,
   },
 ] as const
