@@ -90,7 +90,6 @@ export function ScrapbookPage() {
         <ScrapbookViewer
           entries={entries}
           index={selectedIndex}
-          onChangeIndex={setSelectedIndex}
           onClose={() => setSelectedIndex(null)}
           onDelete={handleDelete}
         />

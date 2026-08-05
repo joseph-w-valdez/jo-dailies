@@ -7,7 +7,6 @@ import type { ScrapbookEntry } from "../types";
 interface ScrapbookViewerProps {
   entries: ScrapbookEntry[];
   index: number;
-  onChangeIndex: (index: number) => void;
   onClose: () => void;
   onDelete: (entry: ScrapbookEntry) => void;
 }
@@ -15,7 +14,6 @@ interface ScrapbookViewerProps {
 export function ScrapbookViewer({
   entries,
   index,
-  onChangeIndex,
   onClose,
   onDelete,
 }: ScrapbookViewerProps) {
