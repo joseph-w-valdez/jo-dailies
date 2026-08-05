@@ -1147,16 +1147,30 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                   </span>
                                 ) : null}
                               </div>
-                              <span
-                                className="shrink-0 self-start text-[11px] font-medium tabular-nums text-muted"
-                                title={
-                                  entry.kind === 'bust'
-                                    ? undefined
-                                    : 'Score after this move'
-                                }
-                              >
-                                {entry.kind === 'bust' ? 'lol' : entry.total}
-                              </span>
+                              <div className="flex shrink-0 items-center gap-1 self-start">
+                                <img
+                                  src={catForEntry(entry.at, entry.uid)}
+                                  alt=""
+                                  aria-hidden
+                                  className="scrabble-move-cat h-5 w-5 shrink-0 select-none object-contain"
+                                  style={{
+                                    animationDelay: `${
+                                      wiggleDelay(entry.at, entry.uid)
+                                    }ms`,
+                                  }}
+                                  draggable={false}
+                                />
+                                <span
+                                  className="text-[11px] font-medium tabular-nums text-muted"
+                                  title={
+                                    entry.kind === 'bust'
+                                      ? undefined
+                                      : 'Score after this move'
+                                  }
+                                >
+                                  {entry.kind === 'bust' ? 'lol' : entry.total}
+                                </span>
+                              </div>
                             </div>
                             {entry.kind === 'play' &&
                             entry.definitions.length > 0 ? (

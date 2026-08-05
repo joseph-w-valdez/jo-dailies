@@ -23,8 +23,30 @@ export function ScrapbookPage() {
   }
 
   async function handleDelete(entry: ScrapbookEntry) {
+    const deletedIndex = entries.findIndex((item) => item.id === entry.id);
+
     await deleteSnapshot(entry);
-    setSelectedIndex(null);
+
+    setEntries((current) => current.filter((item) => item.id !== entry.id));
+
+    setSelectedIndex((currentIndex) => {
+      if (currentIndex === null) {
+        return null;
+      }
+
+      // If nothing remains
+      if (entries.length <= 1) {
+        return null;
+      }
+
+      // If deleting the last item, move back one
+      if (deletedIndex >= entries.length - 1) {
+        return deletedIndex - 1;
+      }
+
+      // Otherwise stay at same index because the next item slides in
+      return deletedIndex;
+    });
   }
 
   return (
@@ -88,6 +110,7 @@ export function ScrapbookPage() {
 
       {selectedIndex !== null && (
         <ScrapbookViewer
+          onChangeIndex={setSelectedIndex}
           entries={entries}
           index={selectedIndex}
           onClose={() => setSelectedIndex(null)}
