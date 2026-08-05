@@ -1,30 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { CatWallpaper, WALLPAPER_ICONS } from './components/CatWallpaper'
-import { CursorTrail, useCursorTrailSetting } from './components/CursorTrail'
-import { DailyCard } from './components/DailyCard'
-import { DayEditor } from './components/DayEditor'
-import { FirebaseAuthProvider } from './components/FirebaseAuthProvider'
-import { GameFrame } from './components/GameFrame'
-import { MonthCalendar } from './components/MonthCalendar'
-import { NoticeRail } from './components/NoticeRail'
-import { PetCare } from './components/PetCare'
-import { ScrollTopButton } from './components/ScrollTopButton'
-import { StreakBar } from './components/StreakBar'
-import { TogetherTodos } from './components/TogetherTodos'
-import { Watchlist } from './components/Watchlist'
-import { Whiteboard } from './components/Whiteboard'
-import { AppHeader } from './components/AppHeader'
-import { ArcadePage } from './pages/ArcadePage'
-import { GAMES, GAME_COUNT } from './games'
-import { useDailies } from './hooks/useDailies'
-import { useFirebaseAuth } from './hooks/firebaseAuthContext'
-import { useSharedTheme } from './hooks/useSharedTheme'
-import { useShellLayout } from './hooks/useShellLayout'
-import { parseKey } from './lib/date'
-import { pickLoadingFlavor } from './lib/loadingFlavor'
-import { petIdleSrc } from './lib/petAssets'
-import type { GameId } from './types'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CatWallpaper, WALLPAPER_ICONS } from "./components/CatWallpaper";
+import { CursorTrail, useCursorTrailSetting } from "./components/CursorTrail";
+import { DailyCard } from "./components/DailyCard";
+import { DayEditor } from "./components/DayEditor";
+import { FirebaseAuthProvider } from "./components/FirebaseAuthProvider";
+import { GameFrame } from "./components/GameFrame";
+import { MonthCalendar } from "./components/MonthCalendar";
+import { NoticeRail } from "./components/NoticeRail";
+import { PetCare } from "./components/PetCare";
+import { ScrollTopButton } from "./components/ScrollTopButton";
+import { StreakBar } from "./components/StreakBar";
+import { TogetherTodos } from "./components/TogetherTodos";
+import { Watchlist } from "./components/Watchlist";
+import { Whiteboard } from "./components/Whiteboard";
+import { AppHeader } from "./components/AppHeader";
+import { ArcadePage } from "./pages/ArcadePage";
+import { GAMES, GAME_COUNT } from "./games";
+import { useDailies } from "./hooks/useDailies";
+import { useFirebaseAuth } from "./hooks/firebaseAuthContext";
+import { useSharedTheme } from "./hooks/useSharedTheme";
+import { useShellLayout } from "./hooks/useShellLayout";
+import { parseKey } from "./lib/date";
+import { pickLoadingFlavor } from "./lib/loadingFlavor";
+import { petIdleSrc } from "./lib/petAssets";
+import type { GameId } from "./types";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ScrapbookPage } from "./pages/ScrapbookPage";
 
 function HomePage() {
   const {
@@ -37,61 +38,61 @@ function HomePage() {
     openExternal,
     isDone,
     dayCount,
-  } = useDailies()
-  const { trailEnabled, setTrailEnabled } = useCursorTrailSetting()
-  const { theme, setTheme } = useSharedTheme()
-  const { shellRef, leftBySide, rightBySide } = useShellLayout()
+  } = useDailies();
+  const { trailEnabled, setTrailEnabled } = useCursorTrailSetting();
+  const { theme, setTheme } = useSharedTheme();
+  const { shellRef, leftBySide, rightBySide } = useShellLayout();
 
-  const todayDate = parseKey(today)
-  const [viewYear, setViewYear] = useState(todayDate.getFullYear())
-  const [viewMonth, setViewMonth] = useState(todayDate.getMonth())
-  const [selectedKey, setSelectedKey] = useState(today)
-  const [framedGameId, setFramedGameId] = useState<GameId | null>(null)
-  const [frameSession, setFrameSession] = useState(0)
+  const todayDate = parseKey(today);
+  const [viewYear, setViewYear] = useState(todayDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(todayDate.getMonth());
+  const [selectedKey, setSelectedKey] = useState(today);
+  const [framedGameId, setFramedGameId] = useState<GameId | null>(null);
+  const [frameSession, setFrameSession] = useState(0);
 
   // When the Pacific day rolls over, keep calendar + Edit day on "today" if
   // that's what you were viewing (including jumping the month when needed).
-  const prevTodayRef = useRef(today)
+  const prevTodayRef = useRef(today);
   useEffect(() => {
-    if (prevTodayRef.current === today) return
-    const previousToday = prevTodayRef.current
-    prevTodayRef.current = today
-    if (selectedKey !== previousToday) return
-    setSelectedKey(today)
-    const d = parseKey(today)
-    setViewYear(d.getFullYear())
-    setViewMonth(d.getMonth())
-  }, [today, selectedKey])
+    if (prevTodayRef.current === today) return;
+    const previousToday = prevTodayRef.current;
+    prevTodayRef.current = today;
+    if (selectedKey !== previousToday) return;
+    setSelectedKey(today);
+    const d = parseKey(today);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+  }, [today, selectedKey]);
 
-  const framedGame = GAMES.find((g) => g.id === framedGameId) ?? null
+  const framedGame = GAMES.find((g) => g.id === framedGameId) ?? null;
 
   const shiftMonth = (delta: number) => {
-    const d = new Date(viewYear, viewMonth + delta, 1)
-    setViewYear(d.getFullYear())
-    setViewMonth(d.getMonth())
-  }
+    const d = new Date(viewYear, viewMonth + delta, 1);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+  };
 
   const handleOpen = (gameId: GameId) => {
-    const game = GAMES.find((g) => g.id === gameId)
-    if (!game) return
+    const game = GAMES.find((g) => g.id === gameId);
+    if (!game) return;
 
-    openAndComplete(gameId)
+    openAndComplete(gameId);
 
     if (game.embeddable) {
-      setFrameSession((n) => n + 1)
-      setFramedGameId(gameId)
-      return
+      setFrameSession((n) => n + 1);
+      setFramedGameId(gameId);
+      return;
     }
 
-    openExternal(gameId)
-    setFramedGameId(null)
-  }
+    openExternal(gameId);
+    setFramedGameId(null);
+  };
 
   const gridClass = rightBySide
-    ? 'grid-cols-[400px_minmax(0,64rem)_480px] justify-center'
+    ? "grid-cols-[400px_minmax(0,64rem)_480px] justify-center"
     : leftBySide
-      ? 'grid-cols-[400px_minmax(0,64rem)] justify-center'
-      : 'grid-cols-1'
+      ? "grid-cols-[400px_minmax(0,64rem)] justify-center"
+      : "grid-cols-1";
 
   return (
     <>
@@ -100,15 +101,15 @@ function HomePage() {
       <div
         ref={shellRef}
         className={[
-          'pointer-events-none relative z-10 mx-auto grid min-h-full w-full max-w-[140rem] gap-6 px-4 py-8 sm:px-6',
+          "pointer-events-none relative z-10 mx-auto grid min-h-full w-full max-w-[140rem] gap-6 px-4 py-8 sm:px-6",
           gridClass,
-        ].join(' ')}
+        ].join(" ")}
       >
         <div
           className={[
-            'pointer-events-none order-1 relative z-20 flex min-w-0 flex-col gap-6 [&>*]:pointer-events-auto',
-            leftBySide ? 'col-start-2 row-start-1' : '',
-          ].join(' ')}
+            "pointer-events-none order-1 relative z-20 flex min-w-0 flex-col gap-6 [&>*]:pointer-events-auto",
+            leftBySide ? "col-start-2 row-start-1" : "",
+          ].join(" ")}
         >
           <StreakBar
             streaks={streaks}
@@ -170,23 +171,23 @@ function HomePage() {
 
           <Whiteboard />
 
-          <PetCare valorantStoreDone={isDone(today, 'valorant-store')} />
+          <PetCare valorantStoreDone={isDone(today, "valorant-store")} />
         </div>
 
         <aside
           className={[
-            'pointer-events-none order-2 relative z-10 w-full [&>*]:pointer-events-auto',
-            leftBySide ? 'col-start-1 row-start-1' : '',
-          ].join(' ')}
+            "pointer-events-none order-2 relative z-10 w-full [&>*]:pointer-events-auto",
+            leftBySide ? "col-start-1 row-start-1" : "",
+          ].join(" ")}
         >
           <Watchlist />
         </aside>
 
         <aside
           className={[
-            'pointer-events-none order-3 w-full [&>*]:pointer-events-auto',
-            rightBySide ? 'col-start-3 row-start-1' : '',
-          ].join(' ')}
+            "pointer-events-none order-3 w-full [&>*]:pointer-events-auto",
+            rightBySide ? "col-start-3 row-start-1" : "",
+          ].join(" ")}
         >
           <NoticeRail sideBySide={rightBySide} />
         </aside>
@@ -194,26 +195,26 @@ function HomePage() {
 
       <ScrollTopButton />
     </>
-  )
+  );
 }
 
 function AppContent() {
-  const { user, loading, error, signIn } = useFirebaseAuth()
+  const { user, loading, error, signIn } = useFirebaseAuth();
   const loginPet = useMemo(
     () =>
       petIdleSrc(
         WALLPAPER_ICONS[Math.floor(Math.random() * WALLPAPER_ICONS.length)]!,
       ),
     [],
-  )
-  const loadingFlavor = useMemo(() => pickLoadingFlavor(), [])
+  );
+  const loadingFlavor = useMemo(() => pickLoadingFlavor(), []);
 
   if (loading) {
     return (
       <main className="grid min-h-screen place-items-center px-4">
         <p className="text-sm text-muted">{loadingFlavor}</p>
       </main>
-    )
+    );
   }
 
   if (!user) {
@@ -244,7 +245,7 @@ function AppContent() {
           ) : null}
         </section>
       </main>
-    )
+    );
   }
 
   return (
@@ -252,11 +253,12 @@ function AppContent() {
       <AppHeader />
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/scrapbook" element={<ScrapbookPage />} />
         <Route path="/arcade" element={<ArcadePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
-  )
+  );
 }
 
 function App() {
@@ -266,7 +268,7 @@ function App() {
         <AppContent />
       </FirebaseAuthProvider>
     </BrowserRouter>
-  )
+  );
 }
 
-export default App
+export default App;

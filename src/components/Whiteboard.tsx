@@ -4,8 +4,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
-} from 'react'
-import { useWhiteboard } from '../hooks/useWhiteboard'
+} from "react";
+import { useWhiteboard } from "../hooks/useWhiteboard";
 import {
   FREEHAND_TOOLS,
   MAX_TEXT_SCALE,
@@ -24,9 +24,12 @@ import {
   type WhiteboardPoint,
   type WhiteboardStroke,
   type WhiteboardTool,
-} from '../lib/whiteboard'
+} from "../lib/whiteboard";
+import { useNavigate } from "react-router-dom";
+import { toBlob } from "html-to-image";
+import { uploadSnapshot } from "../lib/scrapbook";
 
-const PANEL_COLLAPSE_KEY = 'jo-dailies:whiteboard-panel-collapsed:v1'
+const PANEL_COLLAPSE_KEY = "jo-dailies:whiteboard-panel-collapsed:v1";
 
 /** Whiteboard felt-block eraser cursor (not a pencil eraser). */
 const ERASER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
@@ -43,17 +46,17 @@ const ERASER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
     <path d='M-7 -8.5 H7 M-7 -6 H7 M-7 -3.5 H7' stroke='#94a3b8' stroke-width='1' stroke-linecap='round'/>
   </g>
 </svg>`,
-)}") 14 30, cell`
+)}") 14 30, cell`;
 
 const BUCKET_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g fill='none' stroke='#111827' stroke-width='1.4' stroke-linejoin='round'><path d='M10 14 L22 14 L20 26 L12 26 Z' fill='#38bdf8'/><path d='M12 14 L14 8 L18 8 L20 14' fill='#e2e8f0'/><path d='M8 12 L11 14' stroke-linecap='round'/></g></svg>`,
-)}") 6 28, cell`
+)}") 6 28, cell`;
 
-const MARKER_CURSOR_FLIPPED = true
+const MARKER_CURSOR_FLIPPED = true;
 
 function markerCursor(ink: string): string {
-  const tipX = MARKER_CURSOR_FLIPPED ? 86 : 10
-  const flip = MARKER_CURSOR_FLIPPED ? 'scale(-1 1)' : ''
+  const tipX = MARKER_CURSOR_FLIPPED ? 86 : 10;
+  const flip = MARKER_CURSOR_FLIPPED ? "scale(-1 1)" : "";
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'>
   <g transform='translate(${tipX} 84) ${flip} rotate(-42)'>
     <path d='M0 0 L11 0 L11 -5.5 L2.5 -7.5 L0 -7.5 Z' fill='${ink}' stroke='#111827' stroke-width='0.9' stroke-linejoin='round'/>
@@ -67,29 +70,29 @@ function markerCursor(ink: string): string {
     <rect x='-2.2' y='-72' width='15.4' height='15' rx='2.2' fill='${ink}' stroke='#111827' stroke-width='1'/>
     <rect x='-2.2' y='-74.5' width='15.4' height='3.2' rx='1.2' fill='${ink}' stroke='#111827' stroke-width='0.9'/>
   </g>
-</svg>`
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${tipX} 84, crosshair`
+</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${tipX} 84, crosshair`;
 }
 
 function canvasCursor(tool: WhiteboardTool, color: string): string {
-  if (tool === 'erase') return ERASER_CURSOR
-  if (tool === 'fill') return BUCKET_CURSOR
-  if (tool === 'text') return 'text'
-  if (SHAPE_TOOLS.includes(tool)) return 'crosshair'
-  return markerCursor(color)
+  if (tool === "erase") return ERASER_CURSOR;
+  if (tool === "fill") return BUCKET_CURSOR;
+  if (tool === "text") return "text";
+  if (SHAPE_TOOLS.includes(tool)) return "crosshair";
+  return markerCursor(color);
 }
 
 function loadPanelCollapsed(): boolean {
   try {
-    return localStorage.getItem(PANEL_COLLAPSE_KEY) === '1'
+    return localStorage.getItem(PANEL_COLLAPSE_KEY) === "1";
   } catch {
-    return false
+    return false;
   }
 }
 
 function savePanelCollapsed(value: boolean): void {
   try {
-    localStorage.setItem(PANEL_COLLAPSE_KEY, value ? '1' : '0')
+    localStorage.setItem(PANEL_COLLAPSE_KEY, value ? "1" : "0");
   } catch {
     /* ignore */
   }
@@ -100,9 +103,9 @@ function ChevronIcon({ open }: { open: boolean }) {
     <svg
       viewBox="0 0 12 12"
       className={[
-        'size-3 shrink-0 transition-transform duration-200',
-        open ? 'rotate-90' : 'rotate-0',
-      ].join(' ')}
+        "size-3 shrink-0 transition-transform duration-200",
+        open ? "rotate-90" : "rotate-0",
+      ].join(" ")}
       aria-hidden="true"
     >
       <path
@@ -114,7 +117,31 @@ function ChevronIcon({ open }: { open: boolean }) {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4 shrink-0 fill-current"
+      aria-hidden="true"
+    >
+      <path d="M9.25 3a2 2 0 0 0-1.857 1.257L6.97 5H5a3 3 0 0 0-3 3v8a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4V8a3 3 0 0 0-3-3h-1.97l-.423-.743A2 2 0 0 0 14.75 3h-5.5ZM12 8a4.5 4.5 0 1 1 0 9a4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5Z" />
+    </svg>
+  );
+}
+
+function GalleryIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4 shrink-0 fill-current"
+      aria-hidden="true"
+    >
+      <path d="M5 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H5Zm11.5 4a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3ZM5 17l4.2-4.6a1 1 0 0 1 1.5 0l2.2 2.4l1.8-2a1 1 0 0 1 1.5 0L19 17H5Z" />
+    </svg>
+  );
 }
 
 function UndoIcon() {
@@ -137,7 +164,7 @@ function UndoIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }
 
 function RedoIcon() {
@@ -160,7 +187,7 @@ function RedoIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }
 
 function ToolButton({
@@ -168,22 +195,22 @@ function ToolButton({
   onClick,
   children,
 }: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={[
-        'rounded-lg px-2 py-1 text-xs font-medium transition',
-        active ? 'bg-white/10 text-white' : 'text-muted hover:text-white',
-      ].join(' ')}
+        "rounded-lg px-2 py-1 text-xs font-medium transition",
+        active ? "bg-white/10 text-white" : "text-muted hover:text-white",
+      ].join(" ")}
     >
       {children}
     </button>
-  )
+  );
 }
 
 function DraggableTextBox({
@@ -197,120 +224,120 @@ function DraggableTextBox({
   onFlip,
   onDelete,
 }: {
-  stroke: WhiteboardStroke
-  boardWidth: number
-  boardHeight: number
-  selected: boolean
-  onSelect: () => void
-  onPreview: (next: WhiteboardStroke) => void
-  onCommit: (next: WhiteboardStroke) => void
-  onFlip: () => void
-  onDelete: () => void
+  stroke: WhiteboardStroke;
+  boardWidth: number;
+  boardHeight: number;
+  selected: boolean;
+  onSelect: () => void;
+  onPreview: (next: WhiteboardStroke) => void;
+  onCommit: (next: WhiteboardStroke) => void;
+  onFlip: () => void;
+  onDelete: () => void;
 }) {
-  const layout = measureTextStrokeLayout(stroke, boardWidth, boardHeight)
-  const elRef = useRef<HTMLDivElement>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const strokeRef = useRef(stroke)
-  strokeRef.current = stroke
+  const layout = measureTextStrokeLayout(stroke, boardWidth, boardHeight);
+  const elRef = useRef<HTMLDivElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const strokeRef = useRef(stroke);
+  strokeRef.current = stroke;
 
   const dragRef = useRef<{
-    pointerId: number
-    startPointerX: number
-    startPointerY: number
-    startAnchorX: number
-    startAnchorY: number
-  } | null>(null)
+    pointerId: number;
+    startPointerX: number;
+    startPointerY: number;
+    startAnchorX: number;
+    startAnchorY: number;
+  } | null>(null);
   const rotateRef = useRef<{
-    pointerId: number
-    centerX: number
-    centerY: number
-    startAngle: number
-    startRotation: number
-  } | null>(null)
+    pointerId: number;
+    centerX: number;
+    centerY: number;
+    startAngle: number;
+    startRotation: number;
+  } | null>(null);
   const resizeRef = useRef<{
-    pointerId: number
-    centerX: number
-    centerY: number
-    startDistance: number
-    startScale: number
-  } | null>(null)
+    pointerId: number;
+    centerX: number;
+    centerY: number;
+    startDistance: number;
+    startScale: number;
+  } | null>(null);
 
-  if (!layout || boardWidth <= 0 || boardHeight <= 0) return null
+  if (!layout || boardWidth <= 0 || boardHeight <= 0) return null;
 
-  const scale = layout.scale
-  const boxW = layout.width * scale
-  const boxH = layout.height * scale
+  const scale = layout.scale;
+  const boxW = layout.width * scale;
+  const boxH = layout.height * scale;
   const leftPct =
-    ((layout.left + (layout.width - boxW) / 2) / boardWidth) * 100
+    ((layout.left + (layout.width - boxW) / 2) / boardWidth) * 100;
   const topPct =
-    ((layout.top + (layout.height - boxH) / 2) / boardHeight) * 100
-  const widthPct = (boxW / boardWidth) * 100
-  const heightPct = (boxH / boardHeight) * 100
-  const showControls = selected || dragging || confirmDelete
+    ((layout.top + (layout.height - boxH) / 2) / boardHeight) * 100;
+  const widthPct = (boxW / boardWidth) * 100;
+  const heightPct = (boxH / boardHeight) * 100;
+  const showControls = selected || dragging || confirmDelete;
 
   const pieceCenter = () => {
-    const rect = elRef.current?.getBoundingClientRect()
-    if (!rect) return null
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-  }
+    const rect = elRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  };
 
   const clampAnchor = (x: number, y: number) => ({
     x: Math.min(0.98, Math.max(0.02, x)),
     y: Math.min(0.98, Math.max(0.02, y)),
-  })
+  });
 
   const boardPointFromEvent = (clientX: number, clientY: number) => {
-    const board = elRef.current?.offsetParent as HTMLElement | null
-    if (!board) return null
-    const rect = board.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return null
+    const board = elRef.current?.offsetParent as HTMLElement | null;
+    if (!board) return null;
+    const rect = board.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
     return {
       x: (clientX - rect.left) / rect.width,
       y: (clientY - rect.top) / rect.height,
-    }
-  }
+    };
+  };
 
   const preview = (next: WhiteboardStroke) => {
-    strokeRef.current = next
-    onPreview(next)
-  }
+    strokeRef.current = next;
+    onPreview(next);
+  };
 
   const commit = () => {
-    onCommit(strokeRef.current)
-  }
+    onCommit(strokeRef.current);
+  };
 
   return (
     <div
       ref={elRef}
       role="button"
       tabIndex={0}
-      aria-label={`Text${selected ? ' (selected)' : ''}: ${stroke.text ?? ''}`}
+      aria-label={`Text${selected ? " (selected)" : ""}: ${stroke.text ?? ""}`}
       onPointerDown={(event) => {
-        if (event.button !== 0) return
-        if (confirmDelete) return
-        event.preventDefault()
-        event.stopPropagation()
-        onSelect()
-        setConfirmDelete(false)
-        const point = boardPointFromEvent(event.clientX, event.clientY)
-        const anchor = strokeRef.current.points[0]
-        if (!point || !anchor) return
+        if (event.button !== 0) return;
+        if (confirmDelete) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+        setConfirmDelete(false);
+        const point = boardPointFromEvent(event.clientX, event.clientY);
+        const anchor = strokeRef.current.points[0];
+        if (!point || !anchor) return;
         dragRef.current = {
           pointerId: event.pointerId,
           startPointerX: point.x,
           startPointerY: point.y,
           startAnchorX: anchor.x,
           startAnchorY: anchor.y,
-        }
-        setDragging(true)
-        event.currentTarget.setPointerCapture(event.pointerId)
+        };
+        setDragging(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
-        const drag = dragRef.current
-        if (!drag || drag.pointerId !== event.pointerId) return
-        const point = boardPointFromEvent(event.clientX, event.clientY)
-        if (!point) return
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const point = boardPointFromEvent(event.clientX, event.clientY);
+        if (!point) return;
         preview({
           ...strokeRef.current,
           points: [
@@ -319,38 +346,38 @@ function DraggableTextBox({
               drag.startAnchorY + (point.y - drag.startPointerY),
             ),
           ],
-        })
+        });
       }}
       onPointerUp={(event) => {
-        const drag = dragRef.current
-        if (!drag || drag.pointerId !== event.pointerId) return
-        dragRef.current = null
-        setDragging(false)
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        dragRef.current = null;
+        setDragging(false);
         try {
-          event.currentTarget.releasePointerCapture(event.pointerId)
+          event.currentTarget.releasePointerCapture(event.pointerId);
         } catch {
           /* ignore */
         }
-        commit()
+        commit();
       }}
       onPointerCancel={(event) => {
-        const drag = dragRef.current
-        if (!drag || drag.pointerId !== event.pointerId) return
-        dragRef.current = null
-        setDragging(false)
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        dragRef.current = null;
+        setDragging(false);
       }}
       className={[
-        'absolute touch-none select-none',
+        "absolute touch-none select-none",
         showControls
-          ? 'z-20 ring-2 ring-sky-400/80 ring-offset-1 ring-offset-transparent'
-          : 'z-10',
-      ].join(' ')}
+          ? "z-20 ring-2 ring-sky-400/80 ring-offset-1 ring-offset-transparent"
+          : "z-10",
+      ].join(" ")}
       style={{
         left: `${leftPct}%`,
         top: `${topPct}%`,
         width: `${widthPct}%`,
         height: `${heightPct}%`,
-        cursor: dragging ? 'grabbing' : 'grab',
+        cursor: dragging ? "grabbing" : "grab",
       }}
     >
       {/* Invisible hit target — glyphs stay on the canvas underneath. */}
@@ -364,8 +391,8 @@ function DraggableTextBox({
           <button
             type="button"
             onClick={() => {
-              setConfirmDelete(false)
-              onDelete()
+              setConfirmDelete(false);
+              onDelete();
             }}
             className="rounded-md border border-rose-400/40 bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-200 transition hover:bg-rose-500/25"
           >
@@ -387,9 +414,9 @@ function DraggableTextBox({
           aria-label="Flip text horizontally"
           title="Flip horizontally"
           onPointerDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            onFlip()
+            event.preventDefault();
+            event.stopPropagation();
+            onFlip();
           }}
           className="absolute -left-1 -top-1 z-[6] flex size-6 items-center justify-center rounded-full border-2 border-white/90 bg-sky-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-sky-400"
         >
@@ -402,16 +429,16 @@ function DraggableTextBox({
           type="button"
           aria-label="Delete text"
           onPointerDown={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            dragRef.current = null
-            setDragging(false)
+            event.preventDefault();
+            event.stopPropagation();
+            dragRef.current = null;
+            setDragging(false);
             try {
-              elRef.current?.releasePointerCapture(event.pointerId)
+              elRef.current?.releasePointerCapture(event.pointerId);
             } catch {
               /* ignore */
             }
-            setConfirmDelete(true)
+            setConfirmDelete(true);
           }}
           className="absolute -right-1 -top-1 z-[6] flex size-6 items-center justify-center rounded-full border-2 border-white/90 bg-rose-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-rose-400"
         >
@@ -425,50 +452,56 @@ function DraggableTextBox({
           aria-label="Rotate text"
           title="Hold and drag to rotate"
           onPointerDown={(event) => {
-            if (event.button !== 0) return
-            event.preventDefault()
-            event.stopPropagation()
-            const center = pieceCenter()
-            if (!center) return
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const center = pieceCenter();
+            if (!center) return;
             rotateRef.current = {
               pointerId: event.pointerId,
               centerX: center.x,
               centerY: center.y,
               startAngle:
-                (Math.atan2(event.clientY - center.y, event.clientX - center.x) *
+                (Math.atan2(
+                  event.clientY - center.y,
+                  event.clientX - center.x,
+                ) *
                   180) /
                 Math.PI,
               startRotation: strokeRef.current.rotation ?? 0,
-            }
-            event.currentTarget.setPointerCapture(event.pointerId)
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
-            const rot = rotateRef.current
-            if (!rot || rot.pointerId !== event.pointerId) return
+            const rot = rotateRef.current;
+            if (!rot || rot.pointerId !== event.pointerId) return;
             const angle =
-              (Math.atan2(event.clientY - rot.centerY, event.clientX - rot.centerX) *
+              (Math.atan2(
+                event.clientY - rot.centerY,
+                event.clientX - rot.centerX,
+              ) *
                 180) /
-              Math.PI
+              Math.PI;
             preview({
               ...strokeRef.current,
               rotation: normalizeRotation(
                 rot.startRotation + angle - rot.startAngle,
               ),
-            })
+            });
           }}
           onPointerUp={(event) => {
-            const rot = rotateRef.current
-            if (!rot || rot.pointerId !== event.pointerId) return
-            rotateRef.current = null
+            const rot = rotateRef.current;
+            if (!rot || rot.pointerId !== event.pointerId) return;
+            rotateRef.current = null;
             try {
-              event.currentTarget.releasePointerCapture(event.pointerId)
+              event.currentTarget.releasePointerCapture(event.pointerId);
             } catch {
               /* ignore */
             }
-            commit()
+            commit();
           }}
           onPointerCancel={() => {
-            rotateRef.current = null
+            rotateRef.current = null;
           }}
           className="absolute -bottom-1 -left-1 z-[6] flex size-6 cursor-grab items-center justify-center rounded-full border-2 border-white/90 bg-violet-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-violet-400 active:cursor-grabbing"
         >
@@ -482,57 +515,57 @@ function DraggableTextBox({
           aria-label="Resize text"
           title="Hold and drag to resize"
           onPointerDown={(event) => {
-            if (event.button !== 0) return
-            event.preventDefault()
-            event.stopPropagation()
-            const center = pieceCenter()
-            if (!center) return
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const center = pieceCenter();
+            if (!center) return;
             const distance = Math.hypot(
               event.clientX - center.x,
               event.clientY - center.y,
-            )
-            if (distance < 1) return
+            );
+            if (distance < 1) return;
             resizeRef.current = {
               pointerId: event.pointerId,
               centerX: center.x,
               centerY: center.y,
               startDistance: distance,
               startScale: strokeRef.current.scale ?? 1,
-            }
-            event.currentTarget.setPointerCapture(event.pointerId)
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
-            const resize = resizeRef.current
-            if (!resize || resize.pointerId !== event.pointerId) return
+            const resize = resizeRef.current;
+            if (!resize || resize.pointerId !== event.pointerId) return;
             const distance = Math.hypot(
               event.clientX - resize.centerX,
               event.clientY - resize.centerY,
-            )
+            );
             const next = Math.min(
               MAX_TEXT_SCALE,
               Math.max(
                 MIN_TEXT_SCALE,
                 resize.startScale * (distance / resize.startDistance),
               ),
-            )
+            );
             preview({
               ...strokeRef.current,
               scale: next,
-            })
+            });
           }}
           onPointerUp={(event) => {
-            const resize = resizeRef.current
-            if (!resize || resize.pointerId !== event.pointerId) return
-            resizeRef.current = null
+            const resize = resizeRef.current;
+            if (!resize || resize.pointerId !== event.pointerId) return;
+            resizeRef.current = null;
             try {
-              event.currentTarget.releasePointerCapture(event.pointerId)
+              event.currentTarget.releasePointerCapture(event.pointerId);
             } catch {
               /* ignore */
             }
-            commit()
+            commit();
           }}
           onPointerCancel={() => {
-            resizeRef.current = null
+            resizeRef.current = null;
           }}
           className="absolute -bottom-1 -right-1 z-[6] flex size-6 cursor-nwse-resize items-center justify-center rounded-full border-2 border-white/90 bg-emerald-500 text-sm font-bold leading-none text-white shadow-md transition hover:bg-emerald-400"
         >
@@ -540,7 +573,7 @@ function DraggableTextBox({
         </button>
       ) : null}
     </div>
-  )
+  );
 }
 
 export function Whiteboard() {
@@ -559,176 +592,182 @@ export function Whiteboard() {
     clear,
     publishLive,
     clearLiveStroke,
-  } = useWhiteboard()
-  const [panelCollapsed, setPanelCollapsed] = useState(() => loadPanelCollapsed())
-  const [tool, setTool] = useState<WhiteboardTool>('pen')
-  const [color, setColor] = useState<string>(WHITEBOARD_COLORS[0])
-  const [sizeWidth, setSizeWidth] = useState<number>(WHITEBOARD_SIZES[1].width)
-  const [fontSize, setFontSize] = useState<number>(WHITEBOARD_FONT_SIZES[1].size)
-  const [shapeFilled, setShapeFilled] = useState(true)
-  const [textBackground, setTextBackground] = useState(true)
-  const [bgColor, setBgColor] = useState<string>('#fef3c7')
-  const [confirmClear, setConfirmClear] = useState(false)
-  const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
-  const [boardSize, setBoardSize] = useState({ cssW: 0, cssH: 0 })
+  } = useWhiteboard();
+  const [panelCollapsed, setPanelCollapsed] = useState(() =>
+    loadPanelCollapsed(),
+  );
+  const [tool, setTool] = useState<WhiteboardTool>("pen");
+  const [color, setColor] = useState<string>(WHITEBOARD_COLORS[0]);
+  const [sizeWidth, setSizeWidth] = useState<number>(WHITEBOARD_SIZES[1].width);
+  const [fontSize, setFontSize] = useState<number>(
+    WHITEBOARD_FONT_SIZES[1].size,
+  );
+  const [shapeFilled, setShapeFilled] = useState(true);
+  const [textBackground, setTextBackground] = useState(true);
+  const [bgColor, setBgColor] = useState<string>("#fef3c7");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [boardSize, setBoardSize] = useState({ cssW: 0, cssH: 0 });
   const [textDraft, setTextDraft] = useState<{
-    id: string
-    x: number
-    y: number
-    value: string
-  } | null>(null)
+    id: string;
+    x: number;
+    y: number;
+    value: string;
+  } | null>(null);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const textInputRef = useRef<HTMLTextAreaElement>(null)
-  const strokesRef = useRef(strokes)
-  const livePeersRef = useRef(livePeers)
-  const draftRef = useRef<WhiteboardStroke | null>(null)
-  const drawingRef = useRef(false)
-  const sizeRef = useRef({ cssW: 0, cssH: 0 })
-  const toolRef = useRef(tool)
-  const colorRef = useRef(color)
-  const sizeWidthRef = useRef(sizeWidth)
-  const fontSizeRef = useRef(fontSize)
-  const shapeFilledRef = useRef(shapeFilled)
-  const textBackgroundRef = useRef(textBackground)
-  const bgColorRef = useRef(bgColor)
-  const textDraftRef = useRef(textDraft)
-  const ignoreTextBlurRef = useRef(false)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+  const strokesRef = useRef(strokes);
+  const livePeersRef = useRef(livePeers);
+  const draftRef = useRef<WhiteboardStroke | null>(null);
+  const drawingRef = useRef(false);
+  const sizeRef = useRef({ cssW: 0, cssH: 0 });
+  const toolRef = useRef(tool);
+  const colorRef = useRef(color);
+  const sizeWidthRef = useRef(sizeWidth);
+  const fontSizeRef = useRef(fontSize);
+  const shapeFilledRef = useRef(shapeFilled);
+  const textBackgroundRef = useRef(textBackground);
+  const bgColorRef = useRef(bgColor);
+  const textDraftRef = useRef(textDraft);
+  const ignoreTextBlurRef = useRef(false);
 
-  strokesRef.current = strokes
-  livePeersRef.current = livePeers
-  toolRef.current = tool
-  colorRef.current = color
-  sizeWidthRef.current = sizeWidth
-  fontSizeRef.current = fontSize
-  shapeFilledRef.current = shapeFilled
-  textBackgroundRef.current = textBackground
-  bgColorRef.current = bgColor
-  textDraftRef.current = textDraft
+  strokesRef.current = strokes;
+  livePeersRef.current = livePeers;
+  toolRef.current = tool;
+  colorRef.current = color;
+  sizeWidthRef.current = sizeWidth;
+  fontSizeRef.current = fontSize;
+  shapeFilledRef.current = shapeFilled;
+  textBackgroundRef.current = textBackground;
+  bgColorRef.current = bgColor;
+  textDraftRef.current = textDraft;
+
+  const navigate = useNavigate();
 
   useEffect(() => {
-    savePanelCollapsed(panelCollapsed)
-  }, [panelCollapsed])
+    savePanelCollapsed(panelCollapsed);
+  }, [panelCollapsed]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
+      const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
           target.isContentEditable)
       ) {
-        return
+        return;
       }
-      const mod = event.metaKey || event.ctrlKey
-      if (!mod) return
-      if (event.key === 'z' && !event.shiftKey) {
-        event.preventDefault()
-        undo()
-      } else if (event.key === 'y' || (event.key === 'z' && event.shiftKey)) {
-        event.preventDefault()
-        redo()
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod) return;
+      if (event.key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if (event.key === "y" || (event.key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redo();
       }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   const paintAll = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const { cssW, cssH } = sizeRef.current
-    if (cssW <= 0 || cssH <= 0) return
-    const dpr = window.devicePixelRatio || 1
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    redrawWhiteboard(ctx, strokesRef.current, cssW, cssH)
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const { cssW, cssH } = sizeRef.current;
+    if (cssW <= 0 || cssH <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    redrawWhiteboard(ctx, strokesRef.current, cssW, cssH);
     for (const peer of livePeersRef.current) {
-      if (peer.draft) paintWhiteboardStroke(ctx, peer.draft, cssW, cssH)
+      if (peer.draft) paintWhiteboardStroke(ctx, peer.draft, cssW, cssH);
     }
     if (draftRef.current) {
-      paintWhiteboardStroke(ctx, draftRef.current, cssW, cssH)
+      paintWhiteboardStroke(ctx, draftRef.current, cssW, cssH);
     }
     for (const peer of livePeersRef.current) {
-      if (!peer.cursor) continue
-      ctx.save()
-      ctx.fillStyle = '#f472b6'
-      ctx.strokeStyle = '#111827'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(peer.cursor.x * cssW, peer.cursor.y * cssH, 5, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      ctx.restore()
+      if (!peer.cursor) continue;
+      ctx.save();
+      ctx.fillStyle = "#f472b6";
+      ctx.strokeStyle = "#111827";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(peer.cursor.x * cssW, peer.cursor.y * cssH, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
-  }
+  };
 
   useEffect(() => {
-    if (panelCollapsed) return
-    const wrap = wrapRef.current
-    const canvas = canvasRef.current
-    if (!wrap || !canvas) return
+    if (panelCollapsed) return;
+    const wrap = wrapRef.current;
+    const canvas = canvasRef.current;
+    if (!wrap || !canvas) return;
 
     const resize = () => {
-      const rect = wrap.getBoundingClientRect()
-      const cssW = Math.max(1, Math.floor(rect.width))
-      const cssH = Math.max(1, Math.floor(rect.height))
-      const dpr = window.devicePixelRatio || 1
-      sizeRef.current = { cssW, cssH }
-      setBoardSize({ cssW, cssH })
-      canvas.width = Math.floor(cssW * dpr)
-      canvas.height = Math.floor(cssH * dpr)
-      canvas.style.width = `${cssW}px`
-      canvas.style.height = `${cssH}px`
-      paintAll()
-    }
+      const rect = wrap.getBoundingClientRect();
+      const cssW = Math.max(1, Math.floor(rect.width));
+      const cssH = Math.max(1, Math.floor(rect.height));
+      const dpr = window.devicePixelRatio || 1;
+      sizeRef.current = { cssW, cssH };
+      setBoardSize({ cssW, cssH });
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      paintAll();
+    };
 
-    resize()
-    const observer = new ResizeObserver(resize)
-    observer.observe(wrap)
-    return () => observer.disconnect()
-  }, [panelCollapsed])
-
-  useEffect(() => {
-    if (panelCollapsed) return
-    paintAll()
-  }, [strokes, livePeers, panelCollapsed])
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, [panelCollapsed]);
 
   useEffect(() => {
-    if (!textDraft) return
-    ignoreTextBlurRef.current = true
+    if (panelCollapsed) return;
+    paintAll();
+  }, [strokes, livePeers, panelCollapsed]);
+
+  useEffect(() => {
+    if (!textDraft) return;
+    ignoreTextBlurRef.current = true;
     const id = window.setTimeout(() => {
-      textInputRef.current?.focus()
-      ignoreTextBlurRef.current = false
-    }, 30)
-    return () => window.clearTimeout(id)
-  }, [textDraft?.id])
+      textInputRef.current?.focus();
+      ignoreTextBlurRef.current = false;
+    }, 30);
+    return () => window.clearTimeout(id);
+  }, [textDraft?.id]);
 
   useEffect(() => {
     if (
       selectedTextId &&
       !strokes.some(
-        (stroke) => stroke.id === selectedTextId && stroke.tool === 'text',
+        (stroke) => stroke.id === selectedTextId && stroke.tool === "text",
       )
     ) {
-      setSelectedTextId(null)
+      setSelectedTextId(null);
     }
-  }, [strokes, selectedTextId])
+  }, [strokes, selectedTextId]);
 
   const commitTextDraft = () => {
-    const current = textDraftRef.current
-    if (!current) return
-    const value = current.value.trim()
-    textDraftRef.current = null
-    setTextDraft(null)
-    if (!value) return
-    const id = current.id
+    const current = textDraftRef.current;
+    if (!current) return;
+    const value = current.value.trim();
+    textDraftRef.current = null;
+    setTextDraft(null);
+    if (!value) return;
+    const id = current.id;
     appendStroke({
       id,
-      tool: 'text',
+      tool: "text",
       color: colorRef.current,
       width: sizeWidthRef.current,
       points: [{ x: current.x, y: current.y }],
@@ -739,61 +778,61 @@ export function Whiteboard() {
       rotation: 0,
       scale: 1,
       createdAt: Date.now(),
-    })
-    setSelectedTextId(id)
-  }
+    });
+    setSelectedTextId(id);
+  };
 
   const pointFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return null
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
     return {
       x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
       y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
-    } satisfies WhiteboardPoint
-  }
+    } satisfies WhiteboardPoint;
+  };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.button !== 0) return
-    const point = pointFromEvent(event)
-    if (!point) return
-    const activeTool = toolRef.current
+    if (event.button !== 0) return;
+    const point = pointFromEvent(event);
+    if (!point) return;
+    const activeTool = toolRef.current;
 
-    setSelectedTextId(null)
+    setSelectedTextId(null);
 
     if (textDraftRef.current) {
-      commitTextDraft()
-      return
+      commitTextDraft();
+      return;
     }
 
-    if (activeTool === 'text') {
-      event.preventDefault()
+    if (activeTool === "text") {
+      event.preventDefault();
       const draft = {
         id: newWhiteboardStrokeId(),
         x: point.x,
         y: point.y,
-        value: '',
-      }
-      textDraftRef.current = draft
-      setTextDraft(draft)
-      return
+        value: "",
+      };
+      textDraftRef.current = draft;
+      setTextDraft(draft);
+      return;
     }
 
-    if (activeTool === 'fill') {
+    if (activeTool === "fill") {
       appendStroke({
         id: newWhiteboardStrokeId(),
-        tool: 'fill',
+        tool: "fill",
         color: colorRef.current,
         width: sizeWidthRef.current,
         points: [point],
         createdAt: Date.now(),
-      })
-      return
+      });
+      return;
     }
 
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drawingRef.current = true
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drawingRef.current = true;
     draftRef.current = {
       id: newWhiteboardStrokeId(),
       tool: activeTool,
@@ -801,77 +840,111 @@ export function Whiteboard() {
       width: sizeWidthRef.current,
       points: [point],
       filled:
-        activeTool === 'rect' || activeTool === 'ellipse'
+        activeTool === "rect" || activeTool === "ellipse"
           ? shapeFilledRef.current
           : false,
       createdAt: Date.now(),
-    }
-    publishLive({ cursor: point, stroke: draftRef.current })
-    paintAll()
-  }
+    };
+    publishLive({ cursor: point, stroke: draftRef.current });
+    paintAll();
+  };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const point = pointFromEvent(event)
-    if (!point) return
+    const point = pointFromEvent(event);
+    if (!point) return;
 
     if (!drawingRef.current || !draftRef.current) {
-      publishLive({ cursor: point })
-      return
+      publishLive({ cursor: point });
+      return;
     }
 
-    const draft = draftRef.current
+    const draft = draftRef.current;
     if (SHAPE_TOOLS.includes(draft.tool)) {
-      draft.points = [draft.points[0]!, point]
+      draft.points = [draft.points[0]!, point];
     } else {
-      const last = draft.points[draft.points.length - 1]
+      const last = draft.points[draft.points.length - 1];
       if (last && Math.hypot(point.x - last.x, point.y - last.y) < 0.002) {
-        publishLive({ cursor: point })
-        return
+        publishLive({ cursor: point });
+        return;
       }
-      draft.points.push(point)
+      draft.points.push(point);
     }
-    publishLive({ cursor: point, stroke: draft })
-    paintAll()
-  }
+    publishLive({ cursor: point, stroke: draft });
+    paintAll();
+  };
 
   const endStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return
-    drawingRef.current = false
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
     try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
+      event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       /* already released */
     }
-    const draft = draftRef.current
-    draftRef.current = null
-    clearLiveStroke()
+    const draft = draftRef.current;
+    draftRef.current = null;
+    clearLiveStroke();
     if (draft && draft.points.length > 0) {
-      if (
-        SHAPE_TOOLS.includes(draft.tool) &&
-        draft.points.length === 1
-      ) {
-        paintAll()
-        return
+      if (SHAPE_TOOLS.includes(draft.tool) && draft.points.length === 1) {
+        paintAll();
+        return;
       }
-      appendStroke(draft)
+      appendStroke(draft);
     } else {
-      paintAll()
+      paintAll();
     }
-  }
+  };
 
   const showColors =
-    tool !== 'erase' &&
+    tool !== "erase" &&
     (FREEHAND_TOOLS.includes(tool) ||
       SHAPE_TOOLS.includes(tool) ||
-      tool === 'fill' ||
-      tool === 'text')
+      tool === "fill" ||
+      tool === "text");
 
   const brushSizes =
-    tool === 'text'
-      ? null
-      : tool === 'fill'
-        ? null
-        : WHITEBOARD_SIZES
+    tool === "text" ? null : tool === "fill" ? null : WHITEBOARD_SIZES;
+
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+
+  const saveSnapshot = async () => {
+    if (savingSnapshot) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const { cssW: width, cssH: height } = sizeRef.current;
+
+    if (width <= 0 || height <= 0) return;
+
+    setSavingSnapshot(true);
+
+    try {
+      const blob = await toBlob(canvas as unknown as HTMLElement, {
+        pixelRatio: 4,
+        cacheBust: true,
+        backgroundColor: "#ffffff",
+      });
+
+      if (!blob) {
+        throw new Error("Failed to create snapshot.");
+      }
+
+      await uploadSnapshot(blob, width, height);
+
+      console.log("Snapshot saved!");
+    } catch (error) {
+      console.error(error);
+
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert(String(error));
+      }
+    } finally {
+      setSavingSnapshot(false);
+    }
+  };
 
   return (
     <section className="rounded-2xl border border-border bg-surface-raised p-4">
@@ -885,16 +958,59 @@ export function Whiteboard() {
           <ChevronIcon open={!panelCollapsed} />
           <h2 className="text-sm font-semibold text-white">Whiteboard</h2>
         </button>
+
         <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex items-center gap-1.5 mr-4">
+            <button
+              type="button"
+              className="
+      flex items-center gap-2
+      rounded-lg
+      border border-border
+      bg-surface
+      px-2 py-2
+      text-xs font-semibold text-white
+      leading-none
+      transition
+      hover:border-white/25
+      hover:bg-white/5
+    "
+              onClick={saveSnapshot}
+              disabled={savingSnapshot}
+            >
+              <CameraIcon />
+              <span>{savingSnapshot ? "Saving..." : "Save"}</span>
+            </button>
+
+            <button
+              type="button"
+              className="
+      flex items-center gap-2
+      rounded-lg
+      border border-border
+      bg-surface
+      px-2 py-2
+      text-xs font-semibold text-white
+      leading-none
+      transition
+      hover:border-white/25
+      hover:bg-white/5
+    "
+              onClick={() => navigate("/scrapbook")}
+            >
+              <GalleryIcon />
+              <span>Scrapbook</span>
+            </button>
+          </div>
           <span className="text-[11px] text-muted tabular-nums">
             {strokes.length}/{MAX_WHITEBOARD_STROKES}
-            {liveEnabled ? ' · live' : ''}
+            {liveEnabled ? " · live" : ""}
           </span>
           <button
             type="button"
             onClick={(event) => {
-              event.stopPropagation()
-              undo()
+              event.stopPropagation();
+              undo();
             }}
             disabled={!canUndo}
             title="Undo (up to 50 steps)"
@@ -906,8 +1022,8 @@ export function Whiteboard() {
           <button
             type="button"
             onClick={(event) => {
-              event.stopPropagation()
-              redo()
+              event.stopPropagation();
+              redo();
             }}
             disabled={!canRedo}
             title="Redo"
@@ -923,61 +1039,64 @@ export function Whiteboard() {
         <>
           <p className="mt-1 text-xs text-muted">
             {liveEnabled
-              ? 'Doodle together — ink streams live while you draw. Tap a text box to move, flip, rotate, resize, or delete it.'
-              : 'Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it.'}{' '}
+              ? "Doodle together — ink streams live while you draw. Tap a text box to move, flip, rotate, resize, or delete it."
+              : "Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it."}{" "}
             Oldest marks drop off when you hit {MAX_WHITEBOARD_STROKES}.
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border bg-surface p-1">
-              <ToolButton active={tool === 'pen'} onClick={() => setTool('pen')}>
+              <ToolButton
+                active={tool === "pen"}
+                onClick={() => setTool("pen")}
+              >
                 Pen
               </ToolButton>
               <ToolButton
-                active={tool === 'highlighter'}
-                onClick={() => setTool('highlighter')}
+                active={tool === "highlighter"}
+                onClick={() => setTool("highlighter")}
               >
                 Highlighter
               </ToolButton>
               <ToolButton
-                active={tool === 'erase'}
-                onClick={() => setTool('erase')}
+                active={tool === "erase"}
+                onClick={() => setTool("erase")}
               >
                 Eraser
               </ToolButton>
               <ToolButton
-                active={tool === 'line'}
-                onClick={() => setTool('line')}
+                active={tool === "line"}
+                onClick={() => setTool("line")}
               >
                 Line
               </ToolButton>
               <ToolButton
-                active={tool === 'rect'}
-                onClick={() => setTool('rect')}
+                active={tool === "rect"}
+                onClick={() => setTool("rect")}
               >
                 Rect
               </ToolButton>
               <ToolButton
-                active={tool === 'ellipse'}
-                onClick={() => setTool('ellipse')}
+                active={tool === "ellipse"}
+                onClick={() => setTool("ellipse")}
               >
                 Ellipse
               </ToolButton>
               <ToolButton
-                active={tool === 'fill'}
-                onClick={() => setTool('fill')}
+                active={tool === "fill"}
+                onClick={() => setTool("fill")}
               >
                 Fill
               </ToolButton>
               <ToolButton
-                active={tool === 'text'}
-                onClick={() => setTool('text')}
+                active={tool === "text"}
+                onClick={() => setTool("text")}
               >
                 Text
               </ToolButton>
             </div>
 
-            {(tool === 'rect' || tool === 'ellipse') && (
+            {(tool === "rect" || tool === "ellipse") && (
               <label className="flex items-center gap-1.5 text-xs text-muted">
                 <input
                   type="checkbox"
@@ -989,7 +1108,7 @@ export function Whiteboard() {
               </label>
             )}
 
-            {tool === 'text' ? (
+            {tool === "text" ? (
               <>
                 <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
                   {WHITEBOARD_FONT_SIZES.map((size) => (
@@ -998,11 +1117,11 @@ export function Whiteboard() {
                       type="button"
                       onClick={() => setFontSize(size.size)}
                       className={[
-                        'rounded-lg px-2.5 py-1 text-xs font-medium transition',
+                        "rounded-lg px-2.5 py-1 text-xs font-medium transition",
                         fontSize === size.size
-                          ? 'bg-white/10 text-white'
-                          : 'text-muted hover:text-white',
-                      ].join(' ')}
+                          ? "bg-white/10 text-white"
+                          : "text-muted hover:text-white",
+                      ].join(" ")}
                     >
                       {size.id}
                     </button>
@@ -1012,7 +1131,9 @@ export function Whiteboard() {
                   <input
                     type="checkbox"
                     checked={textBackground}
-                    onChange={(event) => setTextBackground(event.target.checked)}
+                    onChange={(event) =>
+                      setTextBackground(event.target.checked)
+                    }
                     className="size-3.5 accent-golden"
                   />
                   Background
@@ -1022,23 +1143,27 @@ export function Whiteboard() {
                     <span className="text-[10px] uppercase tracking-wide text-muted">
                       bg
                     </span>
-                    {['#fef3c7', '#ffffff', '#fce7f3', '#dbeafe', '#111827'].map(
-                      (swatch) => (
-                        <button
-                          key={swatch}
-                          type="button"
-                          aria-label={`Background ${swatch}`}
-                          onClick={() => setBgColor(swatch)}
-                          className={[
-                            'size-5 rounded-full border-2 transition',
-                            bgColor.toLowerCase() === swatch
-                              ? 'border-white scale-110'
-                              : 'border-transparent opacity-80 hover:opacity-100',
-                          ].join(' ')}
-                          style={{ backgroundColor: swatch }}
-                        />
-                      ),
-                    )}
+                    {[
+                      "#fef3c7",
+                      "#ffffff",
+                      "#fce7f3",
+                      "#dbeafe",
+                      "#111827",
+                    ].map((swatch) => (
+                      <button
+                        key={swatch}
+                        type="button"
+                        aria-label={`Background ${swatch}`}
+                        onClick={() => setBgColor(swatch)}
+                        className={[
+                          "size-5 rounded-full border-2 transition",
+                          bgColor.toLowerCase() === swatch
+                            ? "border-white scale-110"
+                            : "border-transparent opacity-80 hover:opacity-100",
+                        ].join(" ")}
+                        style={{ backgroundColor: swatch }}
+                      />
+                    ))}
                     <label
                       className="relative size-5 cursor-pointer overflow-hidden rounded-full border border-border"
                       title="Custom background"
@@ -1050,7 +1175,9 @@ export function Whiteboard() {
                       <input
                         type="color"
                         value={
-                          /^#[0-9a-fA-F]{6}$/.test(bgColor) ? bgColor : '#fef3c7'
+                          /^#[0-9a-fA-F]{6}$/.test(bgColor)
+                            ? bgColor
+                            : "#fef3c7"
                         }
                         onChange={(event) => setBgColor(event.target.value)}
                         className="absolute inset-0 cursor-pointer opacity-0"
@@ -1069,11 +1196,11 @@ export function Whiteboard() {
                     type="button"
                     onClick={() => setSizeWidth(size.width)}
                     className={[
-                      'rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition',
+                      "rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition",
                       sizeWidth === size.width
-                        ? 'bg-white/10 text-white'
-                        : 'text-muted hover:text-white',
-                    ].join(' ')}
+                        ? "bg-white/10 text-white"
+                        : "text-muted hover:text-white",
+                    ].join(" ")}
                   >
                     {size.id}
                   </button>
@@ -1087,8 +1214,8 @@ export function Whiteboard() {
                   <button
                     type="button"
                     onClick={() => {
-                      setConfirmClear(false)
-                      clear()
+                      setConfirmClear(false);
+                      clear();
                     }}
                     className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/25"
                   >
@@ -1123,28 +1250,28 @@ export function Whiteboard() {
                   aria-label={`Color ${swatch}`}
                   onClick={() => setColor(swatch)}
                   className={[
-                    'size-6 rounded-full border-2 transition',
+                    "size-6 rounded-full border-2 transition",
                     color.toLowerCase() === swatch
-                      ? 'border-white scale-110'
-                      : 'border-transparent opacity-80 hover:opacity-100',
-                  ].join(' ')}
+                      ? "border-white scale-110"
+                      : "border-transparent opacity-80 hover:opacity-100",
+                  ].join(" ")}
                   style={{ backgroundColor: swatch }}
                 />
               ))}
               <label
                 className={[
-                  'relative size-6 shrink-0 cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35),0_0_0_1px_rgba(0,0,0,0.35)] transition',
+                  "relative size-6 shrink-0 cursor-pointer rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35),0_0_0_1px_rgba(0,0,0,0.35)] transition",
                   !(WHITEBOARD_COLORS as readonly string[]).includes(
                     color.toLowerCase(),
                   )
-                    ? 'scale-110 ring-2 ring-white/80'
-                    : 'opacity-90 hover:opacity-100 hover:scale-105',
-                ].join(' ')}
+                    ? "scale-110 ring-2 ring-white/80"
+                    : "opacity-90 hover:opacity-100 hover:scale-105",
+                ].join(" ")}
                 title="Custom color"
                 aria-label="Open color picker"
                 style={{
                   background:
-                    'conic-gradient(from 90deg, #ef4444 0deg, #f97316 45deg, #eab308 90deg, #22c55e 150deg, #06b6d4 200deg, #3b82f6 250deg, #8b5cf6 300deg, #ec4899 330deg, #ef4444 360deg)',
+                    "conic-gradient(from 90deg, #ef4444 0deg, #f97316 45deg, #eab308 90deg, #22c55e 150deg, #06b6d4 200deg, #3b82f6 250deg, #8b5cf6 300deg, #ec4899 330deg, #ef4444 360deg)",
                 }}
               >
                 <span
@@ -1153,7 +1280,7 @@ export function Whiteboard() {
                 />
                 <input
                   type="color"
-                  value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#111827'}
+                  value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#111827"}
                   onChange={(event) => setColor(event.target.value)}
                   className="absolute inset-0 cursor-pointer opacity-0"
                 />
@@ -1175,7 +1302,7 @@ export function Whiteboard() {
               onPointerCancel={endStroke}
             />
             {strokes.map((stroke) => {
-              if (stroke.tool !== 'text') return null
+              if (stroke.tool !== "text") return null;
               return (
                 <DraggableTextBox
                   key={stroke.id}
@@ -1188,45 +1315,46 @@ export function Whiteboard() {
                   onCommit={updateStroke}
                   onFlip={() => {
                     const current =
-                      strokesRef.current.find((item) => item.id === stroke.id) ??
-                      stroke
+                      strokesRef.current.find(
+                        (item) => item.id === stroke.id,
+                      ) ?? stroke;
                     updateStroke({
                       ...current,
                       flipped: !current.flipped,
-                    })
+                    });
                   }}
                   onDelete={() => {
-                    void removeStroke(stroke.id)
-                    setSelectedTextId(null)
+                    void removeStroke(stroke.id);
+                    setSelectedTextId(null);
                   }}
                 />
-              )
+              );
             })}
             {textDraft ? (
               <textarea
                 ref={textInputRef}
                 value={textDraft.value}
                 onChange={(event) => {
-                  const value = event.target.value
+                  const value = event.target.value;
                   setTextDraft((current) => {
-                    if (!current) return current
-                    const next = { ...current, value }
-                    textDraftRef.current = next
-                    return next
-                  })
+                    if (!current) return current;
+                    const next = { ...current, value };
+                    textDraftRef.current = next;
+                    return next;
+                  });
                 }}
                 onBlur={() => {
-                  if (ignoreTextBlurRef.current) return
-                  commitTextDraft()
+                  if (ignoreTextBlurRef.current) return;
+                  commitTextDraft();
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    textDraftRef.current = null
-                    setTextDraft(null)
-                  } else if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    commitTextDraft()
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    textDraftRef.current = null;
+                    setTextDraft(null);
+                  } else if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    commitTextDraft();
                   }
                 }}
                 placeholder="Type here…"
@@ -1235,11 +1363,11 @@ export function Whiteboard() {
                   left: `${textDraft.x * 100}%`,
                   top: `${textDraft.y * 100}%`,
                   color,
-                  backgroundColor: textBackground ? bgColor : '#fffbeb',
+                  backgroundColor: textBackground ? bgColor : "#fffbeb",
                   fontFamily: WHITEBOARD_TEXT_FONT,
                   fontSize: `${Math.max(14, fontSize * 0.9)}px`,
                   padding: `${Math.max(5, fontSize * 0.28 * 0.9)}px ${Math.max(7, fontSize * 0.38 * 0.9)}px`,
-                  transform: 'translate(0, 0)',
+                  transform: "translate(0, 0)",
                 }}
               />
             ) : null}
@@ -1247,5 +1375,5 @@ export function Whiteboard() {
         </>
       ) : null}
     </section>
-  )
+  );
 }

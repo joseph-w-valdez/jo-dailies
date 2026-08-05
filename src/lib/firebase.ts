@@ -1,12 +1,13 @@
-import { getApp, getApps, initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
-import { getDatabase, type Database } from 'firebase/database'
+import { getApp, getApps, initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getDatabase, type Database } from "firebase/database";
 import {
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
-} from 'firebase/firestore'
+} from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -16,7 +17,7 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || undefined,
-}
+};
 
 export const firebaseConfigured = [
   firebaseConfig.apiKey,
@@ -25,13 +26,13 @@ export const firebaseConfigured = [
   firebaseConfig.storageBucket,
   firebaseConfig.messagingSenderId,
   firebaseConfig.appId,
-].every(Boolean)
+].every(Boolean);
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app)
-export const googleProvider = new GoogleAuthProvider()
-googleProvider.setCustomParameters({ prompt: 'select_account' })
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
 function createFirestore() {
   try {
@@ -39,19 +40,20 @@ function createFirestore() {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
-    })
+    });
   } catch {
     // Vite HMR can re-evaluate this module after Firestore is initialized.
-    return getFirestore(app)
+    return getFirestore(app);
   }
 }
 
-export const db = createFirestore()
+export const db = createFirestore();
+export const storage = getStorage(app);
 
 /** Realtime Database — optional; live whiteboard needs VITE_FIREBASE_DATABASE_URL. */
 export const rtdb: Database | null = firebaseConfig.databaseURL
   ? getDatabase(app)
-  : null
+  : null;
 
 export const syncRoomId =
-  import.meta.env.VITE_SYNC_ROOM_ID?.trim() || 'jo-and-friend'
+  import.meta.env.VITE_SYNC_ROOM_ID?.trim() || "jo-and-friend";
