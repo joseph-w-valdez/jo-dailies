@@ -26,6 +26,7 @@ import { petIdleSrc } from "./lib/petAssets";
 import type { GameId } from "./types";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ScrapbookPage } from "./pages/ScrapbookPage";
+import { GalleryPage } from "./pages/GalleryPage";
 
 function HomePage() {
   const {
@@ -255,6 +256,7 @@ function AppContent() {
         <Route path="/" element={<HomePage />} />
         <Route path="/scrapbook" element={<ScrapbookPage />} />
         <Route path="/arcade" element={<ArcadePage />} />
+        <Route path="/gallery" element={<GalleryPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

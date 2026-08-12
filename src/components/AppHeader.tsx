@@ -1,37 +1,38 @@
-import { useLayoutEffect, useRef, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { useLayoutEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
 const LINKS = [
-  { to: '/', label: 'Home', end: true },
-  { to: '/scrapbook', label: 'Scrapbook', end: false },
-  {
-    to: '/arcade',
-    label: 'Arcade',
-    end: false,
-  },
-] as const
+  { to: "/", label: "Home", end: true },
+  { to: "/scrapbook", label: "Scrapbook", end: false },
+  { to: "/arcade", label: "Arcade", end: false },
+  { to: "/gallery", label: "Gallery", end: false },
+] as const;
 
 export function AppHeader() {
-  const { pathname } = useLocation()
-  const navRef = useRef<HTMLElement>(null)
-  const linkRefs = useRef<(HTMLAnchorElement | null)[]>([])
-  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false })
+  const { pathname } = useLocation();
+  const navRef = useRef<HTMLElement>(null);
+  const linkRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [indicator, setIndicator] = useState({
+    left: 0,
+    width: 0,
+    ready: false,
+  });
 
   useLayoutEffect(() => {
-    const nav = navRef.current
+    const nav = navRef.current;
     const activeIndex = LINKS.findIndex((link) =>
       link.end ? pathname === link.to : pathname.startsWith(link.to),
-    )
-    const el = linkRefs.current[activeIndex]
-    if (!nav || !el) return
-    const navBox = nav.getBoundingClientRect()
-    const linkBox = el.getBoundingClientRect()
+    );
+    const el = linkRefs.current[activeIndex];
+    if (!nav || !el) return;
+    const navBox = nav.getBoundingClientRect();
+    const linkBox = el.getBoundingClientRect();
     setIndicator({
       left: linkBox.left - navBox.left,
       width: linkBox.width,
       ready: true,
-    })
-  }, [pathname])
+    });
+  }, [pathname]);
 
   return (
     <header className="pointer-events-none sticky top-0 z-50">
@@ -56,13 +57,13 @@ export function AppHeader() {
               to={link.to}
               end={link.end}
               ref={(node) => {
-                linkRefs.current[i] = node
+                linkRefs.current[i] = node;
               }}
               className={({ isActive }) =>
                 [
-                  'relative z-[1] rounded-full px-4 py-1.5 text-[12px] font-medium tracking-wide transition-colors duration-200',
-                  isActive ? 'text-white' : 'text-muted hover:text-white/80',
-                ].join(' ')
+                  "relative z-[1] rounded-full px-4 py-1.5 text-[12px] font-medium tracking-wide transition-colors duration-200",
+                  isActive ? "text-white" : "text-muted hover:text-white/80",
+                ].join(" ")
               }
             >
               {link.label}
@@ -71,5 +72,5 @@ export function AppHeader() {
         </nav>
       </div>
     </header>
-  )
+  );
 }
