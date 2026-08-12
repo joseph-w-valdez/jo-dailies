@@ -36,17 +36,17 @@ export const galleryEntries: GalleryEntry[] = [
     date: "2026-08-09",
   },
   {
-    id: "doki-timelapse",
-    title: "Doki Timelapse",
-    type: "video",
-    src: "/gallery/doki.mp4",
-    date: "2022-09-08",
-  },
-  {
     id: "doki",
     title: "Doki",
     type: "image",
     src: "/gallery/doki.png",
+    date: "2022-09-08",
+  },
+  {
+    id: "doki-timelapse",
+    title: "Doki Timelapse",
+    type: "video",
+    src: "/gallery/doki.mp4",
     date: "2022-09-08",
   },
   {
