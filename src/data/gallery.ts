@@ -63,4 +63,18 @@ export const galleryEntries: GalleryEntry[] = [
     src: "/gallery/spiderman.mov",
     date: "2022-01-08",
   },
+  {
+    id: "ram-timelapse",
+    title: "Ram",
+    type: "image",
+    src: "/gallery/ram.jpg",
+    date: "2026-08-12",
+  },
+  {
+    id: "ram-timelapse",
+    title: "Ram Timelapse",
+    type: "video",
+    src: "/gallery/ram.mp4",
+    date: "2026-08-12",
+  },
 ];
