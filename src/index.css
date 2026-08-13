@@ -23,6 +23,10 @@
   /* Scrabble board chrome — retinted per theme */
   --color-board-frame: #1a2740;
   --color-board-cell: #3d5678;
+  /* Chess squares — retinted per theme (pieces stay separate) */
+  --color-chess-light: #e8eef8;
+  --color-chess-dark: #3d5678;
+  --color-chess-frame: #5b7eab;
 }
 
 html,
@@ -104,6 +108,79 @@ body {
 
 .scrabble-move-cat {
   animation: cat-icon-wiggle 900ms ease-in-out infinite;
+}
+
+@keyframes chess-piece-wiggle {
+  0%,
+  12% {
+    transform: rotate(0deg) scale(1.25);
+  }
+  18% {
+    transform: rotate(-22deg) scale(1.25);
+  }
+  26% {
+    transform: rotate(22deg) scale(1.25);
+  }
+  34% {
+    transform: rotate(-18deg) scale(1.25);
+  }
+  42% {
+    transform: rotate(14deg) scale(1.25);
+  }
+  50% {
+    transform: rotate(-8deg) scale(1.25);
+  }
+  58%,
+  100% {
+    transform: rotate(0deg) scale(1.25);
+  }
+}
+
+.chess-piece-active {
+  transform-origin: center;
+  animation: chess-piece-wiggle 2s ease-in-out infinite;
+}
+
+.chess-piece-quote {
+  animation: pet-care-quote-pop 220ms ease-out;
+}
+
+@keyframes chess-board-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.chess-board-shake {
+  animation: chess-board-shake 0.35s ease-in-out;
+}
+
+@keyframes chess-end-banner-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.chess-end-banner {
+  animation: chess-end-banner-in 280ms ease-out;
 }
 
 @keyframes arcade-status-alert {
@@ -1639,6 +1716,7 @@ input:disabled {
   .calcifer-burst-sneeze-puff .calcifer-spark,
   .calcifer-quote,
   .pet-care-quote,
+  .chess-piece-quote,
   .calcifer-tear-stream,
   .furniture-place-puff,
   .furniture-puff-bit,
@@ -1659,7 +1737,10 @@ input:disabled {
   .pet-care-dirty,
   .pet-care-neglected,
   .arcade-status-alert,
-  .arcade-last-move {
+  .arcade-last-move,
+  .chess-piece-active,
+  .chess-board-shake,
+  .chess-end-banner {
     animation: none;
   }
 }
@@ -1685,6 +1766,9 @@ html[data-theme='black'] {
   --color-scroll-rail: rgba(255, 255, 255, 0.04);
   --color-board-frame: #0a0a0a;
   --color-board-cell: #262626;
+  --color-chess-light: #e4e4e7;
+  --color-chess-dark: #27272a;
+  --color-chess-frame: #71717a;
   color-scheme: dark;
 }
 
@@ -1708,6 +1792,9 @@ html[data-theme='white'] {
   --color-window-muntin: rgba(15, 23, 42, 0.2);
   --color-board-frame: #cbd5e1;
   --color-board-cell: #e2e8f0;
+  --color-chess-light: #e2e8f0;
+  --color-chess-dark: #475569;
+  --color-chess-frame: #94a3b8;
   color-scheme: light;
 }
 
@@ -1813,6 +1900,9 @@ html[data-theme='pink'] {
   --color-window-muntin: rgba(131, 24, 67, 0.22);
   --color-board-frame: #f9a8d4;
   --color-board-cell: #fbcfe8;
+  --color-chess-light: #fad0e4;
+  --color-chess-dark: #e06b9c;
+  --color-chess-frame: #c4457a;
   color-scheme: light;
 }
 
@@ -1931,6 +2021,9 @@ html[data-theme='violet'] {
   --color-scroll-rail: rgba(167, 139, 250, 0.06);
   --color-board-frame: #1a1430;
   --color-board-cell: #3b2f55;
+  --color-chess-light: #d4c8f0;
+  --color-chess-dark: #5a5270;
+  --color-chess-frame: #9b8ec4;
   color-scheme: dark;
 }
 
@@ -1951,5 +2044,8 @@ html[data-theme='emerald'] {
   --color-scroll-rail: rgba(52, 211, 153, 0.06);
   --color-board-frame: #123028;
   --color-board-cell: #2a4538;
+  --color-chess-light: #c5e4d4;
+  --color-chess-dark: #3d8f6e;
+  --color-chess-frame: #5aaa88;
   color-scheme: dark;
 }

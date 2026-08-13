@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { createReadStream } from 'node:fs'
+import { createReadStream, readdirSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
@@ -7,11 +7,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // Art tools save in place and hold Windows file locks (plus temp files like
-// `speak-1_0`). Watching those kills the dev server with EBUSY, so the cat art
-// is left unwatched — drop in new frames and refresh the browser.
-const UNWATCHED_ART = '/public/cats/'
+// `speak-1_0`). Watching those kills the dev server with EBUSY, so cat/chess
+// art is left unwatched — drop in new frames and refresh the browser.
+const UNWATCHED_ART = ['/public/cats/', '/public/chess/']
 
-const ART_ROOT = path.resolve(import.meta.dirname, 'public/cats')
+const CATS_ROOT = path.resolve(import.meta.dirname, 'public/cats')
+const CHESS_ROOT = path.resolve(import.meta.dirname, 'public/chess')
 
 /**
  * Vite indexes `public/` once at startup and depends on the watcher to notice
@@ -20,16 +21,52 @@ const ART_ROOT = path.resolve(import.meta.dirname, 'public/cats')
  * fallback — which the browser then fails to decode as an image. Reading
  * straight off disk keeps drop-in frames working with just a browser refresh.
  */
-function serveCatArt(): Plugin {
+function listPngs(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, rel: string) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const ent of entries) {
+      if (ent.name.startsWith('.')) continue
+      const nextRel = rel ? `${rel}/${ent.name}` : ent.name
+      if (ent.isDirectory()) walk(path.join(dir, ent.name), nextRel)
+      else if (ent.isFile() && ent.name.endsWith('.png')) out.push(nextRel)
+    }
+  }
+  walk(root, '')
+  return out
+}
+
+function isInsideRoot(root: string, file: string): boolean {
+  const rel = path.relative(root, file)
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
+function servePngTree(urlPrefix: '/cats' | '/chess', diskRoot: string): Plugin {
   return {
-    name: 'serve-cat-art',
+    name: `serve-png-${urlPrefix.slice(1)}`,
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0]
-        if (!url?.startsWith('/cats/') || !url.endsWith('.png')) return next()
+        if (
+          urlPrefix === '/chess' &&
+          url === '/chess/manifest.json'
+        ) {
+          res.setHeader('Content-Type', 'application/json')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.end(JSON.stringify(listPngs(diskRoot)))
+          return
+        }
+        if (!url?.startsWith(`${urlPrefix}/`) || !url.endsWith('.png')) {
+          return next()
+        }
 
-        const file = path.resolve(ART_ROOT, `.${url.slice('/cats'.length)}`)
-        if (!file.startsWith(ART_ROOT + path.sep)) return next()
+        const file = path.resolve(diskRoot, `.${url.slice(urlPrefix.length)}`)
+        if (!isInsideRoot(diskRoot, file)) return next()
 
         void stat(file).then(
           (info) => {
@@ -53,6 +90,8 @@ function serveCatArt(): Plugin {
             createReadStream(file).pipe(res)
           },
           () => {
+            // Real 404 — not the SPA HTML fallback, which the browser
+            // otherwise tries to decode as an image.
             res.statusCode = 404
             res.end()
           },
@@ -64,10 +103,21 @@ function serveCatArt(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), serveCatArt()],
+  define: {
+    __CHESS_SPRITE_FILES__: JSON.stringify(listPngs(CHESS_ROOT)),
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    servePngTree('/cats', CATS_ROOT),
+    servePngTree('/chess', CHESS_ROOT),
+  ],
   server: {
     watch: {
-      ignored: (path: string) => path.replace(/\\/g, '/').includes(UNWATCHED_ART),
+      ignored: (filePath: string) => {
+        const normalized = filePath.replace(/\\/g, '/')
+        return UNWATCHED_ART.some((dir) => normalized.includes(dir))
+      },
     },
   },
   test: {

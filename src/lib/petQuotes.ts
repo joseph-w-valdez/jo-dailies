@@ -317,6 +317,24 @@ const VALORANT_QUOTES: readonly QuoteLine[] = [
   { text: 'Do you want an OP?', mood: 'excited' },
   { text: 'I forgot to buy any util', mood: 'sad' },
   { text: "Don't forget to buy armor", mood: 'sad' },
+  { text: 'Quick buy me my lucky Phantom!', mood: 'cheeky' },
+  { text: 'Which site did we plant the bomb?', mood: 'panicked' },
+  { text: "Hold on. I'm flanking", mood: 'cheeky' },
+  { text: 'Can you buy me an OP?', mood: 'excited' },
+  {
+    text: 'meow meow meow meow meow now meow meow meow',
+    mood: 'cheeky',
+  },
+  { text: 'Joha is always right', mood: 'cheeky' },
+  { text: 'I started the vote to surrender', mood: 'sad' },
+  { text: "They're cheating", mood: 'angry' },
+  { text: "I'm reporting them just in case", mood: 'annoyed' },
+  { text: 'I muted them', mood: 'annoyed' },
+  { text: 'Let me drone in', mood: 'neutral' },
+  { text: "Why don't we have any smokes??", mood: 'angry' },
+  { text: 'I just need one more orb for my ult', mood: 'excited' },
+  { text: 'OMG. I forgot to buy!', mood: 'panicked' },
+  { text: 'Are you baiting me??', mood: 'annoyed' },
 ]
 
 /** Soft protests when a wallpaper cat is first grabbed. */
@@ -348,6 +366,8 @@ const SHAKE_QUOTES: readonly QuoteLine[] = [
 /** Relative weight inside the Valorant pool (default 1 each). */
 const VALORANT_LINE_WEIGHT: Partial<Record<string, number>> = {
   "I'M SO GOOD SOMETIMES!": 4,
+  // ~7% of Valorant picks with the current pool size.
+  'Joha is always right': 3,
 }
 
 const SAGE_SPECIES = '/cats/extra-sage.png'

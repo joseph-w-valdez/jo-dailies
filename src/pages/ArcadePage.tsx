@@ -20,8 +20,17 @@ const CatBattleship = lazy(() =>
 const CatScrabble = lazy(() =>
   import('../components/CatScrabble').then((m) => ({ default: m.CatScrabble })),
 )
+const CatChess = lazy(() =>
+  import('../components/CatChess').then((m) => ({ default: m.CatChess })),
+)
 
-type ArcadeGame = 'jenga' | 'suika' | 'connect4' | 'battleship' | 'scrabble'
+type ArcadeGame =
+  | 'jenga'
+  | 'suika'
+  | 'connect4'
+  | 'battleship'
+  | 'scrabble'
+  | 'chess'
 
 const TILES: {
   id: ArcadeGame
@@ -33,6 +42,7 @@ const TILES: {
   { id: 'connect4', title: 'Connect Four', blurb: 'Shared drops' },
   { id: 'battleship', title: 'Cattleship', blurb: 'Fog duel' },
   { id: 'scrabble', title: 'Scrabble', blurb: 'Shared board' },
+  { id: 'chess', title: 'Chess', blurb: 'Shared board' },
 ]
 
 export function ArcadePage() {
@@ -46,7 +56,9 @@ export function ArcadePage() {
       <div
         className={[
           'relative z-10 mx-auto w-full px-4 py-8 sm:px-6',
-          active === 'scrabble' ? 'max-w-5xl' : 'max-w-3xl',
+          active === 'scrabble' || active === 'chess'
+            ? 'max-w-5xl'
+            : 'max-w-3xl',
         ].join(' ')}
       >
         {active ? (
@@ -65,8 +77,10 @@ export function ArcadePage() {
               <CatConnect4 onClose={() => setActive(null)} />
             ) : active === 'battleship' ? (
               <CatBattleship onClose={() => setActive(null)} />
-            ) : (
+            ) : active === 'scrabble' ? (
               <CatScrabble onClose={() => setActive(null)} />
+            ) : (
+              <CatChess onClose={() => setActive(null)} />
             )}
           </Suspense>
         ) : (
