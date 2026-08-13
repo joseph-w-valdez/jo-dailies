@@ -1,12 +1,17 @@
 import { useState } from "react";
 
+import { CatWallpaper } from "../components/CatWallpaper";
 import { GalleryViewer } from "../components/GalleryViewer";
 import { galleryEntries } from "../data/gallery";
 
 type SortOption = "newest" | "oldest" | "name-asc" | "name-desc";
 type MediaFilter = "all" | "image" | "video";
 
-export function GalleryPage() {
+export function GalleryPage({
+  wallpaper = true,
+}: {
+  wallpaper?: boolean;
+}) {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>("newest");
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
@@ -34,7 +39,9 @@ export function GalleryPage() {
   });
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <>
+      {wallpaper ? <CatWallpaper /> : null}
+      <main className="relative z-10 mx-auto max-w-7xl p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-white">Gallery</h1>
 
@@ -137,5 +144,6 @@ export function GalleryPage() {
         />
       )}
     </main>
+    </>
   );
 }

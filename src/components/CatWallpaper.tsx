@@ -574,3 +574,29 @@ export function CatWallpaper() {
     </div>
   )
 }
+
+const GUEST_WALLPAPER_KEY = 'jo-dailies:guest-wallpaper:v1'
+
+function loadGuestWallpaper(): boolean {
+  try {
+    return localStorage.getItem(GUEST_WALLPAPER_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+/** Guest Gallery only — Home / Arcade / Scrapbook ignore this. */
+export function useGuestWallpaperSetting() {
+  const [enabled, setEnabled] = useState(loadGuestWallpaper)
+
+  const setWallpaperEnabled = (next: boolean) => {
+    setEnabled(next)
+    try {
+      localStorage.setItem(GUEST_WALLPAPER_KEY, next ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return { wallpaperEnabled: enabled, setWallpaperEnabled }
+}

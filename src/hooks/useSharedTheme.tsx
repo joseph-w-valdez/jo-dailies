@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { db, syncRoomId } from '../lib/firebase'
+import { isRoomUid } from '../lib/jenga'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   applyThemeToDocument,
@@ -43,7 +44,7 @@ export function SharedThemeProvider({ children }: { children: ReactNode }) {
   }, [theme])
 
   useEffect(() => {
-    if (!user) return
+    if (!user || !isRoomUid(user.uid)) return
 
     const appearanceRef = doc(db, 'rooms', syncRoomId, 'settings', 'appearance')
     const unsubscribe = onSnapshot(
@@ -76,19 +77,24 @@ export function SharedThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [user])
 
-  const setTheme = useCallback((next: ThemeId) => {
-    setThemeState(next)
-    saveStoredTheme(next)
-    applyThemeToDocument(next)
+  const setTheme = useCallback(
+    (next: ThemeId) => {
+      setThemeState(next)
+      saveStoredTheme(next)
+      applyThemeToDocument(next)
 
-    void setDoc(
-      doc(db, 'rooms', syncRoomId, 'settings', 'appearance'),
-      { theme: next },
-      { merge: true },
-    ).catch((error: unknown) => {
-      console.error('Could not save theme', error)
-    })
-  }, [])
+      if (!isRoomUid(user?.uid)) return
+
+      void setDoc(
+        doc(db, 'rooms', syncRoomId, 'settings', 'appearance'),
+        { theme: next },
+        { merge: true },
+      ).catch((error: unknown) => {
+        console.error('Could not save theme', error)
+      })
+    },
+    [user?.uid],
+  )
 
   const value = useMemo(
     () => ({ theme, setTheme, defaultTheme: DEFAULT_THEME }),

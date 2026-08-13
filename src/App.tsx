@@ -14,6 +14,7 @@ import { TogetherTodos } from "./components/TogetherTodos";
 import { Watchlist } from "./components/Watchlist";
 import { Whiteboard } from "./components/Whiteboard";
 import { AppHeader } from "./components/AppHeader";
+import { GuestThemeBar } from "./components/ThemePicker";
 import { ArcadePage } from "./pages/ArcadePage";
 import { GAMES, GAME_COUNT } from "./games";
 import { useDailies } from "./hooks/useDailies";
@@ -24,10 +25,12 @@ import {
 } from "./hooks/useSharedTheme";
 import { useShellLayout } from "./hooks/useShellLayout";
 import { parseKey } from "./lib/date";
+import { isRoomUid } from "./lib/jenga";
 import { pickLoadingFlavor } from "./lib/loadingFlavor";
 import { petIdleSrc } from "./lib/petAssets";
 import type { GameId } from "./types";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { NAV_LINKS } from "./nav";
+import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { ScrapbookPage } from "./pages/ScrapbookPage";
 import { GalleryPage } from "./pages/GalleryPage";
 
@@ -202,8 +205,8 @@ function HomePage() {
   );
 }
 
-function AppContent() {
-  const { user, loading, error, signIn } = useFirebaseAuth();
+function LoginPage() {
+  const { error, signIn } = useFirebaseAuth();
   const loginPet = useMemo(
     () =>
       petIdleSrc(
@@ -211,6 +214,59 @@ function AppContent() {
       ),
     [],
   );
+
+  return (
+    <main className="relative grid min-h-screen place-items-center overflow-hidden px-4">
+      <CatWallpaper />
+      <section className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-6 text-center shadow-2xl shadow-black/40">
+        <img
+          src={loginPet}
+          alt=""
+          className="mx-auto mb-3 size-20 object-contain"
+        />
+        <h1 className="text-xl font-semibold text-white">Jo Dailies</h1>
+        <p className="mt-2 text-sm text-muted">
+          Sign in for dailies, or browse the gallery as a guest.
+        </p>
+        <button
+          type="button"
+          onClick={() => void signIn()}
+          className="mt-5 w-full rounded-xl bg-streak px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
+        >
+          Continue with Google
+        </button>
+        <Link
+          to="/gallery"
+          className="mt-3 block w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-white transition hover:border-muted"
+        >
+          Continue as guest
+        </Link>
+        {error ? (
+          <p className="mt-3 text-xs text-rose-300" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
+const GALLERY_NAV = NAV_LINKS.filter((link) => link.to === "/gallery");
+
+function GalleryOnlyLayout() {
+  return (
+    <div className="min-h-screen">
+      <AppHeader links={GALLERY_NAV} />
+      <div className="relative z-10 mx-auto max-w-7xl px-6 pt-6">
+        <GuestThemeBar />
+      </div>
+      <GalleryPage wallpaper={false} />
+    </div>
+  );
+}
+
+function AppContent() {
+  const { user, loading } = useFirebaseAuth();
   const loadingFlavor = useMemo(() => pickLoadingFlavor(), []);
 
   if (loading) {
@@ -221,49 +277,39 @@ function AppContent() {
     );
   }
 
-  if (!user) {
+  const inRoom = isRoomUid(user?.uid);
+
+  if (inRoom) {
     return (
-      <main className="relative grid min-h-screen place-items-center overflow-hidden px-4">
-        <CatWallpaper />
-        <section className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-6 text-center shadow-2xl shadow-black/40">
-          <img
-            src={loginPet}
-            alt=""
-            className="mx-auto mb-3 size-20 object-contain"
-          />
-          <h1 className="text-xl font-semibold text-white">Jo Dailies</h1>
-          <p className="mt-2 text-sm text-muted">
-            Sign in to keep your dailies and watchlist together.
-          </p>
-          <button
-            type="button"
-            onClick={() => void signIn()}
-            className="mt-5 w-full rounded-xl bg-streak px-4 py-2.5 text-sm font-semibold text-black transition hover:brightness-110"
-          >
-            Continue with Google
-          </button>
-          {error ? (
-            <p className="mt-3 text-xs text-rose-300" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </section>
-      </main>
+      <div className="min-h-screen">
+        <AppHeader />
+        {/* Paths must stay in sync with NAV_LINKS in src/nav.ts */}
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/scrapbook" element={<ScrapbookPage />} />
+          <Route path="/arcade" element={<ArcadePage />} />
+          <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      <AppHeader />
-      {/* Paths must stay in sync with NAV_LINKS in src/nav.ts */}
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/scrapbook" element={<ScrapbookPage />} />
-        <Route path="/arcade" element={<ArcadePage />} />
-        <Route path="/gallery" element={<GalleryPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </div>
+    <Routes>
+      <Route
+        path="/gallery"
+        element={<GalleryOnlyLayout />}
+      />
+      {user ? (
+        <Route path="*" element={<Navigate to="/gallery" replace />} />
+      ) : (
+        <>
+          <Route path="/" element={<LoginPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </>
+      )}
+    </Routes>
   );
 }
 

@@ -5,6 +5,11 @@ export const JENGA_PLAYER_UIDS = [
   'PLxEvRfAjSbj7kQumrbQ5xHF4S03',
 ] as const
 
+/** True for the two household Google accounts allowlisted in Firebase rules. */
+export function isRoomUid(uid: string | null | undefined): boolean {
+  return Boolean(uid && (JENGA_PLAYER_UIDS as readonly string[]).includes(uid))
+}
+
 /** Layers of 3 bricks. 15 ≈ classic feel without melting phones. */
 export const JENGA_LAYERS = 15
 

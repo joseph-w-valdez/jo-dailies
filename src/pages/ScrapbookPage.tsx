@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { CatWallpaper } from "../components/CatWallpaper";
 import { ScrapbookViewer } from "../components/ScrapbookViewer";
 import { deleteSnapshot, subscribeToSnapshots } from "../lib/scrapbook";
 import type { ScrapbookEntry } from "../types";
@@ -50,7 +51,9 @@ export function ScrapbookPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <>
+      <CatWallpaper />
+      <main className="relative z-10 mx-auto max-w-7xl p-6">
       <h1 className="text-2xl font-bold text-white">Scrapbook</h1>
 
       {loading ? (
@@ -110,5 +113,6 @@ export function ScrapbookPage() {
         />
       )}
     </main>
+    </>
   );
 }

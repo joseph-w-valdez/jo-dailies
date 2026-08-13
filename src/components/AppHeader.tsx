@@ -1,8 +1,12 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { NAV_LINKS } from "../nav";
+import { NAV_LINKS, type NavLinkDef } from "../nav";
 
-export function AppHeader() {
+export function AppHeader({
+  links = NAV_LINKS,
+}: {
+  links?: readonly NavLinkDef[];
+}) {
   const { pathname } = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const linkRefs = useRef<(HTMLAnchorElement | null)[]>([]);
@@ -19,7 +23,7 @@ export function AppHeader() {
     if (!nav) return;
 
     const measure = () => {
-      const activeIndex = NAV_LINKS.findIndex((link) =>
+      const activeIndex = links.findIndex((link) =>
         link.end ? pathname === link.to : pathname.startsWith(link.to),
       );
       const el = linkRefs.current[activeIndex];
@@ -43,7 +47,7 @@ export function AppHeader() {
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [pathname]);
+  }, [pathname, links]);
 
   return (
     <header className="pointer-events-none sticky top-0 z-50">
@@ -64,7 +68,7 @@ export function AppHeader() {
               opacity: indicator.ready ? 1 : 0,
             }}
           />
-          {NAV_LINKS.map((link, i) => (
+          {links.map((link, i) => (
             <NavLink
               key={link.to}
               to={link.to}
