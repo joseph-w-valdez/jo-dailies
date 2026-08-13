@@ -228,6 +228,49 @@ const SIDEBAR_DEFAULT_PX = 320;
 const SIDEBAR_MIN_PX = 180;
 const HANDLE_PX = 8;
 const PLAY_GAP_PX = 12;
+const TILE_DRAG_THRESHOLD = 6;
+
+function promptBlankLetter(): string | null {
+  const raw = window.prompt("Letter for blank tile?", "A");
+  if (!raw) return null;
+  const ch = raw.trim().toUpperCase().slice(0, 1);
+  if (!/^[A-Z]$/.test(ch)) return null;
+  return ch;
+}
+
+function cellAtPoint(
+  clientX: number,
+  clientY: number,
+): { row: number; col: number } | null {
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    if (!(el instanceof HTMLElement)) continue;
+    const row = el.dataset.scrabbleRow;
+    const col = el.dataset.scrabbleCol;
+    if (row == null || col == null) continue;
+    const r = Number(row);
+    const c = Number(col);
+    if (
+      Number.isInteger(r) &&
+      Number.isInteger(c) &&
+      r >= 0 &&
+      r < SCRABBLE_SIZE &&
+      c >= 0 &&
+      c < SCRABBLE_SIZE
+    ) {
+      return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+function pointOverRack(clientX: number, clientY: number): boolean {
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    if (el instanceof HTMLElement && el.dataset.scrabbleRack === "1") {
+      return true;
+    }
+  }
+  return false;
+}
 
 function readSidebarWidth(): number {
   try {
@@ -400,6 +443,28 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newGameOpen, setNewGameOpen] = useState(false);
+  const [draggingTileId, setDraggingTileId] = useState<string | null>(null);
+  const [hoverCell, setHoverCell] = useState<{
+    row: number;
+    col: number;
+  } | null>(null);
+  const [hoverRack, setHoverRack] = useState(false);
+
+  const boardRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+  const suppressClickRef = useRef(false);
+  const tileDragRef = useRef<{
+    source: "rack" | "board";
+    tile: ScrabbleTile;
+    chosenLetter?: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    dragging: boolean;
+    alreadySelected: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setDraft([]);
@@ -408,6 +473,10 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     setExchangeIds(new Set());
     setBlankStareMode(false);
     setMessage(null);
+    setDraggingTileId(null);
+    setHoverCell(null);
+    setHoverRack(false);
+    tileDragRef.current = null;
   }, [game.roundId, game.turnUid]);
 
   useEffect(() => {
@@ -463,30 +532,156 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     return Boolean(game.board[cellIndex(row, col)]?.blank);
   };
 
-  const placeSelectedAt = (row: number, col: number) => {
-    if (!canAct || exchangeMode || blankStareMode || busy) return;
-    if (game.peek) return;
-    if (game.board[cellIndex(row, col)]) return;
-    if (draft.some((d) => d.row === row && d.col === col)) return;
-    if (!selectedId) return;
-    const tile = rackVisible.find((t) => t.id === selectedId);
-    if (!tile) return;
+  const placeTileOnBoard = (
+    tile: ScrabbleTile,
+    row: number,
+    col: number,
+    existingChosen?: string,
+  ): boolean => {
+    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) {
+      return false;
+    }
+    if (game.board[cellIndex(row, col)]) return false;
+    if (draft.some((d) => d.row === row && d.col === col && d.tile.id !== tile.id)) {
+      return false;
+    }
 
-    let chosenLetter: string | undefined;
-    if (tile.blank) {
-      const raw = window.prompt("Letter for blank tile?", "A");
-      if (!raw) return;
-      const ch = raw.trim().toUpperCase().slice(0, 1);
-      if (!/^[A-Z]$/.test(ch)) {
+    let chosenLetter = existingChosen;
+    if (tile.blank && !chosenLetter) {
+      const ch = promptBlankLetter();
+      if (!ch) {
         setMessage("Blank needs A–Z");
-        return;
+        return false;
       }
       chosenLetter = ch;
     }
 
-    setDraft((prev) => [...prev, { row, col, tile, chosenLetter }]);
+    setDraft((prev) => {
+      const without = prev.filter((d) => d.tile.id !== tile.id);
+      return [...without, { row, col, tile, chosenLetter }];
+    });
     setSelectedId(null);
     setMessage(null);
+    return true;
+  };
+
+  const placeSelectedAt = (row: number, col: number) => {
+    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) return;
+    if (game.board[cellIndex(row, col)]) return;
+
+    const draftHere = draft.find((d) => d.row === row && d.col === col);
+    if (draftHere) {
+      setSelectedId((id) => (id === draftHere.tile.id ? null : draftHere.tile.id));
+      return;
+    }
+
+    if (!selectedId) return;
+
+    const fromDraft = draft.find((d) => d.tile.id === selectedId);
+    if (fromDraft) {
+      placeTileOnBoard(fromDraft.tile, row, col, fromDraft.chosenLetter);
+      return;
+    }
+
+    const tile = rackVisible.find((t) => t.id === selectedId);
+    if (!tile) return;
+    placeTileOnBoard(tile, row, col);
+  };
+
+  const placeGhost = (clientX: number, clientY: number) => {
+    const ghost = ghostRef.current;
+    const board = boardRef.current;
+    if (!ghost || !board) return;
+    const size = board.getBoundingClientRect().width / SCRABBLE_SIZE;
+    ghost.style.width = `${size}px`;
+    ghost.style.height = `${size}px`;
+    ghost.style.left = `${clientX}px`;
+    ghost.style.top = `${clientY}px`;
+  };
+
+  useEffect(() => {
+    const drag = tileDragRef.current;
+    if (draggingTileId === null || !drag) return;
+    placeGhost(drag.lastX, drag.lastY);
+  }, [draggingTileId]);
+
+  const onTilePointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    source: "rack" | "board",
+    tile: ScrabbleTile,
+    chosenLetter?: string,
+  ) => {
+    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    suppressClickRef.current = false;
+    tileDragRef.current = {
+      source,
+      tile,
+      chosenLetter,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      dragging: false,
+      alreadySelected: selectedId === tile.id,
+    };
+    setSelectedId(tile.id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onTilePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = tileDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.dragging) {
+      if (dx * dx + dy * dy < TILE_DRAG_THRESHOLD * TILE_DRAG_THRESHOLD) return;
+      drag.dragging = true;
+      setDraggingTileId(drag.tile.id);
+    }
+    placeGhost(event.clientX, event.clientY);
+    setHoverCell(cellAtPoint(event.clientX, event.clientY));
+    setHoverRack(
+      drag.source === "board" && pointOverRack(event.clientX, event.clientY),
+    );
+  };
+
+  const onTilePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = tileDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    tileDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    suppressClickRef.current = true;
+    if (drag.dragging) {
+      const overRack = pointOverRack(event.clientX, event.clientY);
+      const cell = cellAtPoint(event.clientX, event.clientY);
+      if (drag.source === "board" && overRack) {
+        setDraft((prev) => prev.filter((d) => d.tile.id !== drag.tile.id));
+        setSelectedId(null);
+        setMessage(null);
+      } else if (cell) {
+        placeTileOnBoard(drag.tile, cell.row, cell.col, drag.chosenLetter);
+      }
+      setDraggingTileId(null);
+      setHoverCell(null);
+      setHoverRack(false);
+      return;
+    }
+    if (drag.alreadySelected) setSelectedId(null);
+  };
+
+  const onTilePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = tileDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    tileDragRef.current = null;
+    setDraggingTileId(null);
+    setHoverCell(null);
+    setHoverRack(false);
   };
 
   const recall = () => {
@@ -652,7 +847,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   };
 
   const shuffle = () => {
-    if (!canAct || busy || game.peek) return;
+    if (busy || game.status !== "playing") return;
+    if (myRack.length < 2) return;
     void commitGame((prev) => shuffleRack(prev, actorUid) ?? prev);
   };
 
@@ -795,6 +991,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                 >
                   <div className="flex min-h-0 shrink-0 flex-col">
                     <div
+                      ref={boardRef}
                       className="grid shrink-0 gap-0.5 rounded-xl border border-border bg-board-frame p-1.5"
                       style={
                         immersive
@@ -820,26 +1017,71 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                           const prem = premiumAt(row, col);
                           const letter = letterOnBoard(row, col);
                           const blank = letter ? blankOnBoard(row, col) : false;
-                          const isDraft = draft.some(
+                          const draftCell = draft.find(
                             (d) => d.row === row && d.col === col,
                           );
+                          const isDraft = Boolean(draftCell);
                           const isLastPlay = game.lastPlayCells.some(
                             (c) => c.row === row && c.col === col,
                           );
+                          const isHover =
+                            hoverCell?.row === row && hoverCell?.col === col;
+                          const canDropHere =
+                            draggingTileId !== null &&
+                            !game.board[cellIndex(row, col)] &&
+                            (!draftCell || draftCell.tile.id === draggingTileId);
+                          const draggingThis =
+                            isDraft &&
+                            draftCell !== undefined &&
+                            draggingTileId === draftCell.tile.id;
                           return (
                             <button
                               key={i}
                               type="button"
+                              data-scrabble-row={row}
+                              data-scrabble-col={col}
                               disabled={!canAct || exchangeMode || busy}
-                              onClick={() => placeSelectedAt(row, col)}
+                              onClick={() => {
+                                if (suppressClickRef.current) {
+                                  suppressClickRef.current = false;
+                                  return;
+                                }
+                                placeSelectedAt(row, col);
+                              }}
+                              onPointerDown={
+                                isDraft && draftCell
+                                  ? (event) =>
+                                      onTilePointerDown(
+                                        event,
+                                        "board",
+                                        draftCell.tile,
+                                        draftCell.chosenLetter,
+                                      )
+                                  : undefined
+                              }
+                              onPointerMove={isDraft ? onTilePointerMove : undefined}
+                              onPointerUp={isDraft ? onTilePointerUp : undefined}
+                              onPointerCancel={
+                                isDraft ? onTilePointerCancel : undefined
+                              }
                               className={[
-                                "relative flex min-h-0 min-w-0 items-center justify-center rounded-md border border-black/20 text-sm font-semibold uppercase leading-none",
+                                "relative flex min-h-0 min-w-0 touch-none items-center justify-center rounded-md border border-black/20 text-sm font-semibold uppercase leading-none",
                                 letter
                                   ? isDraft
-                                    ? "border-amber-800/30 bg-[#f3e6c8] text-amber-950 ring-2 ring-golden"
+                                    ? "cursor-grab border-amber-800/30 bg-[#f3e6c8] text-amber-950 ring-2 ring-golden active:cursor-grabbing"
                                     : "border-amber-800/30 bg-[#f3e6c8] text-amber-950 shadow-sm"
                                   : premiumClass(prem),
                                 isLastPlay && !isDraft ? "arcade-last-move" : "",
+                                isHover && canDropHere
+                                  ? "ring-2 ring-emerald-400/80"
+                                  : "",
+                                selectedId &&
+                                isDraft &&
+                                draftCell?.tile.id === selectedId &&
+                                draggingTileId === null
+                                  ? "ring-2 ring-golden"
+                                  : "",
+                                draggingThis ? "opacity-0" : "",
                               ].join(" ")}
                             >
                               {letter ? (
@@ -865,7 +1107,11 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
 
                     <div
                       ref={rackRef}
-                      className="mt-3 flex shrink-0 flex-col items-start gap-2"
+                      data-scrabble-rack="1"
+                      className={[
+                        "mt-3 flex shrink-0 flex-col items-start gap-2 rounded-lg p-1",
+                        hoverRack ? "ring-2 ring-emerald-400/70" : "",
+                      ].join(" ")}
                     >
                       <div className="flex flex-wrap items-center gap-1.5">
                         {(exchangeMode || blankStareMode
@@ -877,6 +1123,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                             : blankStareMode
                               ? false
                               : selectedId === tile.id;
+                          const placeMode =
+                            !exchangeMode && !blankStareMode && !game.peek;
                           return (
                             <button
                               key={tile.id}
@@ -889,12 +1137,38 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                   !blankStareMode &&
                                   draftIds.has(tile.id))
                               }
-                              onClick={() => onRackTileClick(tile)}
+                              className={[
+                                "touch-none",
+                                placeMode ? "cursor-grab active:cursor-grabbing" : "",
+                                draggingTileId === tile.id ? "opacity-0" : "",
+                              ].join(" ")}
+                              onClick={() => {
+                                if (suppressClickRef.current) {
+                                  suppressClickRef.current = false;
+                                  return;
+                                }
+                                onRackTileClick(tile);
+                              }}
+                              onPointerDown={
+                                placeMode
+                                  ? (event) =>
+                                      onTilePointerDown(event, "rack", tile)
+                                  : undefined
+                              }
+                              onPointerMove={
+                                placeMode ? onTilePointerMove : undefined
+                              }
+                              onPointerUp={
+                                placeMode ? onTilePointerUp : undefined
+                              }
+                              onPointerCancel={
+                                placeMode ? onTilePointerCancel : undefined
+                              }
                             >
                               <TileFace
                                 letter={tile.letter}
                                 blank={tile.blank}
-                                selected={selected}
+                                selected={selected && draggingTileId !== tile.id}
                               />
                             </button>
                           );
@@ -905,11 +1179,15 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                             type="button"
                             disabled={!canAct || busy}
                             title="Return to rack"
-                            onClick={() =>
+                            onClick={() => {
+                              if (suppressClickRef.current) {
+                                suppressClickRef.current = false;
+                                return;
+                              }
                               setDraft((prev) =>
                                 prev.filter((x) => x.tile.id !== d.tile.id),
-                              )
-                            }
+                              );
+                            }}
                           >
                             <TileFace
                               letter={d.chosenLetter || d.tile.letter}
@@ -968,10 +1246,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                             <button
                               type="button"
                               disabled={
-                                !canAct ||
                                 busy ||
-                                Boolean(game.peek) ||
-                                rackVisible.length < 2
+                                game.status !== "playing" ||
+                                myRack.length < 2
                               }
                               onClick={shuffle}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
@@ -1285,6 +1562,31 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   </button>
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {draggingTileId !== null ? (
+            <div
+              ref={ghostRef}
+              className="pointer-events-none fixed z-[80] -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: tileDragRef.current?.lastX,
+                top: tileDragRef.current?.lastY,
+              }}
+            >
+              {(() => {
+                const fromDraft = draft.find((d) => d.tile.id === draggingTileId);
+                const tile =
+                  fromDraft?.tile ??
+                  myRack.find((t) => t.id === draggingTileId);
+                if (!tile) return null;
+                return (
+                  <TileFace
+                    letter={fromDraft?.chosenLetter || tile.letter}
+                    blank={tile.blank}
+                  />
+                );
+              })()}
             </div>
           ) : null}
 

@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArcadeStatus } from '../components/ArcadeStage'
 import { CatWallpaper } from '../components/CatWallpaper'
 import { GoldenConfetti } from '../components/GoldenConfetti'
+import { useSharedWheel } from '../hooks/useSharedWheel'
 import {
   activeWheelEntries,
   buildWheelSegments,
   createWheelEntry,
-  defaultWheelEntries,
   formatWeight,
+  newWheelSpinId,
   normalizeWeight,
   pickWeightedIndex,
   rotationForWinner,
@@ -110,19 +111,20 @@ function WeightControl({
 }
 
 export function WheelPage() {
-  const [entries, setEntries] = useState<WheelEntry[]>(() =>
-    defaultWheelEntries(),
-  )
+  const { wheel, ready, commitWheel } = useSharedWheel()
+  const entries = wheel.entries
   const [draft, setDraft] = useState('')
   const [rotation, setRotation] = useState(0)
   const [spinning, setSpinning] = useState(false)
-  const [winnerId, setWinnerId] = useState<string | null>(null)
   const [announce, setAnnounce] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rotationRef = useRef(0)
   rotationRef.current = rotation
+  const seenSpinIdRef = useRef<string | null>(null)
+  const localSpinIdRef = useRef<string | null>(null)
+  const hydratedRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -131,14 +133,70 @@ export function WheelPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!ready || spinning) return
+    setRotation(wheel.rotation)
+  }, [ready, wheel.rotation, spinning])
+
+  useEffect(() => {
+    if (!ready) return
+
+    const playCelebrate = () => {
+      setCelebrating(true)
+      if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current)
+      confettiTimerRef.current = setTimeout(() => {
+        setCelebrating(false)
+        confettiTimerRef.current = null
+      }, CONFETTI_MS)
+    }
+
+    if (!wheel.spinId) {
+      seenSpinIdRef.current = null
+      if (!spinning) setAnnounce(false)
+      hydratedRef.current = true
+      return
+    }
+
+    if (wheel.spinId === seenSpinIdRef.current) return
+    seenSpinIdRef.current = wheel.spinId
+
+    // First snapshot after load: show winner quietly, no confetti replay.
+    if (!hydratedRef.current) {
+      hydratedRef.current = true
+      setAnnounce(Boolean(wheel.winnerId))
+      setRotation(wheel.rotation)
+      return
+    }
+
+    // We authored this spin — local timer already handles celebrate.
+    if (localSpinIdRef.current === wheel.spinId) {
+      setAnnounce(Boolean(wheel.winnerId))
+      return
+    }
+
+    // Peer spun: animate to their final rotation, then celebrate.
+    setAnnounce(false)
+    setCelebrating(false)
+    setSpinning(true)
+    setRotation(wheel.rotation)
+    if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
+    spinTimerRef.current = setTimeout(() => {
+      setSpinning(false)
+      setAnnounce(Boolean(wheel.winnerId))
+      playCelebrate()
+      spinTimerRef.current = null
+    }, SPIN_MS)
+  }, [ready, wheel.spinId, wheel.winnerId, wheel.rotation, spinning])
+
   const segments = useMemo(() => buildWheelSegments(entries), [entries])
-  const canSpin = segments.length > 0 && !spinning
+  const canSpin = ready && segments.length > 0 && !spinning
+  const winnerId = announce ? wheel.winnerId : null
 
   const clearOutcome = () => {
-    setWinnerId(null)
     setAnnounce(false)
     setCelebrating(false)
     setSpinning(false)
+    localSpinIdRef.current = null
     if (spinTimerRef.current) {
       clearTimeout(spinTimerRef.current)
       spinTimerRef.current = null
@@ -147,6 +205,21 @@ export function WheelPage() {
       clearTimeout(confettiTimerRef.current)
       confettiTimerRef.current = null
     }
+  }
+
+  const setEntries = (
+    next: WheelEntry[] | ((prev: WheelEntry[]) => WheelEntry[]),
+  ) => {
+    void commitWheel((prev) => {
+      const entriesNext = typeof next === 'function' ? next(prev.entries) : next
+      return {
+        ...prev,
+        entries: entriesNext,
+        winnerId: null,
+        spinId: null,
+      }
+    })
+    seenSpinIdRef.current = null
   }
 
   const addEntry = (rawLabel?: string) => {
@@ -184,11 +257,19 @@ export function WheelPage() {
       segments,
       winnerIndex,
     )
+    const spinId = newWheelSpinId()
+    localSpinIdRef.current = spinId
+    seenSpinIdRef.current = spinId
     setAnnounce(false)
     setCelebrating(false)
-    setWinnerId(winner.id)
     setSpinning(true)
     setRotation(nextRotation)
+    void commitWheel((prev) => ({
+      ...prev,
+      rotation: nextRotation,
+      winnerId: winner.id,
+      spinId,
+    }))
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
     spinTimerRef.current = setTimeout(() => {
       setSpinning(false)
@@ -204,16 +285,18 @@ export function WheelPage() {
   }
 
   const winnerLabel =
-    announce && winnerId
+    winnerId != null
       ? (entries.find((e) => e.id === winnerId)?.label ?? null)
       : null
-  const statusLabel = spinning
-    ? 'Spinning…'
-    : winnerLabel
-      ? `Winner — ${winnerLabel}`
-      : segments.length === 0
-        ? 'Add options'
-        : 'Ready'
+  const statusLabel = !ready
+    ? 'Syncing…'
+    : spinning
+      ? 'Spinning…'
+      : winnerLabel
+        ? `Winner — ${winnerLabel}`
+        : segments.length === 0
+          ? 'Add options'
+          : 'Ready'
 
   return (
     <>

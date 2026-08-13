@@ -562,15 +562,13 @@ function canUseSkill(state: ScrabbleState, uid: string): boolean {
   )
 }
 
-/** Free rack reorder — no charges, no log. */
+/** Free rack reorder — no charges, no log. Allowed any time while playing. */
 export function shuffleRack(
   state: ScrabbleState,
   uid: string,
   random: () => number = Math.random,
 ): ScrabbleState | null {
   if (state.status !== 'playing') return null
-  if (state.turnUid !== uid) return null
-  if (state.peek) return null
   const rack = [...(state.racks[uid] ?? [])]
   if (rack.length < 2) return null
   for (let i = rack.length - 1; i > 0; i -= 1) {

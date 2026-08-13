@@ -273,6 +273,21 @@ describe('scrabble skills', () => {
     expect(next!.moveLog.length).toBe(state.moveLog.length)
   })
 
+  it('shuffleRack works even when it is not your turn', () => {
+    let state = createInitialScrabble(a)
+    state = { ...state, turnUid: b }
+    const ordered = [
+      tile('1', 'A'),
+      tile('2', 'B'),
+      tile('3', 'C'),
+    ]
+    state = withRacks(state, { [a]: ordered })
+    const next = shuffleRack(state, a, () => 0)
+    expect(next).not.toBeNull()
+    expect(next!.turnUid).toBe(b)
+    expect(next!.racks[a]!.map((t) => t.id)).toEqual(['2', '3', '1'])
+  })
+
   it('Cat Burglar steals a vowel and spends a charge', () => {
     let state = createInitialScrabble(a)
     state = withRacks(state, {

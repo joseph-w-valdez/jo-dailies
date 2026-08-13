@@ -1,4 +1,4 @@
-/** Ephemeral picker wheel — resets to defaults each visit. */
+/** Shared room picker wheel — Firestore `rooms/{id}/wheel/current`. */
 export interface WheelEntry {
   id: string
   label: string
@@ -12,6 +12,18 @@ export interface WheelSegment {
   /** Degrees clockwise from 12 o'clock. */
   startDeg: number
   endDeg: number
+}
+
+/** Durable shared wheel document. */
+export interface WheelRoomState {
+  entries: WheelEntry[]
+  /** Absolute CSS rotation after the last completed spin. */
+  rotation: number
+  winnerId: string | null
+  /** Unique id per completed spin — peers use this to celebrate. */
+  spinId: string | null
+  version: number
+  updatedAt: number
 }
 
 /** Slice colors that read well on dark UI. */
@@ -45,8 +57,73 @@ export function createWheelEntry(
 
 export function defaultWheelEntries(): WheelEntry[] {
   return [
-    createWheelEntry('play valorant', { weight: 1, color: WHEEL_COLORS[0] }),
+    createWheelEntry('Play Valorant', { weight: 1, color: WHEEL_COLORS[0] }),
   ]
+}
+
+export function createInitialWheel(): WheelRoomState {
+  return {
+    entries: defaultWheelEntries(),
+    rotation: 0,
+    winnerId: null,
+    spinId: null,
+    version: 1,
+    updatedAt: Date.now(),
+  }
+}
+
+export function newWheelSpinId(): string {
+  return `ws-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function clampNum(n: unknown, fallback = 0): number {
+  const v = typeof n === 'number' ? n : Number(n)
+  return Number.isFinite(v) ? v : fallback
+}
+
+function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const label = typeof o.label === 'string' ? o.label.trim() : ''
+  if (!label) return null
+  return {
+    id: typeof o.id === 'string' && o.id ? o.id : newId(),
+    label,
+    weight: normalizeWeight(o.weight),
+    enabled: o.enabled !== false,
+    color:
+      typeof o.color === 'string' && o.color
+        ? o.color
+        : WHEEL_COLORS[colorIndex % WHEEL_COLORS.length]!,
+  }
+}
+
+export function normalizeWheel(raw: unknown): WheelRoomState {
+  if (!raw || typeof raw !== 'object') return createInitialWheel()
+  const s = raw as Record<string, unknown>
+  const entriesRaw = Array.isArray(s.entries) ? s.entries : []
+  const entries = entriesRaw
+    .map((item, i) => parseWheelEntry(item, i))
+    .filter((e): e is WheelEntry => e !== null)
+  return {
+    entries: entries.length > 0 ? entries : defaultWheelEntries(),
+    rotation: clampNum(s.rotation, 0),
+    winnerId: typeof s.winnerId === 'string' && s.winnerId ? s.winnerId : null,
+    spinId: typeof s.spinId === 'string' && s.spinId ? s.spinId : null,
+    version: Math.max(1, Math.floor(clampNum(s.version, 1))),
+    updatedAt: Math.floor(clampNum(s.updatedAt, Date.now())),
+  }
+}
+
+export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
+  return {
+    entries: state.entries,
+    rotation: state.rotation,
+    winnerId: state.winnerId,
+    spinId: state.spinId,
+    version: state.version,
+    updatedAt: state.updatedAt,
+  }
 }
 
 /** One-tap labels for the options panel. */
