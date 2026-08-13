@@ -9,6 +9,7 @@ import {
   type CalciferBurst,
   type CalciferMood,
 } from './FireIcon'
+import { GoldenConfetti } from './GoldenConfetti'
 
 /** Quotes keyed by today's progress mood. */
 const CALCIFER_QUOTES: Record<CalciferMood, string[]> = {
@@ -580,30 +581,4 @@ function getMilestone(value: number) {
   if (value >= 7) return { days: 7, icon: '♥' }
   if (value >= 3) return { days: 3, icon: '✦' }
   return null
-}
-
-function GoldenConfetti() {
-  const colors = ['bg-golden', 'bg-orange-400', 'bg-streak', 'bg-pink-400']
-
-  return (
-    <div
-      className="pointer-events-none fixed inset-0 z-[60] overflow-hidden"
-      aria-hidden="true"
-    >
-      {Array.from({ length: 60 }, (_, index) => (
-        <span
-          key={index}
-          className={[
-            'golden-confetti absolute -top-4 size-2 rounded-sm',
-            colors[index % colors.length],
-          ].join(' ')}
-          style={{
-            left: `${(index * 37) % 100}%`,
-            animationDelay: `${(index % 10) * 90}ms`,
-            animationDuration: `${2200 + (index % 5) * 300}ms`,
-          }}
-        />
-      ))}
-    </div>
-  )
 }

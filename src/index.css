@@ -183,6 +183,39 @@ body {
   animation: chess-end-banner-in 280ms ease-out;
 }
 
+.wheel-weight-slider {
+  height: 0.35rem;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-border) 85%, transparent);
+}
+
+.wheel-weight-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, white 30%);
+  background: var(--color-surface-raised);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.wheel-weight-slider::-moz-range-thumb {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, white 30%);
+  background: var(--color-surface-raised);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.wheel-weight-slider::-moz-range-track {
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-border) 85%, transparent);
+}
+
 @keyframes arcade-status-alert {
   0%,
   100% {
@@ -205,6 +238,20 @@ body {
 .arcade-status-alert {
   transform-origin: center;
   animation: arcade-status-alert 720ms ease-in-out;
+}
+
+@keyframes wheel-winner-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.18);
+  }
+}
+
+.wheel-winner-slice {
+  animation: wheel-winner-pulse 1.1s ease-in-out 2;
 }
 
 @keyframes arcade-last-move {
@@ -235,24 +282,52 @@ body {
 
 .cat-confetti-bit {
   animation-name: cat-confetti-fall;
-  animation-timing-function: cubic-bezier(0.22, 0.8, 0.36, 1);
-  animation-fill-mode: forwards;
-  opacity: 0.85;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  opacity: 0;
   will-change: transform, opacity;
+}
+
+.cat-confetti-spin {
+  animation-name: cat-confetti-spin;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  transform-origin: center;
+  will-change: transform;
 }
 
 @keyframes cat-confetti-fall {
   0% {
     opacity: 0;
-    transform: translate3d(0, -10vh, 0) rotate(var(--cat-rot, 0deg)) scale(0.4);
+    transform: translate3d(0, -22vh, 0);
   }
-  12% {
-    opacity: 0.9;
+  8% {
+    opacity: 0;
+    transform: translate3d(0, -10vh, 0);
+  }
+  14% {
+    opacity: 1;
+    transform: translate3d(calc(var(--cat-fall-x, 40px) * 0.06), 4vh, 0);
+  }
+  90% {
+    opacity: 1;
+    transform: translate3d(calc(var(--cat-fall-x, 40px) * 0.88), 95vh, 0);
   }
   100% {
-    opacity: 0;
-    transform: translate3d(var(--cat-fall-x, 40px), 110vh, 0)
-      rotate(calc(var(--cat-rot, 0deg) + 160deg)) scale(0.85);
+    opacity: 1;
+    transform: translate3d(var(--cat-fall-x, 40px), 115vh, 0);
+  }
+}
+
+@keyframes cat-confetti-spin {
+  0% {
+    transform: rotate(var(--cat-rot, 0deg)) scale(0.7);
+  }
+  14% {
+    transform: rotate(calc(var(--cat-rot, 0deg) + 18deg)) scale(0.85);
+  }
+  100% {
+    transform: rotate(calc(var(--cat-rot, 0deg) + 170deg)) scale(0.95);
   }
 }
 
@@ -1723,6 +1798,7 @@ input:disabled {
   .cat-floater,
   .cat-wallpaper-icon,
   .cat-confetti-bit,
+  .cat-confetti-spin,
   .cursor-trail-bit,
   .done-sparkle,
   .watchlist-cheer,
@@ -1737,6 +1813,7 @@ input:disabled {
   .pet-care-dirty,
   .pet-care-neglected,
   .arcade-status-alert,
+  .wheel-winner-slice,
   .arcade-last-move,
   .chess-piece-active,
   .chess-board-shake,

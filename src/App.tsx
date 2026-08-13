@@ -33,6 +33,7 @@ import { NAV_LINKS } from "./nav";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { ScrapbookPage } from "./pages/ScrapbookPage";
 import { GalleryPage } from "./pages/GalleryPage";
+import { WheelPage } from "./pages/WheelPage";
 
 function HomePage() {
   const {
@@ -289,6 +290,7 @@ function AppContent() {
           <Route path="/scrapbook" element={<ScrapbookPage />} />
           <Route path="/arcade" element={<ArcadePage />} />
           <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="/wheel" element={<WheelPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

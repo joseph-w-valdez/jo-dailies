@@ -31,7 +31,7 @@ export function ArcadeStatus({
   tone = 'ready',
 }: {
   children: ReactNode
-  tone?: 'ready' | 'danger'
+  tone?: 'ready' | 'danger' | 'win'
 }) {
   const [alerting, setAlerting] = useState(false)
   const prevText = useRef<string | null>(null)
@@ -55,7 +55,9 @@ export function ArcadeStatus({
         'inline-flex max-w-full truncate rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-tight',
         tone === 'danger'
           ? 'bg-rose-500 text-white'
-          : 'bg-amber-400 text-amber-950',
+          : tone === 'win'
+            ? 'bg-golden text-amber-950 shadow-[0_0_0_1px_rgba(251,191,36,0.55),0_0_18px_rgba(251,191,36,0.45)]'
+            : 'bg-amber-400 text-amber-950',
         alerting ? 'arcade-status-alert' : '',
       ].join(' ')}
       onAnimationEnd={() => setAlerting(false)}
