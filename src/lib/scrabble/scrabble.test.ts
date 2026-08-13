@@ -18,13 +18,14 @@ import {
   beginPeekAPaw,
   createInitialScrabble,
   finishPeekAPaw,
+  normalizeScrabble,
   SCRABBLE_SKILL_MAX,
   shuffleRack,
   startNewScrabble,
   type ScrabbleState,
   type ScrabbleTile,
 } from '../scrabble/state'
-import { JENGA_PLAYER_UIDS } from '../jenga'
+import { JENGA_PLAYER_UIDS, normalizeGameState } from '../jenga'
 
 describe('scrabble tiles', () => {
   it('builds a 100-tile bag', () => {
@@ -190,6 +191,37 @@ describe('scrabble turns', () => {
     expect(marker.finals?.[a]).toBe(42)
     expect(marker.finals?.[b]).toBe(17)
     expect(next.moveLog.some((e) => e.kind === 'pass')).toBe(true)
+  })
+})
+
+function hasUndefined(value: unknown): boolean {
+  if (value === undefined) return true
+  if (Array.isArray(value)) return value.some(hasUndefined)
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some(hasUndefined)
+  }
+  return false
+}
+
+describe('firestore payloads', () => {
+  it('normalized scrabble state has no undefined fields', () => {
+    const uid = JENGA_PLAYER_UIDS[0]!
+    const passed = applyPass(createInitialScrabble(uid), uid)!
+    const normalized = normalizeScrabble(
+      JSON.parse(JSON.stringify(passed)) as Record<string, unknown>,
+      uid,
+    )
+    expect(hasUndefined(normalized)).toBe(false)
+    expect(hasUndefined(startNewScrabble(normalized, uid))).toBe(false)
+  })
+
+  it('normalized jenga state has no undefined fields', () => {
+    const uid = JENGA_PLAYER_UIDS[0]!
+    const normalized = normalizeGameState(
+      { version: 1, bricks: [{ id: 'b-0-0', x: 0, y: 0, z: 0 }] },
+      uid,
+    )
+    expect(hasUndefined(normalized)).toBe(false)
   })
 })
 

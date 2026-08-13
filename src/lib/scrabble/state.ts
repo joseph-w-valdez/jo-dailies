@@ -500,7 +500,7 @@ export function applyPlay(
       score: playScore,
       total: nextTotal,
       definitions,
-      note: meowtiply ? 'Meowtiply ×3' : undefined,
+      ...(meowtiply ? { note: 'Meowtiply ×3' } : {}),
     }),
     updatedAt: Date.now(),
   }
@@ -893,9 +893,9 @@ export function normalizeScrabble(
         score: Math.floor(clampNum(m.score, 0)),
         total: Math.floor(clampNum(m.total, 0)),
         definitions,
-        note,
-        finals,
         at: Math.floor(clampNum(m.at, Date.now())),
+        ...(note ? { note } : {}),
+        ...(finals ? { finals } : {}),
       })
       if (moveLog.length >= MOVE_LOG_MAX) break
     }

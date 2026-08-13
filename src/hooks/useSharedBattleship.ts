@@ -5,7 +5,8 @@ import {
   normalizeBattleship,
   type BattleshipState,
 } from '../lib/battleship'
-import { db, syncRoomId } from '../lib/firebase'
+import { db, syncRoomId, toFirestoreData } from '../lib/firebase'
+import { withBumpedVersion } from '../lib/gameCommit'
 import { updateSyncSource } from '../lib/syncStatus'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
@@ -40,7 +41,7 @@ export function useSharedBattleship() {
         })
         if (!snap.exists()) {
           const seed = createInitialBattleship(user.uid)
-          void setDoc(gameDocRef(), seed)
+          void setDoc(gameDocRef(), toFirestoreData(seed))
           setGame(seed)
           gameRef.current = seed
           setReady(true)
@@ -85,16 +86,12 @@ export function useSharedBattleship() {
       next: BattleshipState | ((prev: BattleshipState) => BattleshipState),
     ) => {
       const base = typeof next === 'function' ? next(gameRef.current) : next
-      const resolved: BattleshipState = {
-        ...base,
-        version: Math.max(base.version, gameRef.current.version + 1),
-        updatedAt: Date.now(),
-      }
+      const resolved = withBumpedVersion(base, gameRef.current.version)
       gameRef.current = resolved
       pendingVersionRef.current = resolved.version
       setGame(resolved)
       try {
-        await setDoc(gameDocRef(), resolved)
+        await setDoc(gameDocRef(), toFirestoreData(resolved))
       } catch (error) {
         console.error('Could not save battleship', error)
       }

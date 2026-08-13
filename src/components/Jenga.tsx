@@ -918,7 +918,7 @@ function JengaWorld({
       out.push({
         ...meta,
         ...poseFromBody(body),
-        loose: meta.loose === true ? true : undefined,
+        ...(meta.loose === true ? { loose: true as const } : {}),
       })
     }
     return out

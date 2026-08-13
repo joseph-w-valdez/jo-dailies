@@ -1,6 +1,7 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, syncRoomId } from '../lib/firebase'
+import { withBumpedVersion } from '../lib/gameCommit'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   applyRoomBest,
@@ -110,11 +111,7 @@ export function useSharedSuika() {
       next: SuikaGameState | ((prev: SuikaGameState) => SuikaGameState),
     ) => {
       const base = typeof next === 'function' ? next(gameRef.current) : next
-      const resolved: SuikaGameState = {
-        ...base,
-        version: Math.max(base.version, gameRef.current.version + 1),
-        updatedAt: Date.now(),
-      }
+      const resolved = withBumpedVersion(base, gameRef.current.version)
       gameRef.current = resolved
       setGame(resolved)
       void pushRoomBestIfNeeded(resolved)

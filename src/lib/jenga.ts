@@ -110,6 +110,11 @@ export function pickTwoJengaCats(
   return [icons[a]!, icons[b]!]
 }
 
+export function themeForCatIcon(icon: string): { icon: string; color: string } {
+  const theme = JENGA_CAT_THEMES.find((t) => t.icon === icon)
+  return theme ?? JENGA_CAT_THEMES[0]!
+}
+
 export function normalizeJengaCats(
   raw: unknown,
   seed = 1,
@@ -243,7 +248,7 @@ export function normalizeBrick(raw: unknown): JengaBrick | null {
     id: b.id,
     layer: Math.max(0, Math.floor(clampNum(b.layer))),
     alongX: b.alongX !== false,
-    loose: b.loose === true ? true : undefined,
+    ...(b.loose === true ? { loose: true as const } : {}),
     ...pose,
   }
 }

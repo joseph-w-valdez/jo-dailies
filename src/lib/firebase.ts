@@ -57,3 +57,8 @@ export const rtdb: Database | null = firebaseConfig.databaseURL
 
 export const syncRoomId =
   import.meta.env.VITE_SYNC_ROOM_ID?.trim() || "jo-and-friend";
+
+/** Firestore rejects `undefined` field values. Drop those keys before setDoc. */
+export function toFirestoreData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}

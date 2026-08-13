@@ -1,12 +1,13 @@
 /** Cat Connect Four — turn-based shared board. */
 
 import {
-  JENGA_CAT_THEMES,
   JENGA_PLAYER_UIDS,
   nextTurnUid,
   normalizeJengaCats,
   pickTwoJengaCats,
 } from './jenga'
+
+export { themeForCatIcon } from './jenga'
 
 export const C4_COLS = 7
 export const C4_ROWS = 6
@@ -67,11 +68,6 @@ export function seatForUid(uid: string | null): 0 | 1 | null {
   // Offline / unknown — seat 0 for solo testing.
   if (uid === 'local') return 0
   return null
-}
-
-export function themeForCatIcon(icon: string): { icon: string; color: string } {
-  const theme = JENGA_CAT_THEMES.find((t) => t.icon === icon)
-  return theme ?? JENGA_CAT_THEMES[0]!
 }
 
 export function colRowToIndex(col: number, row: number): number {

@@ -678,23 +678,36 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
         <div className={immersive ? "flex min-h-0 flex-1 flex-col" : undefined}>
           {immersive ? null : (
             <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
-              <p className="text-[11px] leading-relaxed text-muted">
-                Shared Scrabble — your rack is private. Place tiles, then Play
-                (words checked online). Exchange or Pass when stuck. Shuffle
-                rearranges your rack for free.
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Skills
+                <span className="ml-2 font-medium normal-case tracking-normal text-muted">
+                  — 2 uses each, no refill this game
+                </span>
               </p>
-              <p className="mt-2 text-[11px] leading-relaxed text-muted">
-                Skills (2 uses each, no refill):{" "}
-                <span className="text-white/80">Cat Burglar</span> steals a
-                vowel; <span className="text-white/80">Blank Stare</span> makes
-                one tile blank;{" "}
-                <span className="text-white/80">Shelf Check</span> knocks an
-                opponent tile into the bag;{" "}
-                <span className="text-white/80">Peek-a-Paw</span> peeks the bag
-                and swaps one tile;{" "}
-                <span className="text-white/80">Meowtiply</span> triples your
-                next valid play.
-              </p>
+              <div className="mt-1.5 grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["Cat Burglar", "steal a vowel from opponent’s rack"],
+                    ["Blank Stare", "turn one of your tiles into a blank"],
+                    [
+                      "Shelf Check",
+                      "knock a random opponent tile into the bag",
+                    ],
+                    ["Peek-a-Paw", "peek at bag tiles and swap one onto your rack"],
+                    ["Meowtiply", "your next valid play scores ×3"],
+                  ] as const
+                ).map(([label, hint]) => (
+                  <div
+                    key={label}
+                    className="flex items-baseline gap-2 text-[11px] leading-snug"
+                  >
+                    <span className="shrink-0 font-semibold text-white/85">
+                      {label}
+                    </span>
+                    <span className="text-muted">{hint}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

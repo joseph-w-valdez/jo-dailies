@@ -7,7 +7,8 @@ import {
   update,
 } from 'firebase/database'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { db, rtdb, syncRoomId } from '../lib/firebase'
+import { db, rtdb, syncRoomId, toFirestoreData } from '../lib/firebase'
+import { withBumpedVersion } from '../lib/gameCommit'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   createInitialGame,
@@ -65,7 +66,7 @@ export function useSharedJenga() {
           const initial = createInitialGame(user.uid)
           setGame(initial)
           setReady(true)
-          void setDoc(gameDocRef(), initial).catch((error: unknown) => {
+          void setDoc(gameDocRef(), toFirestoreData(initial)).catch((error: unknown) => {
             console.error('Could not seed jenga', error)
           })
           return
@@ -178,17 +179,13 @@ export function useSharedJenga() {
       const base = typeof next === 'function' ? next(gameRef.current) : next
       // Always advance past the latest known version so rapid chaos clicks
       // (meteor → explode) can't clobber each other with the same version.
-      const resolved: JengaGameState = {
-        ...base,
-        version: Math.max(base.version, gameRef.current.version + 1),
-        updatedAt: Date.now(),
-      }
+      const resolved = withBumpedVersion(base, gameRef.current.version)
       gameRef.current = resolved
       pendingVersionRef.current = resolved.version
       setGame(resolved)
       saveJengaLocal(resolved)
       try {
-        await setDoc(gameDocRef(), resolved)
+        await setDoc(gameDocRef(), toFirestoreData(resolved))
       } catch (error: unknown) {
         console.error('Could not save jenga', error)
       }

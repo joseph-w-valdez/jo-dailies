@@ -5,7 +5,8 @@ import {
   normalizeConnect4,
   type Connect4State,
 } from '../lib/connect4'
-import { db, syncRoomId } from '../lib/firebase'
+import { db, syncRoomId, toFirestoreData } from '../lib/firebase'
+import { withBumpedVersion } from '../lib/gameCommit'
 import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { updateSyncSource } from '../lib/syncStatus'
 import { useFirebaseAuth } from './firebaseAuthContext'
@@ -41,7 +42,7 @@ export function useSharedConnect4() {
         })
         if (!snap.exists()) {
           const seed = createInitialConnect4(user.uid)
-          void setDoc(gameDocRef(), seed)
+          void setDoc(gameDocRef(), toFirestoreData(seed))
           setGame(seed)
           gameRef.current = seed
           setReady(true)
@@ -86,16 +87,12 @@ export function useSharedConnect4() {
       next: Connect4State | ((prev: Connect4State) => Connect4State),
     ) => {
       const base = typeof next === 'function' ? next(gameRef.current) : next
-      const resolved: Connect4State = {
-        ...base,
-        version: Math.max(base.version, gameRef.current.version + 1),
-        updatedAt: Date.now(),
-      }
+      const resolved = withBumpedVersion(base, gameRef.current.version)
       gameRef.current = resolved
       pendingVersionRef.current = resolved.version
       setGame(resolved)
       try {
-        await setDoc(gameDocRef(), resolved)
+        await setDoc(gameDocRef(), toFirestoreData(resolved))
       } catch (error) {
         console.error('Could not save connect4', error)
       }

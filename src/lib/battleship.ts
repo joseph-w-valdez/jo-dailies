@@ -8,6 +8,8 @@ import {
   pickTwoJengaCats,
 } from './jenga'
 
+export { themeForCatIcon } from './jenga'
+
 export const BS_SIZE = 10
 
 export type BsStatus = 'placing' | 'playing' | 'won'
@@ -215,11 +217,6 @@ export function classifyBattleshipShot(
       !shipSunk(ship, boardBefore.received),
   )
   return newlySunk ? 'sink' : 'hit'
-}
-
-export function themeForCatIcon(icon: string): { icon: string; color: string } {
-  const theme = JENGA_CAT_THEMES.find((t) => t.icon === icon)
-  return theme ?? JENGA_CAT_THEMES[0]!
 }
 
 export function cellIndex(x: number, y: number): number {

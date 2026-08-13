@@ -15,6 +15,22 @@ export function ArcadeStatus({
   children: ReactNode
   tone?: 'ready' | 'danger'
 }) {
+  const [alerting, setAlerting] = useState(false)
+  const prevText = useRef<string | null>(null)
+  const label = String(children ?? '')
+
+  useEffect(() => {
+    if (prevText.current === null) {
+      prevText.current = label
+      return
+    }
+    if (prevText.current === label) return
+    prevText.current = label
+    setAlerting(false)
+    const frame = requestAnimationFrame(() => setAlerting(true))
+    return () => cancelAnimationFrame(frame)
+  }, [label])
+
   return (
     <span
       className={[
@@ -22,7 +38,9 @@ export function ArcadeStatus({
         tone === 'danger'
           ? 'bg-rose-500 text-white'
           : 'bg-amber-400 text-amber-950',
+        alerting ? 'arcade-status-alert' : '',
       ].join(' ')}
+      onAnimationEnd={() => setAlerting(false)}
     >
       {children}
     </span>
