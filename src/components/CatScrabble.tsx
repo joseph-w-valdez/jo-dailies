@@ -823,6 +823,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                           const isDraft = draft.some(
                             (d) => d.row === row && d.col === col,
                           );
+                          const isLastPlay = game.lastPlayCells.some(
+                            (c) => c.row === row && c.col === col,
+                          );
                           return (
                             <button
                               key={i}
@@ -836,6 +839,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                     ? "border-amber-800/30 bg-[#f3e6c8] text-amber-950 ring-2 ring-golden"
                                     : "border-amber-800/30 bg-[#f3e6c8] text-amber-950 shadow-sm"
                                   : premiumClass(prem),
+                                isLastPlay && !isDraft ? "arcade-last-move" : "",
                               ].join(" ")}
                             >
                               {letter ? (

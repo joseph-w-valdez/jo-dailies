@@ -63,6 +63,8 @@ export interface BattleshipState {
   version: number
   roundId: string
   updatedAt: number
+  /** Most recent shot, on the board that received it. */
+  lastShot: { x: number; y: number; boardUid: string } | null
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -169,6 +171,7 @@ export function createInitialBattleship(
     version: 1,
     roundId: newRoundId(),
     updatedAt: Date.now(),
+    lastShot: null,
   }
 }
 
@@ -421,12 +424,14 @@ export function applyBattleshipShot(
     ...state.boards,
     [opponent]: { ...theirBoard, received },
   }
+  const lastShot = { x, y, boardUid: opponent }
   if (hit && allShipsSunk(theirBoard.ships, received)) {
     return {
       ...state,
       boards,
       status: 'won',
       winnerUid: uid,
+      lastShot,
       updatedAt: Date.now(),
     }
   }
@@ -434,6 +439,7 @@ export function applyBattleshipShot(
     ...state,
     boards,
     turnUid: nextTurnUid(uid),
+    lastShot,
     updatedAt: Date.now(),
   }
 }
@@ -468,6 +474,18 @@ function normalizeBoard(raw: unknown): BsPlayerBoard {
     received,
     ready: Boolean(b.ready),
   }
+}
+
+function normalizeLastShot(
+  raw: unknown,
+): { x: number; y: number; boardUid: string } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const x = Math.floor(clampNum(o.x, -1))
+  const y = Math.floor(clampNum(o.y, -1))
+  const boardUid = typeof o.boardUid === 'string' ? o.boardUid : ''
+  if (!boardUid || x < 0 || y < 0 || x >= BS_SIZE || y >= BS_SIZE) return null
+  return { x, y, boardUid }
 }
 
 export function normalizeBattleship(
@@ -510,5 +528,6 @@ export function normalizeBattleship(
     roundId:
       typeof s.roundId === 'string' && s.roundId ? s.roundId : newRoundId(),
     updatedAt: Math.floor(clampNum(s.updatedAt, Date.now())),
+    lastShot: normalizeLastShot(s.lastShot),
   }
 }

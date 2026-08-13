@@ -168,6 +168,10 @@ describe('scrabble turns', () => {
     expect(next!.scores[uid]).toBeGreaterThan(0)
     expect(next!.board[cellIndex(CENTER, CENTER)]?.letter).toBe('A')
     expect(next!.racks[uid]!.some((t) => t.id === 'a')).toBe(false)
+    expect(next!.lastPlayCells).toEqual([
+      { row: CENTER, col: CENTER },
+      { row: CENTER, col: CENTER + 1 },
+    ])
   })
 
   it('startNewScrabble keeps history and logs finals', () => {

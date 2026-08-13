@@ -504,17 +504,25 @@ function BrickMesh({
   brick,
   selected,
   ghost,
+  lastMove,
   catPair,
   onPointerDown,
 }: {
   brick: JengaBrick
   selected?: boolean
   ghost?: boolean
+  lastMove?: boolean
   catPair: ReturnType<typeof themesForGame>
   onPointerDown?: (event: ThreeEvent<PointerEvent>) => void
 }) {
   const theme = catThemeForBrick(brick.id, catPair)
-  const color = ghost ? '#38bdf8' : selected ? '#e8c27a' : theme.color
+  const color = ghost
+    ? '#38bdf8'
+    : selected
+      ? '#e8c27a'
+      : lastMove
+        ? '#f0c14a'
+        : theme.color
   return (
     <group>
       <mesh
@@ -529,8 +537,21 @@ function BrickMesh({
           metalness={0.05}
           transparent={ghost}
           opacity={ghost ? 0.55 : 1}
+          emissive={lastMove && !ghost ? '#fbbf24' : '#000000'}
+          emissiveIntensity={lastMove && !ghost ? 0.55 : 0}
         />
       </mesh>
+      {lastMove && !ghost ? (
+        <mesh>
+          <boxGeometry args={[BRICK_L * 1.08, BRICK_H * 1.22, BRICK_W * 1.14]} />
+          <meshBasicMaterial
+            color="#fbbf24"
+            transparent
+            opacity={0.32}
+            depthWrite={false}
+          />
+        </mesh>
+      ) : null}
       {!ghost ? (
         <Suspense fallback={null}>
           <BrickCatFaces src={theme.src} />
@@ -543,6 +564,7 @@ function BrickMesh({
 function PhysicsBrick({
   brick,
   selected,
+  lastMove,
   bodyRef,
   pulling,
   interactive,
@@ -552,6 +574,7 @@ function PhysicsBrick({
 }: {
   brick: JengaBrick
   selected: boolean
+  lastMove?: boolean
   bodyRef: (id: string, body: RapierRigidBody | null) => void
   pulling: boolean
   interactive: boolean
@@ -592,6 +615,7 @@ function PhysicsBrick({
       <BrickMesh
         brick={brick}
         selected={selected}
+        lastMove={lastMove}
         catPair={catPair}
         onPointerDown={
           interactive
@@ -1326,6 +1350,7 @@ function JengaWorld({
               <BrickMesh
                 brick={shown}
                 ghost={Boolean(ghost)}
+                lastMove={game.lastBrickId === brick.id}
                 catPair={catPair}
               />
             </group>
@@ -1390,6 +1415,7 @@ function JengaWorld({
             key={brick.id}
             brick={loose ? { ...brick, loose: true } : brick}
             selected={selectedId === brick.id}
+            lastMove={game.lastBrickId === brick.id}
             bodyRef={setBody}
             pulling={pulling && selectedId === brick.id}
             interactive={
@@ -1498,6 +1524,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
           explodeCount: game.explodeCount,
           meteorCount: game.meteorCount,
           removedCount: game.removedCount + (scoredRemoval ? 1 : 0),
+          lastBrickId: _movedId,
         }
         await commitGame(next)
       } finally {

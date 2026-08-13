@@ -130,6 +130,32 @@ body {
   animation: arcade-status-alert 720ms ease-in-out;
 }
 
+@keyframes arcade-last-move {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px #fbbf24,
+      0 0 0 2px #fbbf24,
+      0 0 10px rgba(251, 191, 36, 0.5);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px #fde047,
+      0 0 0 3px #fde047,
+      0 0 16px rgba(251, 191, 36, 0.75);
+  }
+}
+
+.arcade-last-move {
+  position: relative;
+  z-index: 1;
+  box-shadow:
+    inset 0 0 0 2px #fbbf24,
+    0 0 0 2px #fbbf24,
+    0 0 10px rgba(251, 191, 36, 0.5);
+  animation: arcade-last-move 1.6s ease-in-out infinite;
+}
+
 .cat-confetti-bit {
   animation-name: cat-confetti-fall;
   animation-timing-function: cubic-bezier(0.22, 0.8, 0.36, 1);
@@ -1632,7 +1658,8 @@ input:disabled {
   .pet-care-hungry,
   .pet-care-dirty,
   .pet-care-neglected,
-  .arcade-status-alert {
+  .arcade-status-alert,
+  .arcade-last-move {
     animation: none;
   }
 }

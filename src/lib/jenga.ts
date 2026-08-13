@@ -73,6 +73,8 @@ export interface JengaGameState {
    * Failed pulls / collapses do not bump this.
    */
   removedCount: number
+  /** Brick id of the most recent pull, or null on a fresh tower. */
+  lastBrickId: string | null
 }
 
 /** Cat face + brick color. Icons are `/cats/<stem>.png` species keys. */
@@ -220,6 +222,7 @@ export function createInitialGame(turnUid: string): JengaGameState {
     explodeCount: 0,
     meteorCount: 0,
     removedCount: 0,
+    lastBrickId: null,
   }
 }
 
@@ -301,6 +304,8 @@ export function normalizeGameState(
     explodeCount: Math.max(0, Math.floor(clampNum(s.explodeCount, 0))),
     meteorCount: Math.max(0, Math.floor(clampNum(s.meteorCount, 0))),
     removedCount: Math.max(0, Math.floor(clampNum(s.removedCount, 0))),
+    lastBrickId:
+      typeof s.lastBrickId === 'string' && s.lastBrickId ? s.lastBrickId : null,
   }
 }
 

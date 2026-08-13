@@ -29,6 +29,8 @@ export interface Connect4State {
   version: number
   roundId: string
   updatedAt: number
+  /** Cell index of the most recent drop, or null before the first move. */
+  lastDropIndex: number | null
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -58,6 +60,7 @@ export function createInitialConnect4(
     version: 1,
     roundId: newRoundId(),
     updatedAt: Date.now(),
+    lastDropIndex: null,
   }
 }
 
@@ -129,7 +132,8 @@ export function applyConnect4Drop(
   const row = dropRow(state.grid, col)
   if (row < 0) return null
   const grid = state.grid.slice() as C4Cell[]
-  grid[colRowToIndex(col, row)] = seat
+  const lastDropIndex = colRowToIndex(col, row)
+  grid[lastDropIndex] = seat
   const winner = findWinner(grid)
   if (winner !== null) {
     const winnerUid = JENGA_PLAYER_UIDS[winner] ?? uid
@@ -138,6 +142,7 @@ export function applyConnect4Drop(
       grid,
       status: 'won',
       winnerUid,
+      lastDropIndex,
       updatedAt: Date.now(),
     }
   }
@@ -147,6 +152,7 @@ export function applyConnect4Drop(
       grid,
       status: 'draw',
       winnerUid: null,
+      lastDropIndex,
       updatedAt: Date.now(),
     }
   }
@@ -154,6 +160,7 @@ export function applyConnect4Drop(
     ...state,
     grid,
     turnUid: nextTurnUid(uid),
+    lastDropIndex,
     updatedAt: Date.now(),
   }
 }
@@ -193,5 +200,9 @@ export function normalizeConnect4(
     roundId:
       typeof s.roundId === 'string' && s.roundId ? s.roundId : newRoundId(),
     updatedAt: Math.floor(clampNum(s.updatedAt, Date.now())),
+    lastDropIndex: (() => {
+      const i = Math.floor(clampNum(s.lastDropIndex, -1))
+      return i >= 0 && i < C4_CELLS ? i : null
+    })(),
   }
 }

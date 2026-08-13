@@ -104,6 +104,8 @@ export interface ScrabbleState {
   winnerUid: string | null
   lastPlayScore: number
   lastPlayWords: string[]
+  /** Cells of the most recent committed play (empty after pass/exchange). */
+  lastPlayCells: { row: number; col: number }[]
   /** Chronological turns for the scoreboard panel. */
   moveLog: ScrabbleMoveLogEntry[]
   /** Per-player skill charges (max 2, no refill). */
@@ -254,6 +256,7 @@ export function createInitialScrabble(
     winnerUid: null,
     lastPlayScore: 0,
     lastPlayWords: [],
+    lastPlayCells: [],
     moveLog: [],
     skills: skillsForPlayers(),
     meowtiplyFor: null,
@@ -355,6 +358,9 @@ export function applyPass(
     ...state,
     passStreak,
     meowtiplyFor: state.meowtiplyFor === uid ? null : state.meowtiplyFor,
+    lastPlayScore: 0,
+    lastPlayWords: [],
+    lastPlayCells: [],
     moveLog,
   }
   if (passStreak >= 2) {
@@ -363,8 +369,6 @@ export function applyPass(
   return {
     ...cleared,
     turnUid: nextTurnUid(uid),
-    lastPlayScore: 0,
-    lastPlayWords: [],
     updatedAt: Date.now(),
   }
 }
@@ -413,6 +417,7 @@ export function applyExchange(
     meowtiplyFor: state.meowtiplyFor === uid ? null : state.meowtiplyFor,
     lastPlayScore: 0,
     lastPlayWords: [],
+    lastPlayCells: [],
     moveLog: pushMove(state.moveLog, {
       uid,
       kind: 'exchange',
@@ -493,6 +498,7 @@ export function applyPlay(
     meowtiplyFor: null,
     lastPlayScore: playScore,
     lastPlayWords: formedWords,
+    lastPlayCells: placements.map((p) => ({ row: p.row, col: p.col })),
     moveLog: pushMove(state.moveLog, {
       uid,
       kind: 'play',
@@ -842,6 +848,18 @@ export function normalizeScrabble(
   const lastPlayWords = Array.isArray(s.lastPlayWords)
     ? s.lastPlayWords.filter((w): w is string => typeof w === 'string')
     : []
+  const lastPlayCells: { row: number; col: number }[] = []
+  if (Array.isArray(s.lastPlayCells)) {
+    for (const item of s.lastPlayCells) {
+      if (!item || typeof item !== 'object') continue
+      const o = item as Record<string, unknown>
+      const row = Math.floor(clampNum(o.row, -1))
+      const col = Math.floor(clampNum(o.col, -1))
+      if (row >= 0 && col >= 0 && row < SCRABBLE_SIZE && col < SCRABBLE_SIZE) {
+        lastPlayCells.push({ row, col })
+      }
+    }
+  }
   const moveLog: ScrabbleMoveLogEntry[] = []
   if (Array.isArray(s.moveLog)) {
     for (const raw of s.moveLog) {
@@ -943,6 +961,7 @@ export function normalizeScrabble(
     winnerUid: typeof s.winnerUid === 'string' ? s.winnerUid : null,
     lastPlayScore: Math.floor(clampNum(s.lastPlayScore, 0)),
     lastPlayWords,
+    lastPlayCells,
     moveLog,
     skills,
     meowtiplyFor:

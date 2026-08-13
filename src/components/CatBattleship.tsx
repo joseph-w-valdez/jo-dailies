@@ -471,14 +471,22 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
     const ship = myBoard ? shipAtCell(myBoard.ships, x, y) : null
     const mark = myBoard?.received[cellIndex(x, y)] ?? null
     const inPreview = draftPreview?.cells.some((c) => c.x === x && c.y === y)
+    const last =
+      game.lastShot?.boardUid === seatUid &&
+      game.lastShot.x === x &&
+      game.lastShot.y === y
+        ? ' arcade-last-move'
+        : ''
     if (inPreview) {
-      return draftPreview!.fits
-        ? 'bg-emerald-500/20 border-emerald-400/40'
-        : 'bg-rose-500/25 border-rose-400/40'
+      return (
+        (draftPreview!.fits
+          ? 'bg-emerald-500/20 border-emerald-400/40'
+          : 'bg-rose-500/25 border-rose-400/40') + last
+      )
     }
-    if (mark === 'miss') return 'bg-slate-600/60'
-    if (ship) return 'border-white/20'
-    return 'bg-[#152033]'
+    if (mark === 'miss') return `bg-slate-600/60${last}`
+    if (ship) return `border-white/20${last}`
+    return `bg-[#152033]${last}`
   }
 
   const ownCellContent = (x: number, y: number): ReactNode => {
@@ -516,8 +524,14 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
 
   const enemyCellClass = (x: number, y: number) => {
     const mark = theirBoard?.received[cellIndex(x, y)] ?? null
-    if (mark === 'miss') return 'bg-slate-600/55'
-    return 'bg-[#152033]'
+    const last =
+      game.lastShot?.boardUid === opponentUid &&
+      game.lastShot.x === x &&
+      game.lastShot.y === y
+        ? ' arcade-last-move'
+        : ''
+    if (mark === 'miss') return `bg-slate-600/55${last}`
+    return `bg-[#152033]${last}`
   }
 
   const enemyCellContent = (x: number, y: number): ReactNode => {

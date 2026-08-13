@@ -276,6 +276,8 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                       hoverCol === col &&
                       cell === -1 &&
                       actorSeat !== null
+                    const isLastDrop =
+                      game.lastDropIndex === colRowToIndex(col, row)
                     const seat = cell === -1 ? (isPreview ? actorSeat : null) : cell
                     const theme =
                       seat === 0 || seat === 1 ? themes[seat] : null
@@ -294,6 +296,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                             : 'aspect-square p-0.5',
                           canPlay ? 'hover:border-amber-950/50' : '',
                           isPreview ? 'opacity-55' : '',
+                          isLastDrop ? 'arcade-last-move' : '',
                         ].join(' ')}
                         aria-label={
                           cell === -1

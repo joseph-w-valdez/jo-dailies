@@ -1,5 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
+const THEATER_KEY = 'jo-dailies:arcade-theater:v1'
+
+function readTheaterPref(): boolean {
+  try {
+    return localStorage.getItem(THEATER_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeTheaterPref(on: boolean) {
+  try {
+    localStorage.setItem(THEATER_KEY, on ? '1' : '0')
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 export interface ArcadeStageContext {
   /** Theater or browser fullscreen — hide bulky instructions, stretch playfield. */
   immersive: boolean
@@ -64,18 +82,26 @@ export function ArcadeStage({
   meta,
   children,
 }: ArcadeStageProps) {
-  const [theater, setTheater] = useState(false)
+  const [theater, setTheater] = useState(readTheaterPref)
   const [fullscreen, setFullscreen] = useState(false)
   const frameRef = useRef<HTMLElement>(null)
   const immersive = theater || fullscreen
 
+  const setTheaterPref = (on: boolean) => {
+    setTheater(on)
+    writeTheaterPref(on)
+  }
+
   useEffect(() => {
     const onFullscreenChange = () => {
-      setFullscreen(document.fullscreenElement === frameRef.current)
+      const isFs = document.fullscreenElement === frameRef.current
+      setFullscreen(isFs)
+      // Fullscreen temporarily drops theater chrome; restore the saved pref.
+      if (!isFs && readTheaterPref()) setTheater(true)
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && theater && !document.fullscreenElement) {
-        setTheater(false)
+        setTheaterPref(false)
       }
     }
     document.addEventListener('fullscreenchange', onFullscreenChange)
@@ -136,7 +162,7 @@ export function ArcadeStage({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setTheater((v) => !v)}
+            onClick={() => setTheaterPref(!theater)}
             className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
             aria-pressed={theater}
           >
