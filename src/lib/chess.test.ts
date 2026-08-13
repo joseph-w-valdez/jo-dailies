@@ -192,12 +192,12 @@ describe('chess', () => {
     expect(n.moveLog.at(-1)?.san).toBe('Moved pawn from E2 to E4')
   })
 
-  it('startNewChess keeps history and logs a new-game marker', () => {
+  it('startNewChess clears move history', () => {
     const s = play(createInitialChess(white), white, 'e2', 'e4')
+    expect(s.moveLog.length).toBeGreaterThan(0)
     const next = startNewChess(s)
     expect(next.board[algToIndex('e2')]?.kind).toBe('p')
-    expect(next.moveLog.some((e) => e.san.includes('E2 to E4'))).toBe(true)
-    expect(next.moveLog.at(-1)?.kind).toBe('newGame')
+    expect(next.moveLog).toEqual([])
     expect(next.lastFrom).toBeNull()
     expect(next.lastTo).toBeNull()
   })

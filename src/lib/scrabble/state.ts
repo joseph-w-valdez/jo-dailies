@@ -269,29 +269,13 @@ export function createInitialScrabble(
   }
 }
 
-/** Fresh board/racks, keep move history, log previous round scores. */
+/** Fresh board/racks/scores and a cleared move history. */
 export function startNewScrabble(
-  prev: ScrabbleState,
+  _prev: ScrabbleState,
   turnUid: string,
   opts?: { hotseat?: boolean },
 ): ScrabbleState {
-  const next = createInitialScrabble(turnUid, opts)
-  const finals: Record<string, number> = {}
-  for (const uid of JENGA_PLAYER_UIDS) {
-    finals[uid] = prev.scores[uid] ?? 0
-  }
-  return {
-    ...next,
-    moveLog: pushMove(prev.moveLog, {
-      uid: '',
-      kind: 'newGame',
-      words: [],
-      score: 0,
-      total: 0,
-      definitions: [],
-      finals,
-    }),
-  }
+  return createInitialScrabble(turnUid, opts)
 }
 
 function finishIfNeeded(state: ScrabbleState, actorUid: string): ScrabbleState {

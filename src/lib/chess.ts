@@ -341,24 +341,12 @@ function pushChessMove(
   return [...log, { ...entry, at: Date.now() }].slice(-MOVE_LOG_MAX)
 }
 
-/** Fresh board; keep move history and mark a new round. */
+/** Fresh board and a cleared move history. */
 export function startNewChess(
   prev: ChessState,
   opts?: { hotseat?: boolean },
 ): ChessState {
-  const fresh = createInitialChess(prev.turnUid, opts)
-  return {
-    ...fresh,
-    moveLog: pushChessMove(prev.moveLog, {
-      kind: 'newGame',
-      uid: '',
-      color: 'white',
-      san: '',
-      from: 0,
-      to: 0,
-      fullmove: prev.fullmove,
-    }),
-  }
+  return createInitialChess(prev.turnUid, opts)
 }
 
 function cloneBoard(board: (ChessPiece | null)[]): (ChessPiece | null)[] {

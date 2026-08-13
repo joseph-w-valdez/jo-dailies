@@ -174,7 +174,7 @@ describe('scrabble turns', () => {
     ])
   })
 
-  it('startNewScrabble keeps history and logs finals', () => {
+  it('startNewScrabble clears move history', () => {
     const a = JENGA_PLAYER_UIDS[0]!
     const b = JENGA_PLAYER_UIDS[1]!
     let state = createInitialScrabble(a)
@@ -183,18 +183,13 @@ describe('scrabble turns', () => {
       ...state,
       scores: { ...state.scores, [a]: 42, [b]: 17 },
     }
-    const priorLen = state.moveLog.length
+    expect(state.moveLog.length).toBeGreaterThan(0)
     const next = startNewScrabble(state, a, { hotseat: true })
     expect(next.status).toBe('playing')
     expect(next.scores[a]).toBe(0)
     expect(next.scores[b]).toBe(0)
     expect(next.hotseat).toBe(true)
-    expect(next.moveLog.length).toBe(priorLen + 1)
-    const marker = next.moveLog[next.moveLog.length - 1]!
-    expect(marker.kind).toBe('newGame')
-    expect(marker.finals?.[a]).toBe(42)
-    expect(marker.finals?.[b]).toBe(17)
-    expect(next.moveLog.some((e) => e.kind === 'pass')).toBe(true)
+    expect(next.moveLog).toEqual([])
   })
 })
 
