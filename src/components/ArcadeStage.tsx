@@ -7,6 +7,28 @@ export interface ArcadeStageContext {
   fullscreen: boolean
 }
 
+/** Header status chip — fixed amber so it stays readable on every theme. */
+export function ArcadeStatus({
+  children,
+  tone = 'ready',
+}: {
+  children: ReactNode
+  tone?: 'ready' | 'danger'
+}) {
+  return (
+    <span
+      className={[
+        'inline-flex max-w-full truncate rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-tight',
+        tone === 'danger'
+          ? 'bg-rose-500 text-white'
+          : 'bg-amber-400 text-amber-950',
+      ].join(' ')}
+    >
+      {children}
+    </span>
+  )
+}
+
 interface ArcadeStageProps {
   title: string
   ariaLabel?: string
@@ -91,7 +113,7 @@ export function ArcadeStage({
             Back
           </button>
           <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
-          {meta}
+          {meta ? <div className="min-w-0 shrink">{meta}</div> : null}
         </div>
         <div className="flex items-center gap-1.5">
           <button

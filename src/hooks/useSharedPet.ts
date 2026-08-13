@@ -36,6 +36,7 @@ import {
   type PetKennel,
   type SharedPet,
 } from '../lib/pet'
+import { playerFirstName } from '../lib/playerLabel'
 import { updateSyncSource } from '../lib/syncStatus'
 import { useAppToday } from './useAppToday'
 import { useFirebaseAuth } from './firebaseAuthContext'
@@ -53,15 +54,6 @@ declare global {
   interface Window {
     __joPets?: PetConsoleApi
   }
-}
-
-function caregiverName(
-  displayName: string | null | undefined,
-  email: string | null | undefined,
-): string {
-  if (displayName?.trim()) return displayName.trim().split(/\s+/)[0] ?? 'Friend'
-  if (email?.includes('@')) return email.split('@')[0] ?? 'Friend'
-  return 'Friend'
 }
 
 export function useSharedPet() {
@@ -220,7 +212,7 @@ export function useSharedPet() {
   const revivePets = useCallback(
     async (petNameOrId?: string) => {
       const day = todayRef.current
-      const revivedBy = `${caregiverName(user?.displayName, user?.email)} (console)`
+      const revivedBy = `${playerFirstName(user?.displayName, user?.email)} (console)`
       const query = petNameOrId?.trim().toLocaleLowerCase()
       // Reviving rewrites the care dates, so keep the post-mortem evidence.
       const beforeRevive = await petDiagnostics()
@@ -441,7 +433,7 @@ export function useSharedPet() {
     }
   }, [user, applyLocal, commitDeaths, migrateLocalKennel])
 
-  const by = caregiverName(user?.displayName, user?.email)
+  const by = playerFirstName(user?.displayName, user?.email)
 
   const hatch = useCallback(
     (species: string, name: string) => {

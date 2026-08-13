@@ -18,7 +18,7 @@ import {
 import * as THREE from 'three'
 import { useSharedSuika } from '../hooks/useSharedSuika'
 import { useThemeCssColor } from '../hooks/useThemeCssColor'
-import { ArcadeStage } from './ArcadeStage'
+import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { ThemeClearColor } from './ThemeClearColor'
 import { petIdleSrc } from '../lib/petAssets'
 import {
@@ -1518,7 +1518,7 @@ export function CatSuika({ onClose }: { onClose: () => void }) {
     <ArcadeStage
       title="Cat Suika"
       onClose={onClose}
-      meta={<p className="text-sm font-medium text-golden">{statusHint}</p>}
+      meta={<ArcadeStatus>{statusHint}</ArcadeStatus>}
     >
       {({ immersive }) => (
         <>

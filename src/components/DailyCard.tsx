@@ -56,8 +56,8 @@ export function DailyCard({
       style={{
         ...(done
           ? {
-              boxShadow: `inset 0 0 0 1px ${game.accent}55`,
-              background: `linear-gradient(160deg, ${game.accent}18, transparent 55%), #1f2937`,
+              boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${game.accent} 45%, var(--color-border))`,
+              background: `linear-gradient(160deg, color-mix(in srgb, ${game.accent} 28%, transparent), transparent 58%), var(--color-surface-raised)`,
             }
           : undefined),
         ...(active

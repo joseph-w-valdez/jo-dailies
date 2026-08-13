@@ -32,12 +32,21 @@ These are public client identifiers; access is protected by Firestore rules.
 3. Add localhost and the Vercel production domains under Authentication →
    Settings → Authorized domains.
 4. Publish [`firestore.rules`](./firestore.rules) in Firestore → Rules.
-5. Let both people sign in once, copy their UIDs from Authentication → Users,
+5. Publish [`storage.rules`](./storage.rules) in Storage → Rules (keeps
+   existing `scrapbook/` snapshots allowed, plus future room-prefixed files).
+6. Let both people sign in once, copy their UIDs from Authentication → Users,
    replace the two placeholders in the rules file, and publish the rules. The
    database remains locked until those placeholders are replaced.
 
 The first authenticated load merges existing dailies and watchlist data from
-`localStorage` into the shared room. Presentation settings remain device-local.
+`localStorage` into the shared room. Theme is shared via Firestore;
+other presentation chrome (cursor trail, collapsed panels) stays device-local.
+
+## Docs
+
+- [CLAUDE.md](./CLAUDE.md) — architecture for agents and humans
+- [REFACTOR.md](./REFACTOR.md) — cleanup that is worth doing (and what not to do)
+- [PLANS.md](./PLANS.md) — Cookbook and Shopping list plan
 
 ## Scripts
 

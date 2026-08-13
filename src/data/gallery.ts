@@ -64,7 +64,7 @@ export const galleryEntries: GalleryEntry[] = [
     date: "2022-01-08",
   },
   {
-    id: "ram-timelapse",
+    id: "ram",
     title: "Ram",
     type: "image",
     src: "/gallery/ram.jpg",

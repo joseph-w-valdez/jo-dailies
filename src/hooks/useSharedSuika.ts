@@ -12,19 +12,11 @@ import {
   type SuikaLivePose,
   type SuikaRoomBest,
 } from '../lib/suika'
+import { playerFirstName } from '../lib/playerLabel'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
 function bestDocRef() {
   return doc(db, 'rooms', syncRoomId, 'suika', 'best')
-}
-
-function playerLabel(
-  displayName: string | null | undefined,
-  email: string | null | undefined,
-): string {
-  if (displayName?.trim()) return displayName.trim().split(/\s+/)[0] ?? 'Friend'
-  if (email?.includes('@')) return email.split('@')[0] ?? 'Friend'
-  return 'Friend'
 }
 
 /**
@@ -143,7 +135,7 @@ export function useSharedSuika() {
   }, [publishLive])
 
   const uid = user?.uid ?? 'local'
-  const playerName = playerLabel(user?.displayName, user?.email)
+  const playerName = playerFirstName(user?.displayName, user?.email)
   const bowlIdle = game.status === 'playing' && !game.busyUid
   const iAmBusy = Boolean(game.busyUid)
   const partnerBusy = false

@@ -18,7 +18,10 @@ import { ArcadePage } from "./pages/ArcadePage";
 import { GAMES, GAME_COUNT } from "./games";
 import { useDailies } from "./hooks/useDailies";
 import { useFirebaseAuth } from "./hooks/firebaseAuthContext";
-import { useSharedTheme } from "./hooks/useSharedTheme";
+import {
+  SharedThemeProvider,
+  useSharedTheme,
+} from "./hooks/useSharedTheme";
 import { useShellLayout } from "./hooks/useShellLayout";
 import { parseKey } from "./lib/date";
 import { pickLoadingFlavor } from "./lib/loadingFlavor";
@@ -252,6 +255,7 @@ function AppContent() {
   return (
     <div className="min-h-screen">
       <AppHeader />
+      {/* Paths must stay in sync with NAV_LINKS in src/nav.ts */}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/scrapbook" element={<ScrapbookPage />} />
@@ -267,7 +271,9 @@ function App() {
   return (
     <BrowserRouter>
       <FirebaseAuthProvider>
-        <AppContent />
+        <SharedThemeProvider>
+          <AppContent />
+        </SharedThemeProvider>
       </FirebaseAuthProvider>
     </BrowserRouter>
   );

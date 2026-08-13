@@ -20,7 +20,7 @@ import {
 } from 'react'
 import { useSharedJenga } from '../hooks/useSharedJenga'
 import { useThemeCssColor } from '../hooks/useThemeCssColor'
-import { ArcadeStage } from './ArcadeStage'
+import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { ThemeClearColor } from './ThemeClearColor'
 import {
   BRICK_H,
@@ -1630,20 +1630,17 @@ export function Jenga({ onClose }: { onClose: () => void }) {
 
           <div className="mt-3 flex flex-wrap items-start gap-2">
             {statusLabel ? (
-              <p
-                className={[
-                  'min-w-0 flex-1 text-sm font-medium',
+              <ArcadeStatus
+                tone={
                   game.status === 'collapsed' || chaosActive
-                    ? 'text-rose-200'
-                    : 'text-muted',
-                ].join(' ')}
+                    ? 'danger'
+                    : 'ready'
+                }
               >
                 {statusLabel}
-              </p>
+              </ArcadeStatus>
             ) : (
-              <p className="min-w-0 flex-1 text-sm font-medium text-golden">
-                Ready — pick a brick
-              </p>
+              <ArcadeStatus>Ready — pick a brick</ArcadeStatus>
             )}
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               {confirmExplode && chaosNeedsConfirm ? (

@@ -65,15 +65,7 @@ export function ScrapbookPage() {
             <button
               key={entry.id}
               type="button"
-              onClick={() => {
-                console.log("Opening snapshot", {
-                  index,
-                  id: entry.id,
-                  url: entry.imageUrl,
-                });
-
-                setSelectedIndex(index);
-              }}
+              onClick={() => setSelectedIndex(index)}
               className="overflow-hidden rounded-xl border border-border bg-surface text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:shadow-lg"
             >
               <div

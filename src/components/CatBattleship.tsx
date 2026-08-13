@@ -32,7 +32,7 @@ import { JENGA_PLAYER_UIDS, nextTurnUid } from '../lib/jenga'
 import { petIdleSrc } from '../lib/petAssets'
 import { cattleshipIdleQuote, cattleshipShotQuote, type PetQuoteResult } from '../lib/petQuotes'
 import { speakDurationMs, SPEAK_FRAME_MS } from '../lib/petSpeak'
-import { ArcadeStage } from './ArcadeStage'
+import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
 import { PetSprite } from './PetSprite'
 
@@ -530,7 +530,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
     <ArcadeStage
       title="Cattleship"
       onClose={onClose}
-      meta={<p className="text-sm font-medium text-golden">{statusLabel}</p>}
+      meta={<ArcadeStatus>{statusLabel}</ArcadeStatus>}
     >
       {({ immersive }) => (
         <div

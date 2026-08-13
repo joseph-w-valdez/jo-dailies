@@ -12,7 +12,7 @@ import {
 } from '../lib/connect4'
 import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { petIdleSrc } from '../lib/petAssets'
-import { ArcadeStage } from './ArcadeStage'
+import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
 
 function CatDisc({
@@ -112,7 +112,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
     <ArcadeStage
       title="Connect Four"
       onClose={onClose}
-      meta={<p className="text-sm font-medium text-golden">{statusLabel}</p>}
+      meta={<ArcadeStatus>{statusLabel}</ArcadeStatus>}
     >
       {({ immersive }) => (
         <div

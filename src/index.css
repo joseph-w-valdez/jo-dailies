@@ -102,6 +102,10 @@ body {
   }
 }
 
+.scrabble-move-cat {
+  animation: cat-icon-wiggle 900ms ease-in-out infinite;
+}
+
 .cat-confetti-bit {
   animation-name: cat-confetti-fall;
   animation-timing-function: cubic-bezier(0.22, 0.8, 0.36, 1);

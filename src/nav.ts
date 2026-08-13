@@ -1,0 +1,9 @@
+/** Primary nav + route paths. Keep `App.tsx` `<Route>`s in sync with this list. */
+export const NAV_LINKS = [
+  { to: '/', label: 'Home', end: true },
+  { to: '/scrapbook', label: 'Scrapbook', end: false },
+  { to: '/arcade', label: 'Arcade', end: false },
+  { to: '/gallery', label: 'Gallery', end: false },
+] as const
+
+export type NavLinkDef = (typeof NAV_LINKS)[number]

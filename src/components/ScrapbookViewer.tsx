@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getBlob, ref } from "firebase/storage";
 
+import { ConfirmDialog } from "./ConfirmDialog";
 import { storage } from "../lib/firebase";
 import type { ScrapbookEntry } from "../types";
 
@@ -22,6 +23,10 @@ export function ScrapbookViewer({
   const entry = entries[index];
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [index]);
 
   const hasPrevious = index > 0;
   const hasNext = index < entries.length - 1;
@@ -134,55 +139,29 @@ export function ScrapbookViewer({
             {index + 1} / {entries.length}
           </span>
 
-          {confirmDelete ? (
-            <>
-              <span className="mr-2 text-[11px] font-medium text-white/85">
-                Delete this snapshot?
-              </span>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
+          >
+            Download
+          </button>
 
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="rounded-md bg-rose-500 px-2 py-1 text-[11px] font-bold text-white transition hover:bg-rose-400"
-              >
-                Delete
-              </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="rounded-md border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[11px] font-medium text-rose-200 transition hover:border-rose-400 hover:bg-rose-500/25"
+          >
+            Delete
+          </button>
 
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="rounded-md px-2 py-1 text-[11px] text-muted transition hover:text-white"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
-              >
-                Download
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="rounded-md border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[11px] font-medium text-rose-200 transition hover:border-rose-400 hover:bg-rose-500/25"
-              >
-                Delete
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-surface hover:text-white"
-              >
-                Close
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:bg-surface hover:text-white"
+          >
+            Close
+          </button>
         </div>
       </header>
 
@@ -249,6 +228,16 @@ export function ScrapbookViewer({
           </button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete snapshot?"
+        body="This removes the snapshot from the scrapbook for both of you."
+        confirmLabel="Delete"
+        danger
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+      />
     </section>
   );
 }

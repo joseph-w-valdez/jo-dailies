@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.uid in [
+          'cBSmIOeTysM7hzi5Xnm7rkmsUFW2',
+          'PLxEvRfAjSbj7kQumrbQ5xHF4S03'
+        ];
+    }
+
+    // Existing whiteboard snapshots (do not remove — live files use this prefix).
+    match /scrapbook/{allPaths=**} {
+      allow read, write: if isAllowed();
+    }
+
+    // Room-scoped files (recipes, future scrapbook).
+    match /rooms/jo-and-friend/{allPaths=**} {
+      allow read, write: if isAllowed();
+    }
+  }
+}

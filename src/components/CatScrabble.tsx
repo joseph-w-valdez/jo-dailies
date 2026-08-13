@@ -8,7 +8,6 @@ import {
   type RefObject,
 } from "react";
 import { useSharedScrabble } from "../hooks/useSharedScrabble";
-import { isDebugEnabled } from "../lib/debugFlags";
 import {
   applyExchange,
   applyPass,
@@ -34,7 +33,9 @@ import {
   type ScrabbleTile,
 } from "../lib/scrabble";
 import { JENGA_PLAYER_UIDS, nextTurnUid } from "../lib/jenga";
-import { ArcadeStage } from "./ArcadeStage";
+import { petIdleSrc } from "../lib/petAssets";
+import { ArcadeStage, ArcadeStatus } from "./ArcadeStage";
+import { NewGameConfirm } from "./NewGameConfirm";
 
 interface DraftCell {
   row: number;
@@ -162,7 +163,7 @@ function catForEntry(at: number, uid: string): string {
     .split("")
     .reduce((acc, char) => acc + char.charCodeAt(0), 0);
 
-  return SCRABBLE_MOVE_CATS[seed % SCRABBLE_MOVE_CATS.length]!;
+  return petIdleSrc(SCRABBLE_MOVE_CATS[seed % SCRABBLE_MOVE_CATS.length]!);
 }
 
 function wiggleDelay(at: number, uid: string): number {
@@ -399,7 +400,6 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newGameOpen, setNewGameOpen] = useState(false);
-  const debug = isDebugEnabled();
 
   useEffect(() => {
     setDraft([]);
@@ -672,7 +672,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     <ArcadeStage
       title="Scrabble"
       onClose={onClose}
-      meta={<p className="text-sm font-medium text-golden">{statusLabel}</p>}
+      meta={<ArcadeStatus>{statusLabel}</ArcadeStatus>}
     >
       {({ immersive }) => (
         <div className={immersive ? "flex min-h-0 flex-1 flex-col" : undefined}>
@@ -1271,61 +1271,12 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             </div>
           ) : null}
 
-          {newGameOpen ? (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-              <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-raised p-4 shadow-xl">
-                <h3 className="text-sm font-semibold text-white">New game?</h3>
-                <p className="mt-1 text-[11px] text-muted">
-                  This clears the board, racks, and scores for both players.
-                  {debug ? " Debug is on — choose a mode below." : ""}
-                </p>
-                <div className="mt-4 flex flex-col gap-2">
-                  {debug ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewGameOpen(false);
-                          void resetGame({ hotseat: false });
-                        }}
-                        className="rounded-lg border border-border bg-surface px-3 py-2 text-left text-sm text-white hover:border-muted"
-                      >
-                        Confirm — Normal (2P)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewGameOpen(false);
-                          void resetGame({ hotseat: true });
-                        }}
-                        className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-left text-sm text-amber-50 hover:bg-amber-500/25"
-                      >
-                        Confirm — Debug hotseat
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewGameOpen(false);
-                        void resetGame({ hotseat: false });
-                      }}
-                      className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
-                    >
-                      Confirm new game
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setNewGameOpen(false)}
-                    className="rounded-lg px-3 py-2 text-xs text-muted hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          <NewGameConfirm
+            open={newGameOpen}
+            onClose={() => setNewGameOpen(false)}
+            onConfirm={(opts) => void resetGame(opts)}
+            blurb="This clears the board, racks, and scores for both players."
+          />
         </div>
       )}
     </ArcadeStage>

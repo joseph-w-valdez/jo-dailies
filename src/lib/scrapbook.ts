@@ -49,28 +49,8 @@ export async function uploadSnapshot(
 
   const storageRef = ref(storage, storagePath);
 
-  console.log("Uploading snapshot...", {
-    storagePath,
-    sizeKB: Math.round(blob.size / 1024),
-  });
-
-  try {
-    await uploadBytes(storageRef, blob);
-    console.log("✅ uploadBytes succeeded");
-  } catch (error) {
-    console.error("❌ uploadBytes failed", error);
-    throw error;
-  }
-
-  let imageUrl: string;
-
-  try {
-    imageUrl = await getDownloadURL(storageRef);
-    console.log("✅ getDownloadURL succeeded");
-  } catch (error) {
-    console.error("❌ getDownloadURL failed", error);
-    throw error;
-  }
+  await uploadBytes(storageRef, blob);
+  const imageUrl = await getDownloadURL(storageRef);
 
   const entry: ScrapbookEntry = {
     id,
@@ -81,31 +61,20 @@ export async function uploadSnapshot(
     height,
   };
 
-  try {
-    await setDoc(doc(db, "scrapbook", id), entry);
-    console.log("✅ Firestore write succeeded");
-  } catch (error) {
-    console.error("❌ Firestore write failed", error);
-    throw error;
-  }
+  await setDoc(doc(db, "scrapbook", id), entry);
 
   return entry;
 }
 
 export async function getSnapshots(): Promise<ScrapbookEntry[]> {
-  try {
-    const q = query(collection(db, "scrapbook"), orderBy("createdAt", "desc"));
+  const q = query(collection(db, "scrapbook"), orderBy("createdAt", "desc"));
 
-    const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(q);
 
-    return querySnapshot.docs.map((snapshot) => ({
-      id: snapshot.id,
-      ...(snapshot.data() as Omit<ScrapbookEntry, "id">),
-    }));
-  } catch (error) {
-    console.error("❌ getSnapshots failed", error);
-    throw error;
-  }
+  return querySnapshot.docs.map((snapshot) => ({
+    id: snapshot.id,
+    ...(snapshot.data() as Omit<ScrapbookEntry, "id">),
+  }));
 }
 
 export async function deleteSnapshot(entry: ScrapbookEntry) {

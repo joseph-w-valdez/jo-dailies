@@ -1,5 +1,13 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { useCallback, useEffect, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { db, syncRoomId } from '../lib/firebase'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
@@ -12,11 +20,20 @@ import {
 } from '../lib/themes'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
+interface SharedThemeValue {
+  theme: ThemeId
+  setTheme: (theme: ThemeId) => void
+  defaultTheme: ThemeId
+}
+
+const SharedThemeContext = createContext<SharedThemeValue | null>(null)
+
 /**
  * Shared room theme — localStorage for instant paint, Firestore
  * rooms/{id}/settings/appearance so both clients stay in sync.
+ * Mount once near the app root (inside FirebaseAuthProvider).
  */
-export function useSharedTheme() {
+export function SharedThemeProvider({ children }: { children: ReactNode }) {
   const { user } = useFirebaseAuth()
   const [theme, setThemeState] = useState<ThemeId>(() => loadStoredTheme())
 
@@ -73,10 +90,22 @@ export function useSharedTheme() {
     })
   }, [])
 
-  return {
-    theme,
-    setTheme,
-    /** Convenience when consumers only need a safe fallback. */
-    defaultTheme: DEFAULT_THEME,
+  const value = useMemo(
+    () => ({ theme, setTheme, defaultTheme: DEFAULT_THEME }),
+    [theme, setTheme],
+  )
+
+  return (
+    <SharedThemeContext.Provider value={value}>
+      {children}
+    </SharedThemeContext.Provider>
+  )
+}
+
+export function useSharedTheme(): SharedThemeValue {
+  const value = useContext(SharedThemeContext)
+  if (!value) {
+    throw new Error('useSharedTheme must be used inside SharedThemeProvider')
   }
+  return value
 }
