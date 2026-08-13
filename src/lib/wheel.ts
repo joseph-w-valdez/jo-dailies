@@ -1,7 +1,4 @@
-/** Device-local picker wheel — no Firebase sync. */
-
-export const WHEEL_STORAGE_KEY = 'jo-dailies:wheel:v1'
-
+/** Ephemeral picker wheel — resets to defaults each visit. */
 export interface WheelEntry {
   id: string
   label: string
@@ -48,11 +45,17 @@ export function createWheelEntry(
 
 export function defaultWheelEntries(): WheelEntry[] {
   return [
-    createWheelEntry('watch from', { weight: 4, color: WHEEL_COLORS[0] }),
-    createWheelEntry('play until dawn', { weight: 1, color: WHEEL_COLORS[1] }),
-    createWheelEntry('do dailies', { weight: 1, color: WHEEL_COLORS[2] }),
+    createWheelEntry('play valorant', { weight: 1, color: WHEEL_COLORS[0] }),
   ]
 }
+
+/** One-tap labels for the options panel. */
+export const WHEEL_QUICK_ADDS = [
+  'watch a movie',
+  'watch anime',
+  'play a game',
+  'say hi to Joha',
+] as const
 
 export const WHEEL_WEIGHT_MIN = 0.1
 export const WHEEL_WEIGHT_MAX = 99
@@ -110,7 +113,7 @@ export function pickWeightedIndex(
 }
 
 /**
- * Absolute CSS rotation (clockwise) so the pointer at 12 o'clock lands
+ * Absolute CSS rotation (clockwise) so the pointer at 3 o'clock lands
  * inside the winner segment after `spins` full turns.
  */
 export function rotationForWinner(
@@ -126,52 +129,12 @@ export function rotationForWinner(
   const pad = Math.min(3, span * 0.12)
   const target =
     seg.startDeg + pad + random() * Math.max(0.001, span - 2 * pad)
-  // Pointer at top: local angle θ sits under pointer when rotation ≡ -θ.
-  const desiredMod = ((-target) % 360 + 360) % 360
+  // Pointer at 3 o'clock (90°): local θ sits under pointer when rotation ≡ 90 − θ.
+  const desiredMod = ((90 - target) % 360 + 360) % 360
   const currentMod = ((currentRotation % 360) + 360) % 360
   let delta = desiredMod - currentMod
   if (delta <= 0) delta += 360
   return currentRotation + spins * 360 + delta
-}
-
-function parseEntry(raw: unknown, colorIndex: number): WheelEntry | null {
-  if (!raw || typeof raw !== 'object') return null
-  const o = raw as Record<string, unknown>
-  const label = typeof o.label === 'string' ? o.label : ''
-  if (!label.trim()) return null
-  return {
-    id: typeof o.id === 'string' && o.id ? o.id : newId(),
-    label,
-    weight: normalizeWeight(o.weight),
-    enabled: o.enabled !== false,
-    color:
-      typeof o.color === 'string' && o.color
-        ? o.color
-        : WHEEL_COLORS[colorIndex % WHEEL_COLORS.length]!,
-  }
-}
-
-export function loadWheelEntries(): WheelEntry[] {
-  try {
-    const raw = localStorage.getItem(WHEEL_STORAGE_KEY)
-    if (!raw) return defaultWheelEntries()
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return defaultWheelEntries()
-    const entries = parsed
-      .map((item, i) => parseEntry(item, i))
-      .filter((e): e is WheelEntry => e !== null)
-    return entries.length > 0 ? entries : defaultWheelEntries()
-  } catch {
-    return defaultWheelEntries()
-  }
-}
-
-export function saveWheelEntries(entries: WheelEntry[]): void {
-  try {
-    localStorage.setItem(WHEEL_STORAGE_KEY, JSON.stringify(entries))
-  } catch {
-    /* ignore quota / private mode */
-  }
 }
 
 /** SVG arc path for a slice from startDeg→endDeg (clockwise from 12 o'clock). */
@@ -207,12 +170,19 @@ export function wheelLabelPose(
   startDeg: number,
   endDeg: number,
 ): { x: number; y: number; angle: number } {
+  const span = endDeg - startDeg
+  // One full-circle slice: sit the label upright toward the 3 o'clock pointer.
+  if (span >= 359.99) {
+    return { x: cx + radius * 0.55, y: cy, angle: 0 }
+  }
   const mid = (startDeg + endDeg) / 2
   const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180
   const r = radius * 0.62
+  // Flip lower-half labels so they aren't upside-down.
+  const angle = mid > 90 && mid < 270 ? mid + 180 : mid
   return {
     x: cx + r * Math.cos(toRad(mid)),
     y: cy + r * Math.sin(toRad(mid)),
-    angle: mid,
+    angle,
   }
 }

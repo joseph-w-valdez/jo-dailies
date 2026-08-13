@@ -6,15 +6,15 @@ import {
   activeWheelEntries,
   buildWheelSegments,
   createWheelEntry,
+  defaultWheelEntries,
   formatWeight,
-  loadWheelEntries,
   normalizeWeight,
   pickWeightedIndex,
   rotationForWinner,
-  saveWheelEntries,
   wheelLabelPose,
   wheelSlicePath,
   WHEEL_COLORS,
+  WHEEL_QUICK_ADDS,
   WHEEL_WEIGHT_MAX,
   WHEEL_WEIGHT_MIN,
   WHEEL_WEIGHT_SLIDER_MAX,
@@ -32,10 +32,12 @@ function WeightControl({
   label,
   weight,
   onChange,
+  disabled = false,
 }: {
   label: string
   weight: number
   onChange: (weight: number) => void
+  disabled?: boolean
 }) {
   const [draft, setDraft] = useState(() => formatWeight(weight))
   const [editing, setEditing] = useState(false)
@@ -66,18 +68,20 @@ function WeightControl({
         max={WHEEL_WEIGHT_SLIDER_MAX}
         step={WHEEL_WEIGHT_STEP}
         value={sliderValue}
+        disabled={disabled}
         onChange={(event) => {
           const next = normalizeWeight(event.target.value)
           setDraft(formatWeight(next))
           onChange(next)
         }}
-        className="wheel-weight-slider min-w-0 flex-1"
+        className="wheel-weight-slider min-w-0 flex-1 disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={`Weight slider for ${label}`}
       />
       <input
         type="text"
         inputMode="decimal"
         value={editing ? draft : formatWeight(weight)}
+        disabled={disabled}
         onFocus={() => {
           setEditing(true)
           setDraft(formatWeight(weight))
@@ -98,7 +102,7 @@ function WeightControl({
           }
         }}
         title={`Weight (${WHEEL_WEIGHT_MIN}–${WHEEL_WEIGHT_MAX})`}
-        className="w-12 shrink-0 rounded-md border border-border bg-surface px-1.5 py-1 text-center text-xs text-white focus:border-muted focus:outline-none"
+        className="w-12 shrink-0 rounded-md border border-border bg-surface px-1.5 py-1 text-center text-xs text-white focus:border-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={`Weight for ${label}`}
       />
     </div>
@@ -106,7 +110,9 @@ function WeightControl({
 }
 
 export function WheelPage() {
-  const [entries, setEntries] = useState<WheelEntry[]>(() => loadWheelEntries())
+  const [entries, setEntries] = useState<WheelEntry[]>(() =>
+    defaultWheelEntries(),
+  )
   const [draft, setDraft] = useState('')
   const [rotation, setRotation] = useState(0)
   const [spinning, setSpinning] = useState(false)
@@ -119,10 +125,6 @@ export function WheelPage() {
   rotationRef.current = rotation
 
   useEffect(() => {
-    saveWheelEntries(entries)
-  }, [entries])
-
-  useEffect(() => {
     return () => {
       if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
       if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current)
@@ -132,22 +134,43 @@ export function WheelPage() {
   const segments = useMemo(() => buildWheelSegments(entries), [entries])
   const canSpin = segments.length > 0 && !spinning
 
+  const clearOutcome = () => {
+    setWinnerId(null)
+    setAnnounce(false)
+    setCelebrating(false)
+    setSpinning(false)
+    if (spinTimerRef.current) {
+      clearTimeout(spinTimerRef.current)
+      spinTimerRef.current = null
+    }
+    if (confettiTimerRef.current) {
+      clearTimeout(confettiTimerRef.current)
+      confettiTimerRef.current = null
+    }
+  }
+
+  const addEntry = (rawLabel?: string) => {
+    if (spinning) return
+    const label = (rawLabel ?? draft).trim()
+    if (!label) return
+    const color = WHEEL_COLORS[entries.length % WHEEL_COLORS.length]!
+    clearOutcome()
+    setEntries((prev) => [...prev, createWheelEntry(label, { color })])
+    if (rawLabel == null) setDraft('')
+  }
+
   const updateEntry = (id: string, patch: Partial<WheelEntry>) => {
+    if (spinning) return
+    clearOutcome()
     setEntries((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
     )
   }
 
   const removeEntry = (id: string) => {
+    if (spinning) return
+    clearOutcome()
     setEntries((prev) => prev.filter((entry) => entry.id !== id))
-  }
-
-  const addEntry = () => {
-    const label = draft.trim()
-    if (!label) return
-    const color = WHEEL_COLORS[entries.length % WHEEL_COLORS.length]!
-    setEntries((prev) => [...prev, createWheelEntry(label, { color })])
-    setDraft('')
   }
 
   const spin = () => {
@@ -330,23 +353,23 @@ export function WheelPage() {
                     spinning ? 'pointer-events-none' : '',
                   ].join(' ')}
                 >
-                  {/* Pointer tucked under the spin button’s top edge */}
+                  {/* Pointer tucked under the spin button’s right edge */}
                   <div
                     aria-hidden
                     className={[
-                      'pointer-events-none absolute left-1/2 top-0 z-0 -translate-x-1/2 -translate-y-[calc(100%-0.65rem)] text-[var(--color-surface-raised)] transition-colors duration-150',
+                      'pointer-events-none absolute left-full top-1/2 z-0 -translate-y-1/2 -translate-x-[0.65rem] text-[var(--color-surface-raised)] transition-colors duration-150',
                       spinning
                         ? ''
                         : 'group-hover/spin:text-[color-mix(in_oklab,var(--color-surface-raised)_72%,var(--color-app-text))]',
                     ].join(' ')}
                   >
                     <svg
-                      width="32"
-                      height="29"
-                      viewBox="0 0 22 20"
+                      width="29"
+                      height="32"
+                      viewBox="0 0 20 22"
                       className="block"
                     >
-                      <path d="M11 0 L0 20 L22 20 Z" fill="currentColor" />
+                      <path d="M20 11 L0 0 L0 22 Z" fill="currentColor" />
                     </svg>
                   </div>
                   <button
@@ -374,27 +397,53 @@ export function WheelPage() {
               ) : null}
             </div>
 
-            <section className="rounded-xl border border-border bg-surface/60 p-3.5">
+            <section
+              className={[
+                'rounded-xl border border-border bg-surface/60 p-3.5',
+                spinning ? 'opacity-70' : '',
+              ].join(' ')}
+            >
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-white">
                   Options [{entries.length}]
                 </h2>
                 <button
                   type="button"
+                  disabled={spinning || entries.length === 0}
                   onClick={() => {
+                    clearOutcome()
                     setEntries([])
-                    setWinnerId(null)
-                    setAnnounce(false)
                   }}
-                  className="text-[11px] text-muted hover:text-white"
+                  className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Clear all
                 </button>
               </div>
 
+              {spinning ? (
+                <p className="mt-2 text-[11px] text-muted">
+                  Options locked while spinning…
+                </p>
+              ) : null}
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {WHEEL_QUICK_ADDS.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    disabled={spinning}
+                    onClick={() => addEntry(label)}
+                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    + {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="mt-3 flex gap-2">
                 <input
                   value={draft}
+                  disabled={spinning}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
@@ -403,12 +452,12 @@ export function WheelPage() {
                     }
                   }}
                   placeholder="Add an option…"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-white placeholder:text-muted focus:border-muted focus:outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-white placeholder:text-muted focus:border-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                 />
                 <button
                   type="button"
-                  onClick={addEntry}
-                  disabled={!draft.trim()}
+                  onClick={() => addEntry()}
+                  disabled={spinning || !draft.trim()}
                   className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm font-medium text-white hover:border-muted disabled:opacity-40"
                 >
                   Add
@@ -432,21 +481,23 @@ export function WheelPage() {
                       />
                       <input
                         value={entry.label}
+                        disabled={spinning}
                         onChange={(event) =>
                           updateEntry(entry.id, { label: event.target.value })
                         }
-                        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-white focus:border-border focus:outline-none"
+                        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-white focus:border-border focus:outline-none disabled:cursor-not-allowed"
                         aria-label="Option label"
                       />
                       <button
                         type="button"
                         role="switch"
                         aria-checked={entry.enabled}
+                        disabled={spinning}
                         onClick={() =>
                           updateEntry(entry.id, { enabled: !entry.enabled })
                         }
                         className={[
-                          'relative h-5 w-8 shrink-0 rounded-full transition',
+                          'relative h-5 w-8 shrink-0 rounded-full transition disabled:cursor-not-allowed',
                           entry.enabled ? 'bg-emerald-500/70' : 'bg-border',
                         ].join(' ')}
                         title={entry.enabled ? 'Enabled' : 'Disabled'}
@@ -460,8 +511,9 @@ export function WheelPage() {
                       </button>
                       <button
                         type="button"
+                        disabled={spinning}
                         onClick={() => removeEntry(entry.id)}
-                        className="shrink-0 rounded-md px-1.5 py-1 text-xs text-muted hover:text-rose-200"
+                        className="shrink-0 rounded-md px-1.5 py-1 text-xs text-muted hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={`Remove ${entry.label}`}
                       >
                         ✕
@@ -470,6 +522,7 @@ export function WheelPage() {
                     <WeightControl
                       label={entry.label}
                       weight={entry.weight}
+                      disabled={spinning}
                       onChange={(weight) => updateEntry(entry.id, { weight })}
                     />
                   </li>

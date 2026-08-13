@@ -38,14 +38,14 @@ describe('wheel', () => {
     expect(pickWeightedIndex(entries, () => 0.95)).toBe(1)
   })
 
-  it('rotation lands in the winner segment under the top pointer', () => {
+  it('rotation lands in the winner segment under the right pointer', () => {
     const entries = [
       createWheelEntry('a', { weight: 1 }),
       createWheelEntry('b', { weight: 1 }),
     ]
     const segs = buildWheelSegments(entries)
     const rot = rotationForWinner(10, segs, 1, 3, () => 0.5)
-    const underPointer = ((-rot) % 360 + 360) % 360
+    const underPointer = ((90 - rot) % 360 + 360) % 360
     expect(underPointer).toBeGreaterThanOrEqual(segs[1]!.startDeg)
     expect(underPointer).toBeLessThan(segs[1]!.endDeg)
   })
