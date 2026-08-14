@@ -27,6 +27,17 @@
   --color-chess-light: #e8eef8;
   --color-chess-dark: #3d5678;
   --color-chess-frame: #5b7eab;
+  /* Codenames agents — soft fills + ink, retinted per theme */
+  --color-cn-red: #9a5360;
+  --color-cn-red-ink: #fdecef;
+  --color-cn-red-mark: #e8a0ae;
+  --color-cn-blue: #4f6f93;
+  --color-cn-blue-ink: #eaf2fb;
+  --color-cn-blue-mark: #9cb8d9;
+  --color-cn-neutral: #b4a890;
+  --color-cn-neutral-ink: #2c261e;
+  --color-cn-assassin: #1a1a1e;
+  --color-cn-assassin-ink: #ececf0;
 }
 
 html,
@@ -1824,7 +1835,8 @@ input:disabled {
 
 /* ── Shared room themes (data-theme on <html>) ─────────────────────────────
    Blue is the default @theme values (no attribute). Overrides retint chrome
-   only — game accents, watchlist status colors, and golden stay untouched. */
+   only — game accents and watchlist status colors stay untouched. On light
+   themes (white/pink), `.text-golden` remaps to deep amber for contrast. */
 
 html[data-theme='black'] {
   --color-streak: #e5e7eb;
@@ -1846,6 +1858,16 @@ html[data-theme='black'] {
   --color-chess-light: #e4e4e7;
   --color-chess-dark: #27272a;
   --color-chess-frame: #71717a;
+  --color-cn-red: #8f555f;
+  --color-cn-red-ink: #f7e8eb;
+  --color-cn-red-mark: #d4a0a8;
+  --color-cn-blue: #5a6a7a;
+  --color-cn-blue-ink: #e8eef4;
+  --color-cn-blue-mark: #a8b8c8;
+  --color-cn-neutral: #9a9388;
+  --color-cn-neutral-ink: #1c1a17;
+  --color-cn-assassin: #0c0c0c;
+  --color-cn-assassin-ink: #e8e8e8;
   color-scheme: dark;
 }
 
@@ -1872,6 +1894,16 @@ html[data-theme='white'] {
   --color-chess-light: #e2e8f0;
   --color-chess-dark: #475569;
   --color-chess-frame: #94a3b8;
+  --color-cn-red: #e8c4cc;
+  --color-cn-red-ink: #7a2438;
+  --color-cn-red-mark: #b03050;
+  --color-cn-blue: #c5d6ea;
+  --color-cn-blue-ink: #1e3a5f;
+  --color-cn-blue-mark: #2f5f8f;
+  --color-cn-neutral: #e6e0d4;
+  --color-cn-neutral-ink: #3f3a32;
+  --color-cn-assassin: #2a2f38;
+  --color-cn-assassin-ink: #f1f5f9;
   color-scheme: light;
 }
 
@@ -1957,6 +1989,12 @@ html[data-theme='white'] .decoration-white\/35 {
   text-decoration-color: rgb(17 24 39 / 0.35);
 }
 
+/* Pale golden text washes out on light chrome — use deep amber instead. */
+html[data-theme='white'] .text-golden,
+html[data-theme='white'] .hover\:text-golden:hover {
+  color: #b45309;
+}
+
 html[data-theme='pink'] {
   --color-streak: #f472b6;
   --color-surface: #fce7f3;
@@ -1980,6 +2018,16 @@ html[data-theme='pink'] {
   --color-chess-light: #fad0e4;
   --color-chess-dark: #e06b9c;
   --color-chess-frame: #c4457a;
+  --color-cn-red: #f0c0ce;
+  --color-cn-red-ink: #8b1e45;
+  --color-cn-red-mark: #be185d;
+  --color-cn-blue: #c9d7f0;
+  --color-cn-blue-ink: #2a3f6b;
+  --color-cn-blue-mark: #3b5b9a;
+  --color-cn-neutral: #efe6dc;
+  --color-cn-neutral-ink: #4a4036;
+  --color-cn-assassin: #3a2a35;
+  --color-cn-assassin-ink: #fdf2f8;
   color-scheme: light;
 }
 
@@ -2065,6 +2113,12 @@ html[data-theme='pink'] .decoration-white\/35 {
   text-decoration-color: rgb(131 24 67 / 0.35);
 }
 
+/* Same as white — light yellow on pink is unreadable. */
+html[data-theme='pink'] .text-golden,
+html[data-theme='pink'] .hover\:text-golden:hover {
+  color: #b45309;
+}
+
 /* Solid accent fills keep white label text on light themes. */
 html[data-theme='white'] .bg-rose-500,
 html[data-theme='white'] .bg-rose-400,
@@ -2101,6 +2155,16 @@ html[data-theme='violet'] {
   --color-chess-light: #d4c8f0;
   --color-chess-dark: #5a5270;
   --color-chess-frame: #9b8ec4;
+  --color-cn-red: #a5687a;
+  --color-cn-red-ink: #fceef2;
+  --color-cn-red-mark: #e0a8b8;
+  --color-cn-blue: #6a6f9a;
+  --color-cn-blue-ink: #eef0fb;
+  --color-cn-blue-mark: #b0b4d8;
+  --color-cn-neutral: #a89a88;
+  --color-cn-neutral-ink: #2a241c;
+  --color-cn-assassin: #16121c;
+  --color-cn-assassin-ink: #ede9fe;
   color-scheme: dark;
 }
 
@@ -2124,5 +2188,15 @@ html[data-theme='emerald'] {
   --color-chess-light: #c5e4d4;
   --color-chess-dark: #3d8f6e;
   --color-chess-frame: #5aaa88;
+  --color-cn-red: #9a5a62;
+  --color-cn-red-ink: #fceced;
+  --color-cn-red-mark: #e0a0a8;
+  --color-cn-blue: #4a7388;
+  --color-cn-blue-ink: #e8f4f8;
+  --color-cn-blue-mark: #92b8c8;
+  --color-cn-neutral: #a89878;
+  --color-cn-neutral-ink: #241f16;
+  --color-cn-assassin: #0e1612;
+  --color-cn-assassin-ink: #ecfdf5;
   color-scheme: dark;
 }

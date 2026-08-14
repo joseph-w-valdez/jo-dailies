@@ -10,8 +10,19 @@ service cloud.firestore {
         ];
     }
 
-    match /rooms/jo-and-friend/{document=**} {
-      allow read, write: if isAllowed();
+    // Per-user docs (prefs, favorites, personal shopping) — owner only.
+    match /rooms/jo-and-friend/users/{userId} {
+      allow read, write: if isAllowed() && request.auth.uid == userId;
+
+      match /{document=**} {
+        allow read, write: if isAllowed() && request.auth.uid == userId;
+      }
+    }
+
+    // Shared room data (recipes, days, pet, games, …) — both household UIDs.
+    // `users` is excluded so personal lists stay private from each other.
+    match /rooms/jo-and-friend/{col}/{document=**} {
+      allow read, write: if isAllowed() && col != 'users';
     }
 
     match /{document=**} {

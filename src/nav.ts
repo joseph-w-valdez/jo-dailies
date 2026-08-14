@@ -4,6 +4,8 @@ export const NAV_LINKS = [
   { to: '/scrapbook', label: 'Scrapbook', end: false },
   { to: '/arcade', label: 'Arcade', end: false },
   { to: '/gallery', label: 'Gallery', end: false },
+  { to: '/cookbook', label: 'Cookbook', end: false },
+  { to: '/shopping', label: 'Shopping', end: false },
   { to: '/wheel', label: 'Wheel', end: false },
 ] as const
 

@@ -10,6 +10,24 @@ export function isRoomUid(uid: string | null | undefined): boolean {
   return Boolean(uid && (JENGA_PLAYER_UIDS as readonly string[]).includes(uid))
 }
 
+/** First seat (Joseph) — often used as shared co-op host key. */
+export function hostSeatUid(): string {
+  return JENGA_PLAYER_UIDS[0]!
+}
+
+/** The other household seat (2-player). */
+export function otherPlayerUid(uid: string): string {
+  const other = JENGA_PLAYER_UIDS.find((id) => id !== uid)
+  return other ?? JENGA_PLAYER_UIDS[0]!
+}
+
+/** True when every seat has a truthy entry in the map. */
+export function bothSeatsReady(
+  submitted: Record<string, boolean | undefined>,
+): boolean {
+  return JENGA_PLAYER_UIDS.every((id) => Boolean(submitted[id]))
+}
+
 /** Layers of 3 bricks. 15 ≈ classic feel without melting phones. */
 export const JENGA_LAYERS = 15
 

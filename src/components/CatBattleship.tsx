@@ -613,7 +613,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                         className={[
                           'rounded-md border px-2 py-0.5 text-[10px] font-medium transition',
                           active
-                            ? 'border-golden/50 bg-golden/15 text-golden'
+                            ? 'border-golden/55 bg-golden/25 text-app-text'
                             : 'border-border bg-surface/60 text-muted hover:text-white',
                         ].join(' ')}
                       >

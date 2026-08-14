@@ -1,4 +1,4 @@
-/** Shared room picker wheel — Firestore `rooms/{id}/wheel/current`. */
+/** Shared room picker wheel — RTDB `rooms/{id}/wheel/current` (Firestore fallback). */
 export interface WheelEntry {
   id: string
   label: string

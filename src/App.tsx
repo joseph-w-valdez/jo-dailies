@@ -33,6 +33,10 @@ import { NAV_LINKS } from "./nav";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { ScrapbookPage } from "./pages/ScrapbookPage";
 import { GalleryPage } from "./pages/GalleryPage";
+import { CookbookPage } from "./pages/CookbookPage";
+import { RecipeEditorPage } from "./pages/RecipeEditorPage";
+import { RecipeViewerPage } from "./pages/RecipeViewerPage";
+import { ShoppingPage } from "./pages/ShoppingPage";
 import { WheelPage } from "./pages/WheelPage";
 
 function HomePage() {
@@ -290,6 +294,14 @@ function AppContent() {
           <Route path="/scrapbook" element={<ScrapbookPage />} />
           <Route path="/arcade" element={<ArcadePage />} />
           <Route path="/gallery" element={<GalleryPage />} />
+          <Route path="/cookbook" element={<CookbookPage />} />
+          <Route path="/cookbook/new" element={<RecipeEditorPage />} />
+          <Route path="/cookbook/:recipeId" element={<RecipeViewerPage />} />
+          <Route
+            path="/cookbook/:recipeId/edit"
+            element={<RecipeEditorPage />}
+          />
+          <Route path="/shopping" element={<ShoppingPage />} />
           <Route path="/wheel" element={<WheelPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -111,7 +111,7 @@ function WeightControl({
 }
 
 export function WheelPage() {
-  const { wheel, ready, commitWheel } = useSharedWheel()
+  const { wheel, ready, commitWheel, liveEnabled } = useSharedWheel()
   const entries = wheel.entries
   const [draft, setDraft] = useState('')
   const [rotation, setRotation] = useState(0)
@@ -313,11 +313,18 @@ export function WheelPage() {
       ) : null}
       <div className="relative z-10 mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-border bg-surface-raised p-4 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)] sm:p-5">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h1 className="truncate text-lg font-semibold text-white">Wheel</h1>
             <ArcadeStatus tone={winnerLabel ? 'win' : 'ready'}>
               {statusLabel}
             </ArcadeStatus>
+            {liveEnabled ? (
+              <span className="text-[10px] text-muted">Live sync on</span>
+            ) : (
+              <span className="text-[10px] text-muted">
+                Live sync needs RTDB URL
+              </span>
+            )}
           </div>
 
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
