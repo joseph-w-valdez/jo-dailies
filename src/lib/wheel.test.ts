@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildWheelSegments,
+  createInitialWheel,
   createWheelEntry,
+  normalizeWheel,
   pickWeightedIndex,
   rotationForWinner,
+  titleCaseLabel,
   wheelSlicePath,
   WHEEL_COLORS,
 } from './wheel'
@@ -53,5 +56,47 @@ describe('wheel', () => {
   it('draws a full-circle path for a single slice', () => {
     const path = wheelSlicePath(0, 0, 10, 0, 360)
     expect(path).toContain('A 10 10')
+  })
+
+  it('normalizes RTDB object-map entries', () => {
+    const remote = normalizeWheel({
+      entries: {
+        0: {
+          id: 'a',
+          label: 'watch anime',
+          weight: 1,
+          enabled: true,
+          color: '#fff',
+        },
+        1: {
+          id: 'b',
+          label: 'play a game',
+          weight: 2,
+          enabled: true,
+          color: '#000',
+        },
+      },
+      rotation: 90,
+      version: 4,
+      updatedAt: 1,
+    })
+    expect(remote.entries.map((e) => e.label)).toEqual([
+      'Watch Anime',
+      'Play a Game',
+    ])
+    expect(remote.rotation).toBe(90)
+    expect(remote.version).toBe(4)
+  })
+
+  it('keeps an empty options list instead of inventing a default', () => {
+    expect(normalizeWheel({ entries: [], version: 2 }).entries).toEqual([])
+    expect(createInitialWheel().entries).toEqual([])
+  })
+
+  it('title-cases labels', () => {
+    expect(titleCaseLabel('play valorant')).toBe('Play Valorant')
+    expect(titleCaseLabel('watch a movie')).toBe('Watch a Movie')
+    expect(titleCaseLabel('say hi to Joha')).toBe('Say Hi to Joha')
+    expect(createWheelEntry('play a game').label).toBe('Play a Game')
   })
 })

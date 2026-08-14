@@ -1,4 +1,4 @@
-/** Shared room picker wheel — RTDB `rooms/{id}/wheel/current` (Firestore fallback). */
+/** Shared room picker wheel — Firestore `rooms/{id}/wheel/current`. */
 export interface WheelEntry {
   id: string
   label: string
@@ -42,13 +42,48 @@ function newId(): string {
   return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+const TITLE_CASE_SMALL = new Set([
+  'a',
+  'an',
+  'and',
+  'as',
+  'at',
+  'but',
+  'by',
+  'for',
+  'from',
+  'in',
+  'nor',
+  'of',
+  'on',
+  'or',
+  'the',
+  'to',
+  'with',
+])
+
+/** Title-case option labels: "play valorant" → "Play Valorant". */
+export function titleCaseLabel(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, ' ')
+  if (!t) return ''
+  return t
+    .split(' ')
+    .map((word, i) => {
+      if (!word) return word
+      const lower = word.toLowerCase()
+      if (i > 0 && TITLE_CASE_SMALL.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+}
+
 export function createWheelEntry(
   label: string,
   opts?: { weight?: number; color?: string; enabled?: boolean },
 ): WheelEntry {
   return {
     id: newId(),
-    label: label.trim() || 'Untitled',
+    label: titleCaseLabel(label) || 'Untitled',
     weight: normalizeWeight(opts?.weight ?? 1),
     enabled: opts?.enabled !== false,
     color: opts?.color ?? WHEEL_COLORS[0]!,
@@ -56,9 +91,7 @@ export function createWheelEntry(
 }
 
 export function defaultWheelEntries(): WheelEntry[] {
-  return [
-    createWheelEntry('Play Valorant', { weight: 1, color: WHEEL_COLORS[0] }),
-  ]
+  return []
 }
 
 export function createInitialWheel(): WheelRoomState {
@@ -81,10 +114,23 @@ function clampNum(n: unknown, fallback = 0): number {
   return Number.isFinite(v) ? v : fallback
 }
 
+/** RTDB may return dense lists as arrays or as `{0:…,1:…}` maps. */
+function listFromRemote(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object') {
+    return Object.keys(raw as Record<string, unknown>)
+      .filter((k) => /^\d+$/.test(k))
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => (raw as Record<string, unknown>)[k])
+  }
+  return []
+}
+
 function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  const label = typeof o.label === 'string' ? o.label.trim() : ''
+  const label =
+    typeof o.label === 'string' ? titleCaseLabel(o.label) : ''
   if (!label) return null
   return {
     id: typeof o.id === 'string' && o.id ? o.id : newId(),
@@ -101,8 +147,7 @@ function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
 export function normalizeWheel(raw: unknown): WheelRoomState {
   if (!raw || typeof raw !== 'object') return createInitialWheel()
   const s = raw as Record<string, unknown>
-  const entriesRaw = Array.isArray(s.entries) ? s.entries : []
-  const entries = entriesRaw
+  const entries = listFromRemote(s.entries)
     .map((item, i) => parseWheelEntry(item, i))
     .filter((e): e is WheelEntry => e !== null)
   return {
@@ -115,12 +160,19 @@ export function normalizeWheel(raw: unknown): WheelRoomState {
   }
 }
 
+/** Payload for Firestore. */
 export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
   return {
-    entries: state.entries,
+    entries: state.entries.map((e) => ({
+      id: e.id,
+      label: e.label,
+      weight: e.weight,
+      enabled: e.enabled,
+      color: e.color,
+    })),
     rotation: state.rotation,
-    winnerId: state.winnerId,
-    spinId: state.spinId,
+    winnerId: state.winnerId || null,
+    spinId: state.spinId || null,
     version: state.version,
     updatedAt: state.updatedAt,
   }
@@ -128,10 +180,11 @@ export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
 
 /** One-tap labels for the options panel. */
 export const WHEEL_QUICK_ADDS = [
-  'watch a movie',
-  'watch anime',
-  'play a game',
-  'say hi to Joha',
+  'Play Valorant',
+  'Watch a Movie',
+  'Watch Anime',
+  'Play a Game',
+  'Say Hi to Joha',
 ] as const
 
 export const WHEEL_WEIGHT_MIN = 0.1

@@ -14,6 +14,7 @@ import {
   rotationForWinner,
   wheelLabelPose,
   wheelSlicePath,
+  titleCaseLabel,
   WHEEL_COLORS,
   WHEEL_QUICK_ADDS,
   WHEEL_WEIGHT_MAX,
@@ -25,9 +26,49 @@ import {
 
 const SPIN_MS = 4800
 const CONFETTI_MS = 4500
+/** How long the winner highlight / status sticks before resetting to Ready. */
+const OUTCOME_HOLD_MS = 15_000
 const CX = 160
 const CY = 160
 const RADIUS = 148
+
+function OptionColorButton({
+  color,
+  label,
+  disabled,
+  onChange,
+}: {
+  color: string
+  label: string
+  disabled?: boolean
+  onChange: (color: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => inputRef.current?.click()}
+      className="relative size-3.5 shrink-0 rounded-full ring-1 ring-white/25 transition hover:ring-white/50 disabled:cursor-not-allowed disabled:opacity-40"
+      style={{ backgroundColor: color }}
+      title="Change color"
+      aria-label={`Color for ${label}`}
+    >
+      <input
+        ref={inputRef}
+        type="color"
+        value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#888888'}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        className="pointer-events-none absolute inset-0 size-full cursor-pointer opacity-0"
+        tabIndex={-1}
+        aria-hidden
+      />
+    </button>
+  )
+}
 
 function WeightControl({
   label,
@@ -111,7 +152,7 @@ function WeightControl({
 }
 
 export function WheelPage() {
-  const { wheel, ready, commitWheel, liveEnabled } = useSharedWheel()
+  const { wheel, ready, commitWheel } = useSharedWheel()
   const entries = wheel.entries
   const [draft, setDraft] = useState('')
   const [rotation, setRotation] = useState(0)
@@ -120,6 +161,7 @@ export function WheelPage() {
   const [celebrating, setCelebrating] = useState(false)
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const outcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rotationRef = useRef(0)
   rotationRef.current = rotation
   const seenSpinIdRef = useRef<string | null>(null)
@@ -130,6 +172,7 @@ export function WheelPage() {
     return () => {
       if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
       if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current)
+      if (outcomeTimerRef.current) clearTimeout(outcomeTimerRef.current)
     }
   }, [])
 
@@ -188,6 +231,40 @@ export function WheelPage() {
     }, SPIN_MS)
   }, [ready, wheel.spinId, wheel.winnerId, wheel.rotation, spinning])
 
+  // After a finish, drop the winner highlight and shared outcome so the wheel
+  // returns to Ready for the next spin. Scoped to this spinId so a late timer
+  // cannot clobber a newer spin or an edit that already cleared outcome.
+  useEffect(() => {
+    if (!ready || spinning || !announce || !wheel.winnerId || !wheel.spinId) {
+      return
+    }
+    const spinIdAtSchedule = wheel.spinId
+    if (outcomeTimerRef.current) clearTimeout(outcomeTimerRef.current)
+    outcomeTimerRef.current = setTimeout(() => {
+      outcomeTimerRef.current = null
+      setAnnounce(false)
+      setCelebrating(false)
+      localSpinIdRef.current = null
+      if (seenSpinIdRef.current === spinIdAtSchedule) {
+        seenSpinIdRef.current = null
+      }
+      if (confettiTimerRef.current) {
+        clearTimeout(confettiTimerRef.current)
+        confettiTimerRef.current = null
+      }
+      void commitWheel((prev) => {
+        if (prev.spinId !== spinIdAtSchedule) return prev
+        return { ...prev, winnerId: null, spinId: null }
+      })
+    }, OUTCOME_HOLD_MS)
+    return () => {
+      if (outcomeTimerRef.current) {
+        clearTimeout(outcomeTimerRef.current)
+        outcomeTimerRef.current = null
+      }
+    }
+  }, [ready, spinning, announce, wheel.winnerId, wheel.spinId, commitWheel])
+
   const segments = useMemo(() => buildWheelSegments(entries), [entries])
   const canSpin = ready && segments.length > 0 && !spinning
   const winnerId = announce ? wheel.winnerId : null
@@ -204,6 +281,10 @@ export function WheelPage() {
     if (confettiTimerRef.current) {
       clearTimeout(confettiTimerRef.current)
       confettiTimerRef.current = null
+    }
+    if (outcomeTimerRef.current) {
+      clearTimeout(outcomeTimerRef.current)
+      outcomeTimerRef.current = null
     }
   }
 
@@ -318,13 +399,6 @@ export function WheelPage() {
             <ArcadeStatus tone={winnerLabel ? 'win' : 'ready'}>
               {statusLabel}
             </ArcadeStatus>
-            {liveEnabled ? (
-              <span className="text-[10px] text-muted">Live sync on</span>
-            ) : (
-              <span className="text-[10px] text-muted">
-                Live sync needs RTDB URL
-              </span>
-            )}
           </div>
 
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -564,16 +638,24 @@ export function WheelPage() {
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2">
-                      <span
-                        className="size-3 shrink-0 rounded-full ring-1 ring-white/20"
-                        style={{ backgroundColor: entry.color }}
-                        aria-hidden
+                      <OptionColorButton
+                        color={entry.color}
+                        label={entry.label}
+                        disabled={spinning}
+                        onChange={(next) =>
+                          updateEntry(entry.id, { color: next })
+                        }
                       />
                       <input
                         value={entry.label}
                         disabled={spinning}
                         onChange={(event) =>
                           updateEntry(entry.id, { label: event.target.value })
+                        }
+                        onBlur={(event) =>
+                          updateEntry(entry.id, {
+                            label: titleCaseLabel(event.target.value),
+                          })
                         }
                         className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-white focus:border-border focus:outline-none disabled:cursor-not-allowed"
                         aria-label="Option label"
