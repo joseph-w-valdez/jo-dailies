@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { JENGA_CAT_THEMES } from '../lib/jenga'
 import { petAssetBundle } from '../lib/petAssets'
 
@@ -12,6 +13,8 @@ const TURN_QUOTES = [
   "I believe this is yours!",
 ] as const
 
+const SCRABBLE_PATH = '/arcade?game=scrabble'
+
 function pickCatSrc(): string {
   const theme =
     JENGA_CAT_THEMES[Math.floor(Math.random() * JENGA_CAT_THEMES.length)]!
@@ -22,6 +25,11 @@ function pickQuote(): string {
   return TURN_QUOTES[Math.floor(Math.random() * TURN_QUOTES.length)]!
 }
 
+function isOnScrabble(pathname: string, search: string): boolean {
+  if (pathname !== '/arcade') return false
+  return new URLSearchParams(search).get('game') === 'scrabble'
+}
+
 /** In-app Scrabble turn alert — bouncing cat + quote. */
 export function TurnNotifyModal({
   open,
@@ -30,6 +38,9 @@ export function TurnNotifyModal({
   open: boolean
   onClose: () => void
 }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const showOpenScrabble = !isOnScrabble(location.pathname, location.search)
   const catSrc = useMemo(() => (open ? pickCatSrc() : ''), [open])
   const quote = useMemo(() => (open ? pickQuote() : ''), [open])
 
@@ -50,13 +61,19 @@ export function TurnNotifyModal({
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="turn-notify-title"
         className="w-full max-w-xs rounded-2xl border border-border bg-surface-raised p-5 text-center shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="relative mx-auto inline-block">
@@ -80,13 +97,27 @@ export function TurnNotifyModal({
           Scrabble
         </h3>
         <p className="mt-1 text-sm text-muted">It&apos;s your turn.</p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-white hover:border-muted"
-        >
-          Got it
-        </button>
+        <div className="mt-4 flex flex-col gap-2">
+          {showOpenScrabble ? (
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                navigate(SCRABBLE_PATH)
+              }}
+              className="w-full rounded-lg border border-emerald-500/55 bg-emerald-500/20 px-3 py-2 text-sm font-medium text-app-text hover:bg-emerald-500/30"
+            >
+              Open Scrabble
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-lg px-3 py-2 text-xs text-muted hover:text-white"
+          >
+            Got it
+          </button>
+        </div>
       </div>
     </div>,
     mount,

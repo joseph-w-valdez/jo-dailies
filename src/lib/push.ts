@@ -52,9 +52,7 @@ export function showTurnNotification(): void {
   })
   n.onclick = () => {
     window.focus()
-    if (!window.location.pathname.startsWith('/arcade')) {
-      window.location.assign('/arcade')
-    }
+    window.location.assign('/arcade?game=scrabble')
     n.close()
   }
 }
