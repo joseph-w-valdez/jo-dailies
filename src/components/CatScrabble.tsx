@@ -57,7 +57,7 @@ interface DraftCell {
 function premiumClass(p: Premium): string {
   switch (p) {
     case "TW":
-      return "bg-rose-700/80 text-rose-100";
+      return "bg-rose-700/80 text-pink-200";
     case "DW":
     case "★":
       return "bg-rose-400/70 text-rose-950";

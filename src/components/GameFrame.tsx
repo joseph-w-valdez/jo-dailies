@@ -188,12 +188,13 @@ export function GameFrame({ game, onClose, onOpenExternal }: GameFrameProps) {
           className={[
             'block w-full border-0',
             theater || fullscreen ? 'h-full' : 'h-[min(80vh,860px)]',
-            game.darkEmbed ? 'bg-[#0b1220]' : 'bg-white',
+            game.darkEmbed || game.darkColorScheme ? 'bg-[#0b1220]' : 'bg-white',
           ].join(' ')}
           style={{
             ...(game.darkEmbed
               ? { filter: 'invert(1) hue-rotate(180deg)' }
               : undefined),
+            ...(game.darkColorScheme ? { colorScheme: 'dark' } : undefined),
             // CSS zoom scales only the embedded game, not the page chrome
             zoom,
           }}

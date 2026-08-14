@@ -33,6 +33,8 @@ export interface GameDef {
   embeddable: boolean;
   /** Approximate dark mode for light embeds we can't theme directly. */
   darkEmbed?: boolean;
+  /** Pin the iframe's used color-scheme so a light parent theme can't leak in. */
+  darkColorScheme?: boolean;
 }
 
 export interface ExtraDef {

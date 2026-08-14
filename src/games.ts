@@ -15,6 +15,7 @@ export const GAMES: GameDef[] = [
     url: 'https://puzzlist.com/stackdown/',
     accent: '#34d399',
     embeddable: true,
+    darkColorScheme: true,
   },
   {
     id: 'chess',
