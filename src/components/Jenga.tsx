@@ -1527,6 +1527,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
           meteorCount: game.meteorCount,
           removedCount: game.removedCount + (scoredRemoval ? 1 : 0),
           lastBrickId: _movedId,
+          firstUid: game.firstUid,
         }
         await commitGame(next)
       } finally {

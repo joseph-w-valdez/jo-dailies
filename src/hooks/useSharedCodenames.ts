@@ -18,10 +18,11 @@ export function useSharedCodenames() {
   })
 
   const { game, uid, signedIn } = shared
+  const clueUid = game.clueUid
   const actorUid = (() => {
-    if (!game.hotseat) return uid
-    if (game.phase === 'clue' && game.clueUid) return game.clueUid
-    if (game.phase === 'guess' && game.clueUid) return guesserUid(game.clueUid)
+    if (!game.hotseat || !uid) return uid
+    if (game.phase === 'clue' && clueUid) return clueUid
+    if (game.phase === 'guess' && clueUid) return guesserUid(clueUid)
     if (game.phase === 'sudden') {
       for (const seat of [uid, otherPlayerUid(uid)]) {
         if (remainingForUid(game.cards, otherPlayerUid(seat)) > 0) return seat
@@ -34,19 +35,20 @@ export function useSharedCodenames() {
     signedIn &&
     game.status === 'playing' &&
     game.phase === 'clue' &&
-    Boolean(game.clueUid) &&
-    actorUid === game.clueUid
+    clueUid != null &&
+    actorUid === clueUid
   const canGuess =
     signedIn &&
     game.status === 'playing' &&
     game.phase === 'guess' &&
-    Boolean(game.clueUid) &&
-    actorUid === guesserUid(game.clueUid)
+    clueUid != null &&
+    actorUid === guesserUid(clueUid)
   const canSudden =
     signedIn &&
     game.status === 'playing' &&
     game.phase === 'sudden' &&
-    remainingForUid(game.cards, otherPlayerUid(actorUid)) > 0
+    Boolean(actorUid) &&
+    remainingForUid(game.cards, otherPlayerUid(actorUid!)) > 0
 
   return {
     game: shared.game,

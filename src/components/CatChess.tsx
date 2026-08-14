@@ -35,6 +35,7 @@ import {
   useClockNow,
 } from './GameClockModePicker'
 import { GameSeatPicker } from './GameSeatPicker'
+import { NewGameConfirm } from './NewGameConfirm'
 
 const PROMO_KINDS: ChessKind[] = ['q', 'r', 'b', 'n']
 const QUOTE_SHOW_MS = 3_800
@@ -663,7 +664,7 @@ export function CatChess({ onClose }: { onClose: () => void }) {
               setPromoPick(null)
               void resetGame(opts)
             }}
-            blurb="Starts a fresh chess game. You’ll pick Normal or Timed next."
+            blurb="Starts a fresh chess game. You’ll pick who is White, then Sweaty or Grass."
           />
 
           <ConfirmDialog

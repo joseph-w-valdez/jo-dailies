@@ -40,12 +40,12 @@ describe('parseClockControl', () => {
 describe('applyClockAfterTurn', () => {
   it('adds Fischer increment when the turn switches', () => {
     const prev = {
-      turnUid: a,
+      turnUid: a as string,
       ...startClockFields('timed', 180_000, 1_000, 2_000),
     }
     const { next, timedOutUid } = applyClockAfterTurn(
       prev,
-      { ...prev, turnUid: b },
+      { ...prev, turnUid: b as string },
       6_000,
     )
     expect(timedOutUid).toBeNull()
@@ -56,12 +56,12 @@ describe('applyClockAfterTurn', () => {
 
   it('does not add increment on a flag', () => {
     const prev = {
-      turnUid: a,
+      turnUid: a as string,
       ...startClockFields('timed', 5_000, 1_000, 2_000),
     }
     const { next, timedOutUid } = applyClockAfterTurn(
       prev,
-      { ...prev, turnUid: b },
+      { ...prev, turnUid: b as string },
       7_000,
     )
     expect(timedOutUid).toBe(a)
