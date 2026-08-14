@@ -41,14 +41,9 @@ export function vapidKey(): string {
   return import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim() ?? ''
 }
 
-function pageIsQuiet(): boolean {
-  return document.visibilityState === 'visible' && document.hasFocus()
-}
-
 export function showTurnNotification(): void {
   if (!notificationsSupported()) return
   if (Notification.permission !== 'granted') return
-  if (pageIsQuiet()) return
   const { title, body, tag } = turnNotifyPayload()
   const n = new Notification(title, {
     body,

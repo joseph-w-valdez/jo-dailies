@@ -39,6 +39,7 @@ import { liveClockMs, SCRABBLE_CLOCK_PRESETS } from "../lib/gameClock";
 import { JENGA_PLAYER_UIDS, nextTurnUid } from "../lib/jenga";
 import { petIdleSrc } from "../lib/petAssets";
 import { ArcadeStage, ArcadeStatus } from "./ArcadeStage";
+import { TurnPushToggle } from "./TurnPushToggle";
 import {
   GameClockReadout,
   GameClockSetupPicker,
@@ -910,12 +911,15 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
         <div className={immersive ? "flex min-h-0 flex-1 flex-col" : undefined}>
           {immersive ? null : (
             <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Skills
-                <span className="ml-2 font-medium normal-case tracking-normal text-muted">
-                  — 2 uses each, no refill this game
-                </span>
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Skills
+                  <span className="ml-2 font-medium normal-case tracking-normal text-muted">
+                    — 2 uses each, no refill this game
+                  </span>
+                </p>
+                <TurnPushToggle />
+              </div>
               <div className="mt-1.5 grid grid-cols-3 gap-2">
                 {(
                   [
