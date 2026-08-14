@@ -765,16 +765,33 @@ function splitIngredientChunks(text: string): string[] {
 
   const out: string[] = []
   for (const line of lines) {
-    // Don't split ranges like 1–2; split comma lists without amounts carefully
-    if (
-      /,/.test(line) &&
-      !parseLeadingAmount(line.replace(/^[-*•–—]+\s*/, '').replace(/^optional\s*[:\-–—]\s*/i, ''))
-    ) {
-      for (const part of line.split(',')) {
-        const p = part.trim()
-        if (p) out.push(p)
+    if (/,/.test(line)) {
+      // "1 lb beef, 2 onions, 3 carrots" — split before each amount-bearing
+      // segment. Keep "1 can tomatoes, drained" as one chunk.
+      const amountParts = line
+        .split(
+          /,\s*(?=(?:optional\s*[:\-–—]\s*)?(?:[~≈]+\s*)?(?:\d|[¼½¾⅓⅔⅛⅜⅝⅞]))/i,
+        )
+        .map((p) => p.trim())
+        .filter(Boolean)
+      if (amountParts.length >= 2) {
+        out.push(...amountParts)
+        continue
       }
-      continue
+      // Bare pantry lists with no leading amounts: "salt, pepper, garlic"
+      if (
+        !parseLeadingAmount(
+          line
+            .replace(/^[-*•–—]+\s*/, '')
+            .replace(/^optional\s*[:\-–—]\s*/i, ''),
+        )
+      ) {
+        for (const part of line.split(',')) {
+          const p = part.trim()
+          if (p) out.push(p)
+        }
+        continue
+      }
     }
     // Mid-line bullets (not numeric ranges)
     if (/\s[-*•]\s/.test(line) && !/\d\s*[-–—]\s*\d/.test(line)) {

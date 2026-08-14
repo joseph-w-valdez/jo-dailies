@@ -164,6 +164,43 @@ Optional: 1 minced garlic clove`)
       unitKind: 'count',
     })
   })
+
+  it('splits comma lists that start with amounts', () => {
+    const rows = parseRecipeIngredients(
+      '1 lb ground beef, 1 medium onion, 2 medium potatoes, 2 medium carrots, 4 cups water, 1 curry roux square, 1 tbsp neutral oil',
+    )
+    expect(rows).toHaveLength(7)
+    expect(rows[0]).toMatchObject({
+      name: 'ground beef',
+      amount: 1,
+      unit: 'lb',
+      unitKind: 'mass',
+    })
+    expect(rows[1]).toMatchObject({ name: 'medium onion', amount: 1 })
+    expect(rows[2]).toMatchObject({ name: 'medium potatoes', amount: 2 })
+    expect(rows[4]).toMatchObject({
+      name: 'water',
+      amount: 4,
+      unit: 'cup',
+      unitKind: 'volume',
+    })
+    expect(rows[5]).toMatchObject({
+      name: 'curry roux square',
+      amount: 1,
+      unitKind: 'count',
+    })
+    expect(rows[6]).toMatchObject({
+      name: 'neutral oil',
+      amount: 1,
+      unit: 'tbsp',
+    })
+  })
+
+  it('keeps trailing notes on one amount line', () => {
+    const rows = parseRecipeIngredients('1 can tomatoes, drained')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.name).toMatch(/tomatoes.*drained/i)
+  })
 })
 
 describe('parseRecipePaste', () => {
