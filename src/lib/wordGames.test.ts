@@ -50,15 +50,15 @@ describe('wordle', () => {
     expect(markWordleGuess('viper', 'valorant').length).toBe(8)
   })
 
-  it('co-op accepts any letter probe of the answer length', () => {
+  it('co-op rejects non-words and accepts a dictionary guess', () => {
     let s = createInitialWordle(JENGA_PLAYER_UIDS[0]!)
     s = startWordleCoop(s, () => 0)
     expect(s.answer).toBeTruthy()
     expect(s.answer!.length).toBe(5)
-    const probe = 'xxxxx'
-    const probed = applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, probe)
+    expect(applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'xxxxx')).toBeNull()
+    const probed = applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'apple')
     expect(probed?.status).toBe('playing')
-    expect(probed?.guessesByUid[JENGA_PLAYER_UIDS[0]!]?.[0]?.word).toBe(probe)
+    expect(probed?.guessesByUid[JENGA_PLAYER_UIDS[0]!]?.[0]?.word).toBe('apple')
     const won = applyWordleGuess(probed!, JENGA_PLAYER_UIDS[1]!, s.answer!)
     expect(won?.status).toBe('won')
   })
@@ -75,12 +75,14 @@ describe('wordle', () => {
   it('versus locks both words before play', () => {
     let s = startWordleVersus(createInitialWordle(JENGA_PLAYER_UIDS[0]!))
     expect(s.lengthMode).toBe('standard')
+    expect(submitVersusWord(s, JENGA_PLAYER_UIDS[0]!, 'xxxxx')).toBeNull()
     s = submitVersusWord(s, JENGA_PLAYER_UIDS[0]!, 'apple')!
     expect(s.phase).toBe('versusSetup')
     s = submitVersusWord(s, JENGA_PLAYER_UIDS[1]!, 'beach')!
     expect(s.phase).toBe('playing')
     expect(s.answersByUid[JENGA_PLAYER_UIDS[1]!]).toBe('apple')
     expect(s.answersByUid[JENGA_PLAYER_UIDS[0]!]).toBe('beach')
+    expect(applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'zzzzz')).toBeNull()
   })
 })
 

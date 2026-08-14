@@ -1,6 +1,5 @@
 import {
   isInWordBank,
-  isValidSecretWord,
   normalizeSharedWord,
   pickSharedWord,
   secretMaxLen as sharedSecretMaxLen,
@@ -29,7 +28,13 @@ export function isValidWordleAnswer(
   word: string,
   lengthMode: WordleLengthMode = 'standard',
 ): boolean {
-  return isValidSecretWord(word, lengthMode)
+  const w = normalizeSharedWord(word)
+  if (lengthMode === 'standard') return isValidWordleGuess(w, 5, 'standard')
+  return (
+    w.length >= WORDLE_MIN_LEN &&
+    w.length <= WORDLE_MAX_LEN &&
+    isInWordBank(w, lengthMode)
+  )
 }
 
 export function pickWordleAnswer(

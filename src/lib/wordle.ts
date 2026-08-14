@@ -8,6 +8,7 @@ import {
 } from './jenga'
 import {
   isValidWordleAnswer,
+  isValidWordleGuess,
   markWordleGuess,
   pickWordleAnswer,
   wordleAnswerLength,
@@ -178,12 +179,16 @@ export function applyWordleGuess(
   if (state.phase !== 'playing' || state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
   const guess = rawGuess.trim().toLowerCase().replace(/[^a-z]/g, '')
+  const lengthMode = state.lengthMode ?? 'standard'
 
   if (state.mode === 'coop') {
     const answer = state.answer
     if (!answer) return null
     const len = wordleAnswerLength(answer)
     if (guess.length !== len) return null
+    if (!isValidWordleGuess(guess, len, lengthMode) && guess !== answer) {
+      return null
+    }
     const host = hostSeatUid()
     const shared = [...(state.guessesByUid[host] ?? [])]
     if (shared.length >= WORDLE_MAX_GUESSES) return null
@@ -206,11 +211,13 @@ export function applyWordleGuess(
     }
   }
 
-  // Versus: any letters of the answer length (probe / cross-check, not dictionary)
   const answer = state.answersByUid[uid]
   if (!answer) return null
   const len = wordleAnswerLength(answer)
   if (guess.length !== len) return null
+  if (!isValidWordleGuess(guess, len, lengthMode) && guess !== answer) {
+    return null
+  }
   const mine = [...(state.guessesByUid[uid] ?? [])]
   if (mine.length >= WORDLE_MAX_GUESSES) return null
   if (mine.some((g) => g.word === guess)) return null

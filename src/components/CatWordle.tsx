@@ -12,6 +12,7 @@ import {
 } from '../lib/wordle'
 import {
   isValidWordleAnswer,
+  isValidWordleGuess,
   secretMaxLen,
   wordleAnswerLength,
   type LetterMark,
@@ -162,6 +163,14 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     if (g.length !== myAnswerLen) {
       setMsg(`Need ${myAnswerLen} letters`)
       return
+    }
+    if (!isValidWordleGuess(g, myAnswerLen, lengthMode)) {
+      const answer =
+        game.mode === 'coop' ? game.answer : game.answersByUid[actorUid]
+      if (g !== answer) {
+        setMsg('Not a word')
+        return
+      }
     }
     void commitGame((prev) => {
       const next = applyWordleGuess(prev, actorUid, g)
