@@ -121,6 +121,27 @@ body {
   animation: cat-icon-wiggle 900ms ease-in-out infinite;
 }
 
+@keyframes turn-notify-bounce {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-14px) rotate(-12deg) scale(1.08);
+  }
+  50% {
+    transform: translateY(0) rotate(10deg) scale(1.04);
+  }
+  75% {
+    transform: translateY(-8px) rotate(-8deg) scale(1.06);
+  }
+}
+
+.turn-notify-cat {
+  animation: turn-notify-bounce 900ms ease-in-out infinite;
+  will-change: transform;
+}
+
 @keyframes chess-piece-wiggle {
   0%,
   12% {

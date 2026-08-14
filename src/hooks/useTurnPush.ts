@@ -1,5 +1,6 @@
 import { doc, onSnapshot } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { TurnNotifyModal } from '../components/TurnNotifyModal'
 import { db, syncRoomId } from '../lib/firebase'
 import {
   loadTurnPushEnabled,
@@ -60,6 +61,7 @@ export function TurnPushListener() {
   const enabled = useTurnPushOptIn()
   const seenRef = useRef(false)
   const prevRef = useRef<TurnSnapshot | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   useEffect(() => {
     seenRef.current = false
@@ -86,9 +88,13 @@ export function TurnPushListener() {
       }
       const notifyUid = scrabbleTurnNotifyUid(prevRef.current, after)
       prevRef.current = after
-      if (notifyUid === uid) showTurnNotification()
+      if (notifyUid !== uid) return
+      setModalOpen(true)
+      showTurnNotification()
     })
   }, [user?.uid, enabled])
 
-  return null
+  return (
+    <TurnNotifyModal open={modalOpen} onClose={() => setModalOpen(false)} />
+  )
 }
