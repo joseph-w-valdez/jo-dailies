@@ -8,14 +8,16 @@ import {
   buildWheelSegments,
   createWheelEntry,
   formatWeight,
+  isWheelOutcomeFresh,
   newWheelSpinId,
   normalizeWeight,
   pickWeightedIndex,
   rotationForWinner,
   wheelLabelPose,
+  wheelOutcomeExpiresAt,
   wheelSlicePath,
-  titleCaseLabel,
-  WHEEL_COLORS,
+  pickWheelColor,
+  WHEEL_OUTCOME_HOLD_MS,
   WHEEL_QUICK_ADDS,
   WHEEL_WEIGHT_MAX,
   WHEEL_WEIGHT_MIN,
@@ -26,8 +28,6 @@ import {
 
 const SPIN_MS = 4800
 const CONFETTI_MS = 4500
-/** How long the winner highlight / status sticks before resetting to Ready. */
-const OUTCOME_HOLD_MS = 15_000
 const CX = 160
 const CY = 160
 const RADIUS = 148
@@ -67,6 +67,52 @@ function OptionColorButton({
         aria-hidden
       />
     </button>
+  )
+}
+
+function OptionLabelInput({
+  id,
+  label,
+  disabled,
+  onCommit,
+}: {
+  id: string
+  label: string
+  disabled?: boolean
+  onCommit: (label: string) => void
+}) {
+  const [draft, setDraft] = useState(label)
+  const [editing, setEditing] = useState(false)
+
+  useEffect(() => {
+    if (!editing) setDraft(label)
+  }, [label, editing])
+
+  return (
+    <input
+      value={editing ? draft : label}
+      disabled={disabled}
+      onFocus={() => {
+        setEditing(true)
+        setDraft(label)
+      }}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        setEditing(false)
+        const next = draft.trim()
+        setDraft(next || label)
+        if ((next || label) !== label) onCommit(next || label)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          ;(event.target as HTMLInputElement).blur()
+        }
+      }}
+      className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-white focus:border-border focus:outline-none disabled:cursor-not-allowed"
+      aria-label="Option label"
+      data-option-id={id}
+    />
   )
 }
 
@@ -162,6 +208,9 @@ export function WheelPage() {
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const outcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Wall-clock deadline for outcome clear — survives background-tab timer throttling. */
+  const outcomeClearAtRef = useRef<number | null>(null)
+  const outcomeSpinIdRef = useRef<string | null>(null)
   const rotationRef = useRef(0)
   rotationRef.current = rotation
   const seenSpinIdRef = useRef<string | null>(null)
@@ -203,10 +252,11 @@ export function WheelPage() {
     if (wheel.spinId === seenSpinIdRef.current) return
     seenSpinIdRef.current = wheel.spinId
 
-    // First snapshot after load: show winner quietly, no confetti replay.
+    // First snapshot after load: show winner quietly only if still in hold
+    // window — stale finishes are already stripped in normalizeWheel.
     if (!hydratedRef.current) {
       hydratedRef.current = true
-      setAnnounce(Boolean(wheel.winnerId))
+      setAnnounce(Boolean(wheel.winnerId) && isWheelOutcomeFresh(wheel))
       setRotation(wheel.rotation)
       return
     }
@@ -232,20 +282,36 @@ export function WheelPage() {
   }, [ready, wheel.spinId, wheel.winnerId, wheel.rotation, spinning])
 
   // After a finish, drop the winner highlight and shared outcome so the wheel
-  // returns to Ready for the next spin. Scoped to this spinId so a late timer
-  // cannot clobber a newer spin or an edit that already cleared outcome.
+  // returns to Ready. Uses a wall-clock deadline + visibility/focus checks so
+  // background-tab timer throttling cannot leave the finish state stuck.
   useEffect(() => {
     if (!ready || spinning || !announce || !wheel.winnerId || !wheel.spinId) {
       return
     }
+
     const spinIdAtSchedule = wheel.spinId
-    if (outcomeTimerRef.current) clearTimeout(outcomeTimerRef.current)
-    outcomeTimerRef.current = setTimeout(() => {
-      outcomeTimerRef.current = null
+    outcomeSpinIdRef.current = spinIdAtSchedule
+    // Deadline is anchored to the spin's updatedAt so remounts / tab-away
+    // don't restart the full 15s hold.
+    outcomeClearAtRef.current =
+      wheelOutcomeExpiresAt(wheel) ?? Date.now() + WHEEL_OUTCOME_HOLD_MS
+
+    const clearIfDue = () => {
+      const dueAt = outcomeClearAtRef.current
+      const spinId = outcomeSpinIdRef.current
+      if (dueAt == null || spinId == null) return
+      if (Date.now() < dueAt) return
+
+      outcomeClearAtRef.current = null
+      outcomeSpinIdRef.current = null
+      if (outcomeTimerRef.current) {
+        clearTimeout(outcomeTimerRef.current)
+        outcomeTimerRef.current = null
+      }
       setAnnounce(false)
       setCelebrating(false)
       localSpinIdRef.current = null
-      if (seenSpinIdRef.current === spinIdAtSchedule) {
+      if (seenSpinIdRef.current === spinId) {
         seenSpinIdRef.current = null
       }
       if (confettiTimerRef.current) {
@@ -253,15 +319,38 @@ export function WheelPage() {
         confettiTimerRef.current = null
       }
       void commitWheel((prev) => {
-        if (prev.spinId !== spinIdAtSchedule) return prev
+        if (prev.spinId !== spinId) return prev
         return { ...prev, winnerId: null, spinId: null }
       })
-    }, OUTCOME_HOLD_MS)
+    }
+
+    const scheduleTimer = () => {
+      if (outcomeTimerRef.current) clearTimeout(outcomeTimerRef.current)
+      const dueAt = outcomeClearAtRef.current
+      if (dueAt == null) return
+      const delay = Math.max(0, dueAt - Date.now())
+      outcomeTimerRef.current = setTimeout(() => {
+        outcomeTimerRef.current = null
+        clearIfDue()
+      }, delay)
+    }
+
+    scheduleTimer()
+    const onResume = () => {
+      clearIfDue()
+      // If still holding, reschedule for whatever time remains.
+      if (outcomeClearAtRef.current != null) scheduleTimer()
+    }
+    document.addEventListener('visibilitychange', onResume)
+    window.addEventListener('focus', onResume)
+
     return () => {
       if (outcomeTimerRef.current) {
         clearTimeout(outcomeTimerRef.current)
         outcomeTimerRef.current = null
       }
+      document.removeEventListener('visibilitychange', onResume)
+      window.removeEventListener('focus', onResume)
     }
   }, [ready, spinning, announce, wheel.winnerId, wheel.spinId, commitWheel])
 
@@ -274,6 +363,8 @@ export function WheelPage() {
     setCelebrating(false)
     setSpinning(false)
     localSpinIdRef.current = null
+    outcomeClearAtRef.current = null
+    outcomeSpinIdRef.current = null
     if (spinTimerRef.current) {
       clearTimeout(spinTimerRef.current)
       spinTimerRef.current = null
@@ -307,7 +398,7 @@ export function WheelPage() {
     if (spinning) return
     const label = (rawLabel ?? draft).trim()
     if (!label) return
-    const color = WHEEL_COLORS[entries.length % WHEEL_COLORS.length]!
+    const color = pickWheelColor(entries.map((entry) => entry.color))
     clearOutcome()
     setEntries((prev) => [...prev, createWheelEntry(label, { color })])
     if (rawLabel == null) setDraft('')
@@ -646,19 +737,13 @@ export function WheelPage() {
                           updateEntry(entry.id, { color: next })
                         }
                       />
-                      <input
-                        value={entry.label}
+                      <OptionLabelInput
+                        id={entry.id}
+                        label={entry.label}
                         disabled={spinning}
-                        onChange={(event) =>
-                          updateEntry(entry.id, { label: event.target.value })
+                        onCommit={(next) =>
+                          updateEntry(entry.id, { label: next })
                         }
-                        onBlur={(event) =>
-                          updateEntry(entry.id, {
-                            label: titleCaseLabel(event.target.value),
-                          })
-                        }
-                        className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm text-white focus:border-border focus:outline-none disabled:cursor-not-allowed"
-                        aria-label="Option label"
                       />
                       <button
                         type="button"

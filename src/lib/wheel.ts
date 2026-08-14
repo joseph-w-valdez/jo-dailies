@@ -26,55 +26,89 @@ export interface WheelRoomState {
   updatedAt: number
 }
 
-/** Slice colors that read well on dark UI. */
+/** Slice colors that read well on dark UI — spaced hues so neighbors don't clash. */
 export const WHEEL_COLORS = [
-  '#2f6b4f',
-  '#c4a35a',
-  '#c45c26',
-  '#3d6ea8',
-  '#8b5a9e',
-  '#b85c7a',
-  '#3f8f7a',
-  '#a67c52',
+  '#2f6b4f', // forest green
+  '#c4a35a', // gold
+  '#c45c26', // orange
+  '#3d6ea8', // blue
+  '#8b5a9e', // purple
+  '#b85c7a', // rose
+  '#3f8f7a', // teal
+  '#a67c52', // brown
 ] as const
+
+function parseHexColor(hex: string): [number, number, number] | null {
+  const m = hex.trim().match(/^#?([0-9a-f]{6})$/i)
+  if (!m) return null
+  const n = Number.parseInt(m[1]!, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/** RGB → HSL with H in degrees [0, 360). */
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const R = r / 255
+  const G = g / 255
+  const B = b / 255
+  const max = Math.max(R, G, B)
+  const min = Math.min(R, G, B)
+  const l = (max + min) / 2
+  if (max === min) return [0, 0, l]
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h = 0
+  if (max === R) h = ((G - B) / d + (G < B ? 6 : 0)) / 6
+  else if (max === G) h = ((B - R) / d + 2) / 6
+  else h = ((R - G) / d + 4) / 6
+  return [h * 360, s, l]
+}
+
+/**
+ * Perceptual-ish distance: hue dominates so near-blues / near-greens score low.
+ * Saturation + lightness keep washed twins from pairing.
+ */
+export function wheelColorDistance(a: string, b: string): number {
+  const ra = parseHexColor(a)
+  const rb = parseHexColor(b)
+  if (!ra || !rb) return a.toLowerCase() === b.toLowerCase() ? 0 : 180
+  const [ha, sa, la] = rgbToHsl(ra[0], ra[1], ra[2])
+  const [hb, sb, lb] = rgbToHsl(rb[0], rb[1], rb[2])
+  const dh = Math.min(Math.abs(ha - hb), 360 - Math.abs(ha - hb))
+  return dh + Math.abs(sa - sb) * 50 + Math.abs(la - lb) * 80
+}
+
+/**
+ * Next slice color: unused palette first, then the candidate farthest from
+ * every color already on the wheel (avoids blue+light-blue style clashes).
+ */
+export function pickWheelColor(existingColors: readonly string[]): string {
+  const used = existingColors
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean)
+  const unused = WHEEL_COLORS.filter(
+    (c) => !used.includes(c.toLowerCase()),
+  )
+  const pool = unused.length > 0 ? unused : [...WHEEL_COLORS]
+
+  if (used.length === 0) return pool[0]!
+
+  let best = pool[0]!
+  let bestScore = -1
+  for (const candidate of pool) {
+    let nearest = Infinity
+    for (const color of existingColors) {
+      nearest = Math.min(nearest, wheelColorDistance(candidate, color))
+    }
+    if (nearest > bestScore) {
+      bestScore = nearest
+      best = candidate
+    }
+  }
+  return best
+}
 
 function newId(): string {
   return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-const TITLE_CASE_SMALL = new Set([
-  'a',
-  'an',
-  'and',
-  'as',
-  'at',
-  'but',
-  'by',
-  'for',
-  'from',
-  'in',
-  'nor',
-  'of',
-  'on',
-  'or',
-  'the',
-  'to',
-  'with',
-])
-
-/** Title-case option labels: "play valorant" → "Play Valorant". */
-export function titleCaseLabel(raw: string): string {
-  const t = raw.trim().replace(/\s+/g, ' ')
-  if (!t) return ''
-  return t
-    .split(' ')
-    .map((word, i) => {
-      if (!word) return word
-      const lower = word.toLowerCase()
-      if (i > 0 && TITLE_CASE_SMALL.has(lower)) return lower
-      return lower.charAt(0).toUpperCase() + lower.slice(1)
-    })
-    .join(' ')
 }
 
 export function createWheelEntry(
@@ -83,7 +117,7 @@ export function createWheelEntry(
 ): WheelEntry {
   return {
     id: newId(),
-    label: titleCaseLabel(label) || 'Untitled',
+    label: label.trim() || 'Untitled',
     weight: normalizeWeight(opts?.weight ?? 1),
     enabled: opts?.enabled !== false,
     color: opts?.color ?? WHEEL_COLORS[0]!,
@@ -103,6 +137,32 @@ export function createInitialWheel(): WheelRoomState {
     version: 1,
     updatedAt: Date.now(),
   }
+}
+
+/** How long a finished spin stays highlighted before returning to Ready. */
+export const WHEEL_OUTCOME_HOLD_MS = 15_000
+
+export function wheelOutcomeExpiresAt(state: WheelRoomState): number | null {
+  if (!state.winnerId && !state.spinId) return null
+  return state.updatedAt + WHEEL_OUTCOME_HOLD_MS
+}
+
+export function isWheelOutcomeFresh(
+  state: WheelRoomState,
+  now = Date.now(),
+): boolean {
+  const expiresAt = wheelOutcomeExpiresAt(state)
+  return expiresAt != null && now < expiresAt
+}
+
+/** Drop winner/spin once the hold window has passed (safe for first paint). */
+export function expireStaleWheelOutcome(
+  state: WheelRoomState,
+  now = Date.now(),
+): WheelRoomState {
+  if (!state.winnerId && !state.spinId) return state
+  if (isWheelOutcomeFresh(state, now)) return state
+  return { ...state, winnerId: null, spinId: null }
 }
 
 export function newWheelSpinId(): string {
@@ -129,8 +189,9 @@ function listFromRemote(raw: unknown): unknown[] {
 function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  const label =
-    typeof o.label === 'string' ? titleCaseLabel(o.label) : ''
+  // Keep stored label as-is so mid-edit keystrokes aren't rewritten by
+  // title-case on every snapshot. createWheelEntry / blur still title-case.
+  const label = typeof o.label === 'string' ? o.label.trim() : ''
   if (!label) return null
   return {
     id: typeof o.id === 'string' && o.id ? o.id : newId(),
@@ -145,6 +206,11 @@ function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
 }
 
 export function normalizeWheel(raw: unknown): WheelRoomState {
+  return expireStaleWheelOutcome(parseWheelState(raw))
+}
+
+/** Parse a wheel doc without applying the outcome hold window. */
+export function parseWheelState(raw: unknown): WheelRoomState {
   if (!raw || typeof raw !== 'object') return createInitialWheel()
   const s = raw as Record<string, unknown>
   const entries = listFromRemote(s.entries)

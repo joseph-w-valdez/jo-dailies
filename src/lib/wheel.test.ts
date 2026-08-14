@@ -4,11 +4,12 @@ import {
   createInitialWheel,
   createWheelEntry,
   normalizeWheel,
+  pickWheelColor,
   pickWeightedIndex,
   rotationForWinner,
-  titleCaseLabel,
   wheelSlicePath,
   WHEEL_COLORS,
+  WHEEL_OUTCOME_HOLD_MS,
 } from './wheel'
 
 describe('wheel', () => {
@@ -81,8 +82,8 @@ describe('wheel', () => {
       updatedAt: 1,
     })
     expect(remote.entries.map((e) => e.label)).toEqual([
-      'Watch Anime',
-      'Play a Game',
+      'watch anime',
+      'play a game',
     ])
     expect(remote.rotation).toBe(90)
     expect(remote.version).toBe(4)
@@ -93,10 +94,42 @@ describe('wheel', () => {
     expect(createInitialWheel().entries).toEqual([])
   })
 
-  it('title-cases labels', () => {
-    expect(titleCaseLabel('play valorant')).toBe('Play Valorant')
-    expect(titleCaseLabel('watch a movie')).toBe('Watch a Movie')
-    expect(titleCaseLabel('say hi to Joha')).toBe('Say Hi to Joha')
-    expect(createWheelEntry('play a game').label).toBe('Play a Game')
+  it('keeps labels as typed', () => {
+    expect(createWheelEntry('play valorant').label).toBe('play valorant')
+    expect(createWheelEntry('  Say hi  ').label).toBe('Say hi')
+  })
+
+  it('picks unused then maximally distinct colors', () => {
+    expect(pickWheelColor([])).toBe(WHEEL_COLORS[0])
+    expect(pickWheelColor([WHEEL_COLORS[0]!])).not.toBe(WHEEL_COLORS[0])
+    const withBlue = pickWheelColor(['#3d6ea8'])
+    // Prefer something far from blue over another cool/green-blue neighbor
+    expect(withBlue.toLowerCase()).not.toBe('#3d6ea8')
+    const used = [WHEEL_COLORS[0]!, WHEEL_COLORS[3]!, WHEEL_COLORS[6]!]
+    const next = pickWheelColor(used)
+    expect(used.map((c) => c.toLowerCase())).not.toContain(next.toLowerCase())
+  })
+
+  it('expires stale finish state before UI can show it', () => {
+    const fresh = normalizeWheel({
+      entries: [{ id: 'a', label: 'Play Valorant', weight: 1, enabled: true }],
+      winnerId: 'a',
+      spinId: 'ws-1',
+      version: 3,
+      updatedAt: Date.now(),
+    })
+    expect(fresh.winnerId).toBe('a')
+    expect(fresh.spinId).toBe('ws-1')
+
+    const stale = normalizeWheel({
+      entries: [{ id: 'a', label: 'Play Valorant', weight: 1, enabled: true }],
+      winnerId: 'a',
+      spinId: 'ws-1',
+      version: 3,
+      updatedAt: Date.now() - WHEEL_OUTCOME_HOLD_MS - 1_000,
+    })
+    expect(stale.winnerId).toBeNull()
+    expect(stale.spinId).toBeNull()
+    expect(stale.entries).toHaveLength(1)
   })
 })
