@@ -10,7 +10,8 @@ import { useSharedGameDoc } from './useSharedGameDoc'
 export function useSharedChess() {
   const shared = useSharedGameDoc<ChessState>({
     collectionId: 'chess',
-    createInitial: (uid) => createInitialChess(uid),
+    createInitial: (uid) =>
+      createInitialChess(uid, { clockMode: null, whiteUid: null }),
     normalize: (raw, uid) => normalizeChess(raw, uid),
     toDoc: (state) => chessToDoc(state),
     buildReset: (prev, _uid, opts) =>
@@ -27,10 +28,14 @@ export function useSharedChess() {
     actorUid,
     canPlay:
       signedIn &&
+      game.whiteUid != null &&
+      game.clockMode != null &&
       game.status === 'playing' &&
       (game.hotseat || game.turnUid === user?.uid),
     canUndo:
       signedIn &&
+      game.whiteUid != null &&
+      game.clockMode != null &&
       game.undoStack.length > 0 &&
       (game.hotseat || game.turnUid === user?.uid),
     commitGame: shared.commitGame,

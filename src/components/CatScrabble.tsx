@@ -26,16 +26,26 @@ import {
   letterValue,
   premiumAt,
   previewPlayWords,
+  flagScrabbleOnTime,
+  selectScrabbleClockMode,
+  selectScrabbleFirst,
   SCRABBLE_SIZE,
   type Placement,
   type Premium,
   type ScrabbleSkillId,
   type ScrabbleTile,
 } from "../lib/scrabble";
+import { liveClockMs, SCRABBLE_CLOCK_PRESETS } from "../lib/gameClock";
 import { JENGA_PLAYER_UIDS, nextTurnUid } from "../lib/jenga";
 import { petIdleSrc } from "../lib/petAssets";
 import { ArcadeStage, ArcadeStatus } from "./ArcadeStage";
+import {
+  GameClockReadout,
+  GameClockSetupPicker,
+  useClockNow,
+} from "./GameClockModePicker";
 import { NewGameConfirm } from "./NewGameConfirm";
+import { GameSeatPicker } from "./GameSeatPicker";
 
 interface DraftCell {
   row: number;
@@ -486,6 +496,30 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     }
   }, [game.peek]);
 
+  const clockRunning =
+    game.clockMode === "timed" && game.status === "playing";
+  const clockNow = useClockNow(clockRunning);
+
+  useEffect(() => {
+    if (!clockRunning) return;
+    const left = liveClockMs(
+      game,
+      game.turnUid,
+      game.turnUid,
+      true,
+      clockNow,
+    );
+    if (left > 0) return;
+    void commitGame((prev) => flagScrabbleOnTime(prev) ?? prev);
+  }, [
+    clockRunning,
+    clockNow,
+    game.turnUid,
+    game.clockMs,
+    game.clockTurnStartedAt,
+    commitGame,
+  ]);
+
   const opponentUid =
     JENGA_PLAYER_UIDS.find((id) => id === actorUid) !== undefined
       ? nextTurnUid(actorUid)
@@ -496,6 +530,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
 
   const statusLabel = (() => {
     if (!ready) return "Syncing…";
+    if (game.firstUid == null) return "Who goes first?";
+    if (game.clockMode == null) return "Sweaty or grass?";
     if (busy) return "Checking words…";
     if (message) return message;
     if (game.peek) {
@@ -965,6 +1001,43 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
+          {game.firstUid == null ? (
+            <div className="mt-6">
+              <GameSeatPicker
+                prompt="Who goes first?"
+                optionLabel={(name) => `${name} goes first`}
+                onPick={(seat) =>
+                  void commitGame(
+                    (prev) => selectScrabbleFirst(prev, seat) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : game.clockMode == null ? (
+            <div className="mt-6">
+              <GameClockSetupPicker
+                key={game.roundId}
+                presets={SCRABBLE_CLOCK_PRESETS}
+                customPlaceholder="e.g. 5 or 3+0"
+                onGrass={() =>
+                  void commitGame(
+                    (prev) => selectScrabbleClockMode(prev, "off") ?? prev,
+                  )
+                }
+                onSweaty={(control) =>
+                  void commitGame(
+                    (prev) =>
+                      selectScrabbleClockMode(
+                        prev,
+                        "timed",
+                        Date.now(),
+                        control,
+                      ) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : (
           <TheaterPlayRow immersive={immersive}>
             {({
               boardPx,
@@ -1354,8 +1427,22 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                               >
                                 {seatLabel(id, uid, game.hotseat)}
                               </span>
-                              <span className="text-sm font-semibold tabular-nums text-white">
-                                {game.scores[id] ?? 0}
+                              <span className="flex items-baseline gap-2">
+                                {game.clockMode === "timed" ? (
+                                  <GameClockReadout
+                                    ms={liveClockMs(
+                                      game,
+                                      id,
+                                      game.turnUid,
+                                      game.status === "playing",
+                                      clockNow,
+                                    )}
+                                    active={turn}
+                                  />
+                                ) : null}
+                                <span className="text-sm font-semibold tabular-nums text-white">
+                                  {game.scores[id] ?? 0}
+                                </span>
                               </span>
                             </div>
                           );
@@ -1504,6 +1591,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </TheaterPlayRow>
+          )}
 
           {peekMine && game.peek ? (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
@@ -1594,7 +1682,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             open={newGameOpen}
             onClose={() => setNewGameOpen(false)}
             onConfirm={(opts) => void resetGame(opts)}
-            blurb="This clears the board, racks, and scores for both players."
+            blurb="Clears the board, racks, and scores. You’ll pick Normal or Timed next."
           />
         </div>
       )}

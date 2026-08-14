@@ -194,10 +194,9 @@ export function useSharedJenga() {
   )
 
   const resetGame = useCallback(async () => {
-    const turnUid = user?.uid ?? gameRef.current.turnUid
     const next: JengaGameState = {
-      ...createInitialGame(turnUid),
-      // Must beat the current version or a stale remote snapshot wins.
+      ...createInitialGame(user?.uid ?? gameRef.current.turnUid),
+      firstUid: null,
       version: gameRef.current.version + 1,
       updatedAt: Date.now(),
     }
@@ -231,7 +230,9 @@ export function useSharedJenga() {
   }, [publishGhost])
 
   /** Either of you can pull anytime while the tower is up. */
-  const canPlay = Boolean(user && game.status === 'playing')
+  const canPlay = Boolean(
+    user && game.status === 'playing' && game.firstUid != null,
+  )
 
   return {
     game,

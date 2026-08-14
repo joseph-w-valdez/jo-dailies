@@ -34,6 +34,7 @@ export function useSharedConnect4() {
     mySeat,
     canPlay:
       signedIn &&
+      game.firstUid != null &&
       game.status === 'playing' &&
       (game.hotseat || game.turnUid === uid),
     commitGame: shared.commitGame,

@@ -9,7 +9,8 @@ import { useSharedGameDoc } from './useSharedGameDoc'
 export function useSharedScrabble() {
   const shared = useSharedGameDoc<ScrabbleState>({
     collectionId: 'scrabble',
-    createInitial: (uid) => createInitialScrabble(uid),
+    createInitial: (uid) =>
+      createInitialScrabble(uid, { clockMode: null, firstUid: null }),
     normalize: (raw, uid) => normalizeScrabble(raw, uid),
     buildReset: (prev, uid, opts) =>
       startNewScrabble(prev, uid, { hotseat: Boolean(opts?.hotseat) }),
@@ -27,6 +28,8 @@ export function useSharedScrabble() {
     myRack,
     canAct:
       signedIn &&
+      game.clockMode != null &&
+      game.firstUid != null &&
       game.status === 'playing' &&
       (game.hotseat || game.turnUid === user?.uid),
     commitGame: shared.commitGame,

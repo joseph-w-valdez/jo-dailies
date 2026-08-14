@@ -27,7 +27,7 @@ export const ARCADE_TILES: ArcadeTile[] = [
   { id: 'chess', title: 'Chess', blurb: 'Shared board', wide: true },
   { id: 'wordle', title: 'Wordle', blurb: 'Co-op or versus', wide: true },
   { id: 'hangman', title: 'Hangman', blurb: 'Co-op or versus' },
-  { id: 'codenames', title: 'Codenames', blurb: '2P duel', wide: true },
+  { id: 'codenames', title: 'Codenames', blurb: 'Duet', wide: true },
 ]
 
 type GameProps = { onClose: () => void }

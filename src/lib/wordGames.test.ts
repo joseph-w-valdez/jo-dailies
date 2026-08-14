@@ -11,10 +11,15 @@ import {
 } from './wordle'
 import { markWordleGuess } from './wordleWords'
 import {
+  applyCodenamesGuess,
   createInitialCodenames,
   dealCodenames,
+  remainingAgents,
+  remainingForUid,
+  roleFor,
+  selectCodenamesFirstClue,
+  selectCodenamesPack,
   submitCodenamesClue,
-  teamForUid,
 } from './codenames'
 import {
   applyHangmanGuess,
@@ -101,21 +106,45 @@ describe('hangman', () => {
 })
 
 describe('codenames', () => {
-  it('deals 25 cards with assassin', () => {
-    const cards = dealCodenames(() => 0.5)
+  const a = JENGA_PLAYER_UIDS[0]!
+  const b = JENGA_PLAYER_UIDS[1]!
+
+  it('deals 15 unique agents and 9 per seat', () => {
+    const cards = dealCodenames('standard', () => 0.5)
     expect(cards).toHaveLength(25)
-    expect(cards.some((c) => c.team === 'assassin')).toBe(true)
+    expect(remainingAgents(cards)).toBe(15)
+    expect(remainingForUid(cards, a)).toBe(9)
+    expect(remainingForUid(cards, b)).toBe(9)
+    expect(cards.some((c) => roleFor(c, a) === 'assassin')).toBe(true)
   })
 
-  it('maps seats to teams', () => {
-    expect(teamForUid(JENGA_PLAYER_UIDS[0]!)).toBe('red')
-    expect(teamForUid(JENGA_PLAYER_UIDS[1]!)).toBe('blue')
+  it('full pack can deal a valorant name', () => {
+    const cards = dealCodenames('full', () => 0.11)
+    expect(cards).toHaveLength(25)
+    expect(cards.every((c) => c.word.length <= 12)).toBe(true)
   })
 
-  it('clue moves to guess phase', () => {
-    let s = createInitialCodenames({ random: () => 0.2 })
-    s = submitCodenamesClue(s, JENGA_PLAYER_UIDS[0]!, 'animal', 2)!
+  it('clue then guess uses the clue-giver key', () => {
+    let s = createInitialCodenames({ hotseat: true })
+    s = selectCodenamesPack(s, 'standard', () => 0.2)!
+    s = selectCodenamesFirstClue(s, a)!
+    s = submitCodenamesClue(s, a, 'animal', 2)!
     expect(s.phase).toBe('guess')
-    expect(s.guessesLeft).toBe(3)
+    const agent = s.cards.find(
+      (c) => roleFor(c, a) === 'agent' && !c.contacted,
+    )!
+    s = applyCodenamesGuess(s, b, agent.id)!
+    expect(s.cards.find((c) => c.id === agent.id)?.contacted).toBe(true)
+    expect(s.status).toBe('playing')
+  })
+
+  it('assassin on the clue-giver key loses', () => {
+    let s = createInitialCodenames()
+    s = selectCodenamesPack(s, 'standard', () => 0.3)!
+    s = selectCodenamesFirstClue(s, a)!
+    s = submitCodenamesClue(s, a, 'dark', 1)!
+    const kill = s.cards.find((c) => roleFor(c, a) === 'assassin')!
+    s = applyCodenamesGuess(s, b, kill.id)!
+    expect(s.status).toBe('lost')
   })
 })

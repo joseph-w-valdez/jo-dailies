@@ -21,6 +21,7 @@ import {
 import { useSharedJenga } from '../hooks/useSharedJenga'
 import { useThemeCssColor } from '../hooks/useThemeCssColor'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
+import { GameSeatPicker } from './GameSeatPicker'
 import { ThemeClearColor } from './ThemeClearColor'
 import {
   BRICK_H,
@@ -33,6 +34,7 @@ import {
   jengaRemainingScore,
   markFieldDebris,
   nextTurnUid,
+  selectJengaFirst,
   type JengaBrick,
   type JengaEndReason,
   type JengaGameState,
@@ -1605,8 +1607,9 @@ export function Jenga({ onClose }: { onClose: () => void }) {
       return 'Game over — the tower has fallen!'
     }
     if (!uid) return 'Sign in to play'
+    if (game.firstUid == null) return 'Who goes first?'
     return null
-  }, [chaosActive, chaosKind, game.endReason, game.status, uid])
+  }, [chaosActive, chaosKind, game.endReason, game.firstUid, game.status, uid])
 
   // Always available while signed in — after a normal topple they still work,
   // and while playing the first click confirms then flips to game over.
@@ -1780,6 +1783,19 @@ export function Jenga({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
+          {game.firstUid == null && game.status === 'playing' ? (
+            <div className="mt-6">
+              <GameSeatPicker
+                prompt="Who goes first?"
+                optionLabel={(name) => `${name} goes first`}
+                onPick={(seat) =>
+                  void commitGame(
+                    (prev) => selectJengaFirst(prev, seat) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : (
           <div
             className={[
               'relative mt-3 overflow-hidden rounded-xl border border-border bg-app-bg',
@@ -1814,6 +1830,7 @@ export function Jenga({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </div>
+          )}
         </>
       )}
     </ArcadeStage>

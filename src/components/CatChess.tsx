@@ -17,15 +17,24 @@ import {
   themeForCatIcon,
   uidForColor,
   undoChessMove,
+  flagChessOnTime,
+  selectChessClockMode,
+  selectChessWhite,
   type ChessKind,
   type ChessMoveLogEntry,
   type ChessPiece,
 } from '../lib/chess'
+import { CHESS_CLOCK_PRESETS, liveClockMs } from '../lib/gameClock'
 import { petIdleSrc } from '../lib/petAssets'
 import { pickChessQuote } from '../lib/chessQuotes'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { ConfirmDialog } from './ConfirmDialog'
-import { NewGameConfirm } from './NewGameConfirm'
+import {
+  GameClockReadout,
+  GameClockSetupPicker,
+  useClockNow,
+} from './GameClockModePicker'
+import { GameSeatPicker } from './GameSeatPicker'
 
 const PROMO_KINDS: ChessKind[] = ['q', 'r', 'b', 'n']
 const QUOTE_SHOW_MS = 3_800
@@ -125,20 +134,23 @@ function chessSeatLabel(
   color: 'white' | 'black',
   viewerUid: string,
   hotseat: boolean,
+  whiteUid: string | null,
 ): string {
   if (hotseat) return color === 'white' ? 'P1' : 'P2'
-  if (uidForColor(color) === viewerUid) return 'You'
-  return color === 'white' ? 'P1' : 'P2'
+  if (uidForColor(color, whiteUid) === viewerUid) return 'You'
+  return color === 'white' ? 'White' : 'Black'
 }
 
 function ChessMoveLog({
   log,
   uid,
   hotseat,
+  whiteUid,
 }: {
   log: ChessMoveLogEntry[]
   uid: string
   hotseat: boolean
+  whiteUid: string | null
 }) {
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface/70">
@@ -166,7 +178,7 @@ function ChessMoveLog({
                   className="rounded-lg border border-border bg-surface px-2.5 py-2"
                 >
                   <p className="text-[10px] font-medium text-muted">
-                    {chessSeatLabel(entry.color, uid, hotseat)}
+                    {chessSeatLabel(entry.color, uid, hotseat, whiteUid)}
                   </p>
                   <p className="mt-0.5 text-[11px] font-medium leading-snug text-white">
                     {entry.san}
@@ -288,8 +300,8 @@ export function CatChess({ onClose }: { onClose: () => void }) {
     // Restart when the selected square/piece identity changes, not every board sync.
   }, [selected, game.board[selected ?? -1]?.color, game.board[selected ?? -1]?.kind, game.roundId])
 
-  const actorColor = colorForUid(actorUid)
-  const myColor = colorForUid(uid)
+  const actorColor = colorForUid(actorUid, game.whiteUid)
+  const myColor = colorForUid(uid, game.whiteUid)
   const flipped = actorColor === 'black'
   const dests = useMemo(
     () => (selected !== null && canPlay ? legalDests(game, selected) : []),
@@ -301,6 +313,23 @@ export function CatChess({ onClose }: { onClose: () => void }) {
       ? kingIndex(game.board, game.turn)
       : -1
 
+  const clockRunning =
+    game.clockMode === 'timed' && game.status === 'playing'
+  const clockNow = useClockNow(clockRunning)
+
+  useEffect(() => {
+    if (!clockRunning) return
+    const left = liveClockMs(
+      game,
+      game.turnUid,
+      game.turnUid,
+      true,
+      clockNow,
+    )
+    if (left > 0) return
+    void commitGame((prev) => flagChessOnTime(prev) ?? prev)
+  }, [clockRunning, clockNow, game.turnUid, game.clockMs, game.clockTurnStartedAt, commitGame])
+
   const themes = useMemo(
     () =>
       [themeForCatIcon(game.cats[0]!), themeForCatIcon(game.cats[1]!)] as const,
@@ -309,9 +338,19 @@ export function CatChess({ onClose }: { onClose: () => void }) {
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
+    if (game.whiteUid == null) return 'Who is White?'
+    if (game.clockMode == null) return 'Sweaty or grass?'
+    if (game.status === 'timeout') {
+      if (game.hotseat) {
+        return game.winnerUid === uidForColor('white', game.whiteUid)
+          ? 'Time — P1 wins'
+          : 'Time — P2 wins'
+      }
+      return game.winnerUid === uid ? 'Time — you win' : 'Time — opponent wins'
+    }
     if (game.status === 'checkmate') {
       if (game.hotseat) {
-        return game.winnerUid === uidForColor('white')
+        return game.winnerUid === uidForColor('white', game.whiteUid)
           ? 'Checkmate — P1 wins'
           : 'Checkmate — P2 wins'
       }
@@ -334,9 +373,19 @@ export function CatChess({ onClose }: { onClose: () => void }) {
   })()
 
   const endBanner = (() => {
+    if (game.status === 'timeout') {
+      if (game.hotseat) {
+        return game.winnerUid === uidForColor('white', game.whiteUid)
+          ? { title: 'Time', detail: 'P1 wins' }
+          : { title: 'Time', detail: 'P2 wins' }
+      }
+      return game.winnerUid === uid
+        ? { title: 'Time', detail: 'You win' }
+        : { title: 'Time', detail: 'Opponent wins' }
+    }
     if (game.status === 'checkmate') {
       if (game.hotseat) {
-        return game.winnerUid === uidForColor('white')
+        return game.winnerUid === uidForColor('white', game.whiteUid)
           ? { title: 'Checkmate', detail: 'P1 wins' }
           : { title: 'Checkmate', detail: 'P2 wins' }
       }
@@ -536,7 +585,7 @@ export function CatChess({ onClose }: { onClose: () => void }) {
                   ? color === 'white'
                     ? 'P1'
                     : 'P2'
-                  : uidForColor(color) === uid
+                  : uidForColor(color, game.whiteUid) === uid
                     ? 'You'
                     : color === 'white'
                       ? 'P1'
@@ -560,6 +609,18 @@ export function CatChess({ onClose }: { onClose: () => void }) {
                     <span className="text-[11px] font-medium text-white/90">
                       {label}
                     </span>
+                    {game.clockMode === 'timed' ? (
+                      <GameClockReadout
+                        ms={liveClockMs(
+                          game,
+                          uidForColor(color, game.whiteUid),
+                          game.turnUid,
+                          game.status === 'playing',
+                          clockNow,
+                        )}
+                        active={isTurn}
+                      />
+                    ) : null}
                     <span
                       className="size-2.5 rounded-full ring-1 ring-white/20"
                       style={{ backgroundColor: theme.color }}
@@ -602,7 +663,7 @@ export function CatChess({ onClose }: { onClose: () => void }) {
               setPromoPick(null)
               void resetGame(opts)
             }}
-            blurb="Starts a fresh chess game for both of you."
+            blurb="Starts a fresh chess game. You’ll pick Normal or Timed next."
           />
 
           <ConfirmDialog
@@ -619,6 +680,40 @@ export function CatChess({ onClose }: { onClose: () => void }) {
               )
             }}
           />
+          {game.whiteUid == null ? (
+            <div className="mt-6">
+              <GameSeatPicker
+                prompt="Who is White?"
+                optionLabel={(name) => `${name} is White`}
+                onPick={(seat) =>
+                  void commitGame(
+                    (prev) => selectChessWhite(prev, seat) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : game.clockMode == null ? (
+            <div className="mt-6">
+              <GameClockSetupPicker
+                key={game.roundId}
+                presets={CHESS_CLOCK_PRESETS}
+                customPlaceholder="e.g. 1+0 or 3+2"
+                onGrass={() =>
+                  void commitGame(
+                    (prev) => selectChessClockMode(prev, 'off') ?? prev,
+                  )
+                }
+                onSweaty={(control) =>
+                  void commitGame(
+                    (prev) =>
+                      selectChessClockMode(prev, 'timed', Date.now(), control) ??
+                      prev,
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <>
           <div
             className={[
               'mt-3 flex min-h-0 justify-center gap-3',
@@ -821,6 +916,7 @@ export function CatChess({ onClose }: { onClose: () => void }) {
                 log={game.moveLog}
                 uid={uid}
                 hotseat={game.hotseat}
+                whiteUid={game.whiteUid}
               />
             </div>
           </div>
@@ -848,6 +944,8 @@ export function CatChess({ onClose }: { onClose: () => void }) {
               </span>
             </div>
           ) : null}
+            </>
+          )}
         </div>
       )}
     </ArcadeStage>

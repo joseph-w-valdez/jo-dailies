@@ -2,10 +2,23 @@
 
 import {
   JENGA_PLAYER_UIDS,
+  isRoomUid,
   nextTurnUid,
   pickTwoJengaCats,
   normalizeJengaCats,
+  parseOptionalSeatUid,
 } from '../jenga'
+import {
+  applyClockAfterTurn,
+  emptyClockMs,
+  parseClockMode,
+  parseClockMs,
+  parseClockIncrementMs,
+  startClockFields,
+  SCRABBLE_CLOCK_MS,
+  type ClockControl,
+  type ClockMode,
+} from '../gameClock'
 import { SCRABBLE_SIZE } from './board'
 import {
   applyPlacementsToBoard,
@@ -115,6 +128,13 @@ export interface ScrabbleState {
   /** Active Peek-a-Paw reveal (tiles held out of the bag). */
   peek: ScrabblePeek | null
   cats: [string, string]
+  /** null = new-game picker (I Touch Grass vs Sweaty). */
+  clockMode: ClockMode | null
+  clockMs: Record<string, number>
+  clockTurnStartedAt: number | null
+  clockIncrementMs: number
+  /** null = who-goes-first picker. */
+  firstUid: string | null
   /** Debug: one human plays both seats. */
   hotseat: boolean
   version: number
@@ -239,7 +259,11 @@ function dealOpening(
 
 export function createInitialScrabble(
   turnUid: string,
-  opts?: { hotseat?: boolean },
+  opts?: {
+    hotseat?: boolean
+    clockMode?: ClockMode | null
+    firstUid?: string | null
+  },
 ): ScrabbleState {
   const full = createFullBag()
   const { racks, bag } = dealOpening(full)
@@ -262,6 +286,14 @@ export function createInitialScrabble(
     meowtiplyFor: null,
     peek: null,
     cats: pickTwoJengaCats(),
+    clockMode: opts?.clockMode === undefined ? 'off' : opts.clockMode,
+    clockMs: emptyClockMs(),
+    clockTurnStartedAt: null,
+    clockIncrementMs: 0,
+    firstUid:
+      opts && 'firstUid' in opts
+        ? opts.firstUid ?? null
+        : turnUid || JENGA_PLAYER_UIDS[0]!,
     hotseat: Boolean(opts?.hotseat),
     version: 1,
     roundId: newRoundId(),
@@ -275,7 +307,88 @@ export function startNewScrabble(
   turnUid: string,
   opts?: { hotseat?: boolean },
 ): ScrabbleState {
-  return createInitialScrabble(turnUid, opts)
+  return createInitialScrabble(turnUid, {
+    hotseat: Boolean(opts?.hotseat),
+    clockMode: null,
+    firstUid: null,
+  })
+}
+
+export function selectScrabbleFirst(
+  state: ScrabbleState,
+  uid: string,
+): ScrabbleState | null {
+  if (state.firstUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
+  }
+}
+
+export function selectScrabbleClockMode(
+  state: ScrabbleState,
+  mode: ClockMode,
+  now = Date.now(),
+  control?: ClockControl,
+): ScrabbleState | null {
+  if (state.clockMode !== null) return null
+  if (state.firstUid === null) return null
+  const clock = startClockFields(
+    mode,
+    control?.initialMs ?? SCRABBLE_CLOCK_MS,
+    now,
+    control?.incrementMs ?? 0,
+  )
+  return {
+    ...state,
+    ...clock,
+    status: 'playing',
+    winnerUid: null,
+    updatedAt: now,
+  }
+}
+
+export function flagScrabbleOnTime(
+  state: ScrabbleState,
+  now = Date.now(),
+): ScrabbleState | null {
+  if (state.clockMode !== 'timed' || state.status !== 'playing') return null
+  const started = state.clockTurnStartedAt ?? now
+  const left = Math.max(
+    0,
+    (state.clockMs[state.turnUid] ?? 0) - (now - started),
+  )
+  if (left > 0) return null
+  const loser = state.turnUid
+  return {
+    ...state,
+    status: 'finished',
+    winnerUid: nextTurnUid(loser),
+    clockMs: { ...state.clockMs, [loser]: 0 },
+    clockTurnStartedAt: null,
+    peek: null,
+    updatedAt: now,
+  }
+}
+
+function finishScrabbleTurn(
+  prev: ScrabbleState,
+  next: ScrabbleState,
+): ScrabbleState {
+  const { next: clocked, timedOutUid } = applyClockAfterTurn(prev, next)
+  if (timedOutUid && clocked.status === 'playing') {
+    return {
+      ...clocked,
+      status: 'finished',
+      winnerUid: nextTurnUid(timedOutUid),
+      clockMs: { ...clocked.clockMs, [timedOutUid]: 0 },
+      clockTurnStartedAt: null,
+    }
+  }
+  return clocked
 }
 
 function finishIfNeeded(state: ScrabbleState, actorUid: string): ScrabbleState {
@@ -326,8 +439,11 @@ export function applyPass(
   state: ScrabbleState,
   uid: string,
 ): ScrabbleState | null {
+  if (state.clockMode == null) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  const flagged = flagScrabbleOnTime(state)
+  if (flagged) return flagged
   if (state.peek) return null
   const passStreak = state.passStreak + 1
   const moveLog = pushMove(state.moveLog, {
@@ -348,13 +464,13 @@ export function applyPass(
     moveLog,
   }
   if (passStreak >= 2) {
-    return settleEndgame(cleared, null)
+    return finishScrabbleTurn(state, settleEndgame(cleared, null))
   }
-  return {
+  return finishScrabbleTurn(state, {
     ...cleared,
     turnUid: nextTurnUid(uid),
     updatedAt: Date.now(),
-  }
+  })
 }
 
 export function applyExchange(
@@ -362,8 +478,11 @@ export function applyExchange(
   uid: string,
   tileIds: string[],
 ): ScrabbleState | null {
+  if (state.clockMode == null) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  const flagged = flagScrabbleOnTime(state)
+  if (flagged) return flagged
   if (state.peek) return null
   if (state.bag.length === 0) return null
   if (tileIds.length === 0) return null
@@ -389,7 +508,7 @@ export function applyExchange(
     bag[j] = tmp
   }
 
-  return {
+  return finishScrabbleTurn(state, {
     ...state,
     bag,
     racks: {
@@ -411,7 +530,7 @@ export function applyExchange(
       definitions: [],
     }),
     updatedAt: Date.now(),
-  }
+  })
 }
 
 /**
@@ -424,8 +543,11 @@ export function applyPlay(
   placements: Placement[],
   opts?: { definitions?: { word: string; definition: string }[] },
 ): ScrabbleState | null {
+  if (state.clockMode == null) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
+  const flagged = flagScrabbleOnTime(state)
+  if (flagged) return flagged
   if (state.peek) return null
   const geo = validatePlacementGeometry(state.board, placements)
   if (geo) return null
@@ -497,9 +619,9 @@ export function applyPlay(
 
   next = finishIfNeeded(next, uid)
   if (next.status === 'finished') {
-    return { ...next, turnUid: uid }
+    return finishScrabbleTurn(state, { ...next, turnUid: uid })
   }
-  return next
+  return finishScrabbleTurn(state, next)
 }
 
 const VOWELS = new Set(['A', 'E', 'I', 'O', 'U'])
@@ -540,6 +662,7 @@ function skillLog(
 
 function canUseSkill(state: ScrabbleState, uid: string): boolean {
   return (
+    state.clockMode != null &&
     state.status === 'playing' &&
     state.turnUid === uid &&
     state.peek === null
@@ -954,6 +1077,20 @@ export function normalizeScrabble(
     cats: normalizeJengaCats(
       s.cats,
       clampNum(s.version, 1) * 1009 + clampNum(s.updatedAt, 1),
+    ),
+    clockMode: parseClockMode(s.clockMode),
+    clockMs: parseClockMs(s.clockMs),
+    clockTurnStartedAt:
+      s.clockTurnStartedAt == null
+        ? null
+        : Math.floor(clampNum(s.clockTurnStartedAt, 0)) || null,
+    clockIncrementMs: parseClockIncrementMs(s.clockIncrementMs),
+    firstUid: parseOptionalSeatUid(
+      s.firstUid,
+      'firstUid' in s,
+      typeof s.turnUid === 'string' && s.turnUid
+        ? s.turnUid
+        : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
     ),
     hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),

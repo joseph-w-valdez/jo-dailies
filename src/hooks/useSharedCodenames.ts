@@ -1,10 +1,11 @@
 import {
   createInitialCodenames,
   normalizeCodenames,
-  teamForUid,
-  uidForTeam,
+  guesserUid,
+  remainingForUid,
   type CodenamesState,
 } from '../lib/codenames'
+import { otherPlayerUid } from '../lib/jenga'
 import { useSharedGameDoc } from './useSharedGameDoc'
 
 export function useSharedCodenames() {
@@ -17,20 +18,44 @@ export function useSharedCodenames() {
   })
 
   const { game, uid, signedIn } = shared
-  const myTeam = teamForUid(uid)
-  const actorUid = game.hotseat ? uidForTeam(game.turnTeam) : uid
-  const actorTeam = teamForUid(actorUid)
-  const canAct =
-    signedIn && game.status === 'playing' && actorTeam === game.turnTeam
+  const actorUid = (() => {
+    if (!game.hotseat) return uid
+    if (game.phase === 'clue' && game.clueUid) return game.clueUid
+    if (game.phase === 'guess' && game.clueUid) return guesserUid(game.clueUid)
+    if (game.phase === 'sudden') {
+      for (const seat of [uid, otherPlayerUid(uid)]) {
+        if (remainingForUid(game.cards, otherPlayerUid(seat)) > 0) return seat
+      }
+    }
+    return uid
+  })()
+
+  const canClue =
+    signedIn &&
+    game.status === 'playing' &&
+    game.phase === 'clue' &&
+    Boolean(game.clueUid) &&
+    actorUid === game.clueUid
+  const canGuess =
+    signedIn &&
+    game.status === 'playing' &&
+    game.phase === 'guess' &&
+    Boolean(game.clueUid) &&
+    actorUid === guesserUid(game.clueUid)
+  const canSudden =
+    signedIn &&
+    game.status === 'playing' &&
+    game.phase === 'sudden' &&
+    remainingForUid(game.cards, otherPlayerUid(actorUid)) > 0
 
   return {
     game: shared.game,
     ready: shared.ready,
     uid,
-    myTeam,
     actorUid,
-    actorTeam,
-    canAct,
+    canClue,
+    canGuess,
+    canSudden,
     commitGame: shared.commitGame,
     resetGame: shared.resetGame,
   }

@@ -10,6 +10,21 @@ export function isRoomUid(uid: string | null | undefined): boolean {
   return Boolean(uid && (JENGA_PLAYER_UIDS as readonly string[]).includes(uid))
 }
 
+/**
+ * Seat pickers store `null` until someone is chosen.
+ * Old docs omit the field — use `legacy` so an in-progress game keeps going.
+ */
+export function parseOptionalSeatUid(
+  raw: unknown,
+  fieldPresent: boolean,
+  legacy: string | null,
+): string | null {
+  if (!fieldPresent) return legacy
+  if (raw === null) return null
+  if (typeof raw === 'string' && isRoomUid(raw)) return raw
+  return legacy
+}
+
 /** First seat (Joseph) — often used as shared co-op host key. */
 export function hostSeatUid(): string {
   return JENGA_PLAYER_UIDS[0]!
@@ -98,6 +113,8 @@ export interface JengaGameState {
   removedCount: number
   /** Brick id of the most recent pull, or null on a fresh tower. */
   lastBrickId: string | null
+  /** null = who-goes-first picker. */
+  firstUid: string | null
 }
 
 /** Cat face + brick color. Icons are `/cats/<stem>.png` species keys. */
@@ -246,6 +263,21 @@ export function createInitialGame(turnUid: string): JengaGameState {
     meteorCount: 0,
     removedCount: 0,
     lastBrickId: null,
+    firstUid: null,
+  }
+}
+
+export function selectJengaFirst(
+  state: JengaGameState,
+  uid: string,
+): JengaGameState | null {
+  if (state.firstUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
   }
 }
 
@@ -329,6 +361,11 @@ export function normalizeGameState(
     removedCount: Math.max(0, Math.floor(clampNum(s.removedCount, 0))),
     lastBrickId:
       typeof s.lastBrickId === 'string' && s.lastBrickId ? s.lastBrickId : null,
+    firstUid: parseOptionalSeatUid(
+      s.firstUid,
+      'firstUid' in s,
+      typeof s.turnUid === 'string' && s.turnUid ? s.turnUid : fallbackTurnUid,
+    ),
   }
 }
 

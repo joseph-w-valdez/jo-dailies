@@ -2,8 +2,10 @@
 
 import {
   JENGA_PLAYER_UIDS,
+  isRoomUid,
   nextTurnUid,
   normalizeJengaCats,
+  parseOptionalSeatUid,
   pickTwoJengaCats,
 } from './jenga'
 
@@ -31,6 +33,8 @@ export interface Connect4State {
   updatedAt: number
   /** Cell index of the most recent drop, or null before the first move. */
   lastDropIndex: number | null
+  /** null = who-goes-first picker. */
+  firstUid: string | null
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -61,6 +65,21 @@ export function createInitialConnect4(
     roundId: newRoundId(),
     updatedAt: Date.now(),
     lastDropIndex: null,
+    firstUid: null,
+  }
+}
+
+export function selectConnect4First(
+  state: Connect4State,
+  uid: string,
+): Connect4State | null {
+  if (state.firstUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
   }
 }
 
@@ -125,6 +144,7 @@ export function applyConnect4Drop(
   uid: string,
   col: number,
 ): Connect4State | null {
+  if (state.firstUid == null) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
   const seat = seatForUid(uid)
@@ -204,5 +224,12 @@ export function normalizeConnect4(
       const i = Math.floor(clampNum(s.lastDropIndex, -1))
       return i >= 0 && i < C4_CELLS ? i : null
     })(),
+    firstUid: parseOptionalSeatUid(
+      s.firstUid,
+      'firstUid' in s,
+      typeof s.turnUid === 'string' && s.turnUid
+        ? s.turnUid
+        : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
+    ),
   }
 }

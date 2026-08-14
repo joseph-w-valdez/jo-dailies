@@ -3,8 +3,10 @@
 import {
   JENGA_CAT_THEMES,
   JENGA_PLAYER_UIDS,
+  isRoomUid,
   nextTurnUid,
   normalizeJengaCats,
+  parseOptionalSeatUid,
   pickTwoJengaCats,
 } from './jenga'
 
@@ -65,6 +67,8 @@ export interface BattleshipState {
   updatedAt: number
   /** Most recent shot, on the board that received it. */
   lastShot: { x: number; y: number; boardUid: string } | null
+  /** null = who-fires-first picker. */
+  firstUid: string | null
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -172,6 +176,21 @@ export function createInitialBattleship(
     roundId: newRoundId(),
     updatedAt: Date.now(),
     lastShot: null,
+    firstUid: null,
+  }
+}
+
+export function selectBattleshipFirst(
+  state: BattleshipState,
+  uid: string,
+): BattleshipState | null {
+  if (state.firstUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
   }
 }
 
@@ -396,7 +415,7 @@ export function setPlayerReady(
       ...state,
       boards,
       status: 'playing',
-      turnUid: state.turnUid || JENGA_PLAYER_UIDS[0]!,
+      turnUid: state.firstUid || state.turnUid || JENGA_PLAYER_UIDS[0]!,
       updatedAt: Date.now(),
     }
   }
@@ -529,5 +548,12 @@ export function normalizeBattleship(
       typeof s.roundId === 'string' && s.roundId ? s.roundId : newRoundId(),
     updatedAt: Math.floor(clampNum(s.updatedAt, Date.now())),
     lastShot: normalizeLastShot(s.lastShot),
+    firstUid: parseOptionalSeatUid(
+      s.firstUid,
+      'firstUid' in s,
+      typeof s.turnUid === 'string' && s.turnUid
+        ? s.turnUid
+        : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
+    ),
   }
 }

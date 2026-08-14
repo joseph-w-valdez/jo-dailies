@@ -18,13 +18,17 @@ import {
   beginPeekAPaw,
   createInitialScrabble,
   finishPeekAPaw,
+  flagScrabbleOnTime,
   normalizeScrabble,
   SCRABBLE_SKILL_MAX,
+  selectScrabbleClockMode,
+  selectScrabbleFirst,
   shuffleRack,
   startNewScrabble,
   type ScrabbleState,
   type ScrabbleTile,
 } from '../scrabble/state'
+import { SCRABBLE_CLOCK_MS } from '../gameClock'
 import { JENGA_PLAYER_UIDS, normalizeGameState } from '../jenga'
 
 describe('scrabble tiles', () => {
@@ -190,6 +194,21 @@ describe('scrabble turns', () => {
     expect(next.scores[b]).toBe(0)
     expect(next.hotseat).toBe(true)
     expect(next.moveLog).toEqual([])
+    expect(next.clockMode).toBeNull()
+    expect(next.firstUid).toBeNull()
+  })
+
+  it('timed mode flags the player to move', () => {
+    const a = JENGA_PLAYER_UIDS[0]!
+    const b = JENGA_PLAYER_UIDS[1]!
+    let state = startNewScrabble(createInitialScrabble(a), a)
+    expect(applyPass(state, a)).toBeNull()
+    state = selectScrabbleFirst(state, a)!
+    state = selectScrabbleClockMode(state, 'timed', 1_000)!
+    expect(state.clockMs[a]).toBe(SCRABBLE_CLOCK_MS)
+    const flagged = flagScrabbleOnTime(state, 1_000 + SCRABBLE_CLOCK_MS + 1)!
+    expect(flagged.status).toBe('finished')
+    expect(flagged.winnerUid).toBe(b)
   })
 })
 

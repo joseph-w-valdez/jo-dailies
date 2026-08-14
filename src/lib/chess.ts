@@ -1,9 +1,23 @@
 /** Shared chess — turn-based room board. */
 
 import {
+  applyClockAfterTurn,
+  emptyClockMs,
+  parseClockMode,
+  parseClockMs,
+  parseClockIncrementMs,
+  startClockFields,
+  CHESS_CLOCK_MS,
+  type ClockControl,
+  type ClockMode,
+} from './gameClock'
+import {
   JENGA_PLAYER_UIDS,
+  isRoomUid,
   nextTurnUid,
   normalizeJengaCats,
+  otherPlayerUid,
+  parseOptionalSeatUid,
   pickTwoJengaCats,
 } from './jenga'
 
@@ -14,7 +28,7 @@ export const CHESS_SQUARES = 64
 
 export type ChessColor = 'white' | 'black'
 export type ChessKind = 'k' | 'q' | 'r' | 'b' | 'n' | 'p'
-export type ChessStatus = 'playing' | 'checkmate' | 'stalemate' | 'draw'
+export type ChessStatus = 'playing' | 'checkmate' | 'stalemate' | 'draw' | 'timeout'
 
 export interface ChessPiece {
   color: ChessColor
@@ -58,6 +72,8 @@ export interface ChessUndoSnapshot {
   moveLog: ChessMoveLogEntry[]
   pendingPromo: ChessPromo | null
   inCheck: boolean
+  clockMs: Record<string, number>
+  clockTurnStartedAt: number | null
 }
 
 export interface ChessState {
@@ -81,6 +97,13 @@ export interface ChessState {
   undoStack: ChessUndoSnapshot[]
   pendingPromo: ChessPromo | null
   inCheck: boolean
+  /** null = new-game picker (I Touch Grass vs Sweaty). */
+  clockMode: ClockMode | null
+  clockMs: Record<string, number>
+  clockTurnStartedAt: number | null
+  clockIncrementMs: number
+  /** null = who-is-White picker. */
+  whiteUid: string | null
   hotseat: boolean
   version: number
   roundId: string
@@ -206,16 +229,24 @@ export function initialChessBoard(): (ChessPiece | null)[] {
   return board
 }
 
-export function colorForUid(uid: string | null): ChessColor | null {
+export function colorForUid(
+  uid: string | null,
+  whiteUid?: string | null,
+): ChessColor | null {
   if (!uid) return null
-  if (uid === JENGA_PLAYER_UIDS[0]) return 'white'
-  if (uid === JENGA_PLAYER_UIDS[1]) return 'black'
   if (uid === 'local') return 'white'
+  const white = whiteUid || JENGA_PLAYER_UIDS[0]!
+  if (uid === white) return 'white'
+  if (isRoomUid(uid)) return 'black'
   return null
 }
 
-export function uidForColor(color: ChessColor): string {
-  return color === 'white' ? JENGA_PLAYER_UIDS[0]! : JENGA_PLAYER_UIDS[1]!
+export function uidForColor(
+  color: ChessColor,
+  whiteUid?: string | null,
+): string {
+  const white = whiteUid || JENGA_PLAYER_UIDS[0]!
+  return color === 'white' ? white : otherPlayerUid(white)
 }
 
 export function opponentColor(color: ChessColor): ChessColor {
@@ -224,13 +255,19 @@ export function opponentColor(color: ChessColor): ChessColor {
 
 export function createInitialChess(
   turnUid: string,
-  opts?: { hotseat?: boolean },
+  opts?: {
+    hotseat?: boolean
+    clockMode?: ClockMode | null
+    whiteUid?: string | null
+  },
 ): ChessState {
   void turnUid
+  const whiteUid =
+    opts && 'whiteUid' in opts ? opts.whiteUid ?? null : JENGA_PLAYER_UIDS[0]!
   return {
     board: initialChessBoard(),
     turn: 'white',
-    turnUid: uidForColor('white'),
+    turnUid: whiteUid || JENGA_PLAYER_UIDS[0]!,
     cats: pickTwoJengaCats(),
     status: 'playing',
     winnerUid: null,
@@ -247,6 +284,11 @@ export function createInitialChess(
     undoStack: [],
     pendingPromo: null,
     inCheck: false,
+    clockMode: opts?.clockMode === undefined ? 'off' : opts.clockMode,
+    clockMs: emptyClockMs(),
+    clockTurnStartedAt: null,
+    clockIncrementMs: 0,
+    whiteUid,
     hotseat: Boolean(opts?.hotseat),
     version: 1,
     roundId: newRoundId(),
@@ -276,6 +318,8 @@ function captureUndo(state: ChessState): ChessUndoSnapshot {
     moveLog: state.moveLog.map((entry) => ({ ...entry })),
     pendingPromo: state.pendingPromo ? { ...state.pendingPromo } : null,
     inCheck: state.inCheck,
+    clockMs: { ...state.clockMs },
+    clockTurnStartedAt: state.clockTurnStartedAt,
   }
 }
 
@@ -316,6 +360,8 @@ export function undoChessMove(
     moveLog: snap.moveLog.map((entry) => ({ ...entry })),
     pendingPromo: snap.pendingPromo ? { ...snap.pendingPromo } : null,
     inCheck: snap.inCheck,
+    clockMs: { ...snap.clockMs },
+    clockTurnStartedAt: Date.now(),
     undoStack: state.undoStack.slice(0, -1),
     updatedAt: Date.now(),
   }
@@ -341,12 +387,91 @@ function pushChessMove(
   return [...log, { ...entry, at: Date.now() }].slice(-MOVE_LOG_MAX)
 }
 
-/** Fresh board and a cleared move history. */
+/** Fresh board. Clock mode is picked on the board (like Wordle co-op/versus). */
 export function startNewChess(
   prev: ChessState,
   opts?: { hotseat?: boolean },
 ): ChessState {
-  return createInitialChess(prev.turnUid, opts)
+  return createInitialChess(prev.turnUid, {
+    hotseat: Boolean(opts?.hotseat),
+    clockMode: null,
+    whiteUid: null,
+  })
+}
+
+export function selectChessWhite(
+  state: ChessState,
+  uid: string,
+): ChessState | null {
+  if (state.whiteUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    whiteUid: uid,
+    turn: 'white',
+    turnUid: uid,
+    updatedAt: Date.now(),
+  }
+}
+
+export function selectChessClockMode(
+  state: ChessState,
+  mode: ClockMode,
+  now = Date.now(),
+  control?: ClockControl,
+): ChessState | null {
+  if (state.clockMode !== null) return null
+  if (state.whiteUid === null) return null
+  const clock = startClockFields(
+    mode,
+    control?.initialMs ?? CHESS_CLOCK_MS,
+    now,
+    control?.incrementMs ?? 0,
+  )
+  return {
+    ...state,
+    ...clock,
+    status: 'playing',
+    winnerUid: null,
+    updatedAt: now,
+  }
+}
+
+export function flagChessOnTime(
+  state: ChessState,
+  now = Date.now(),
+): ChessState | null {
+  if (state.clockMode !== 'timed' || state.status !== 'playing') return null
+  const started = state.clockTurnStartedAt ?? now
+  const left = Math.max(
+    0,
+    (state.clockMs[state.turnUid] ?? 0) - (now - started),
+  )
+  if (left > 0) return null
+  const loser = state.turnUid
+  return {
+    ...state,
+    status: 'timeout',
+    winnerUid: nextTurnUid(loser),
+    clockMs: { ...state.clockMs, [loser]: 0 },
+    clockTurnStartedAt: null,
+    pendingPromo: null,
+    updatedAt: now,
+  }
+}
+
+function finishChessAction(prev: ChessState, next: ChessState): ChessState {
+  const { next: clocked, timedOutUid } = applyClockAfterTurn(prev, next)
+  if (timedOutUid && clocked.status === 'playing') {
+    return {
+      ...clocked,
+      status: 'timeout',
+      winnerUid: nextTurnUid(timedOutUid),
+      clockMs: { ...clocked.clockMs, [timedOutUid]: 0 },
+      clockTurnStartedAt: null,
+    }
+  }
+  return clocked
 }
 
 function cloneBoard(board: (ChessPiece | null)[]): (ChessPiece | null)[] {
@@ -661,7 +786,7 @@ function applyUnchecked(
     ? state.turnUid
     : state.hotseat
       ? nextTurnUid(state.turnUid)
-      : uidForColor(nextTurn)
+      : uidForColor(nextTurn, state.whiteUid)
   const fullmove =
     !pendingPromo && state.turn === 'black' ? state.fullmove + 1 : state.fullmove
 
@@ -749,7 +874,7 @@ function settleStatus(state: ChessState): ChessState {
     return {
       ...state,
       status: 'checkmate',
-      winnerUid: uidForColor(opponentColor(state.turn)),
+      winnerUid: uidForColor(opponentColor(state.turn), state.whiteUid),
       inCheck: true,
     }
   }
@@ -844,10 +969,14 @@ export function applyChessMove(
   to: number,
   promo?: ChessKind,
 ): ChessState | null {
+  if (state.whiteUid == null) return null
+  if (state.clockMode == null) return null
   if (state.status !== 'playing') return null
   if (state.pendingPromo) return null
   if (state.turnUid !== uid) return null
-  const color = colorForUid(uid)
+  const flagged = flagChessOnTime(state)
+  if (flagged) return flagged
+  const color = colorForUid(uid, state.whiteUid)
   if (!state.hotseat && color !== state.turn) return null
   const dests = legalDests(state, from)
   if (!dests.includes(to)) return null
@@ -861,14 +990,17 @@ export function applyChessMove(
     isPromoDest(state, from, to) ? promo : undefined,
   )
   const settled = settleStatus(next)
-  if (settled.pendingPromo) return pushUndo(settled, state)
+  if (settled.pendingPromo) return pushUndo(finishChessAction(state, settled), state)
   return pushUndo(
-    logCompletedMove(
-      settled,
+    finishChessAction(
       state,
-      from,
-      to,
-      describeMove(state, from, to, promo),
+      logCompletedMove(
+        settled,
+        state,
+        from,
+        to,
+        describeMove(state, from, to, promo),
+      ),
     ),
     state,
   )
@@ -879,9 +1011,13 @@ export function applyChessPromo(
   uid: string,
   kind: ChessKind,
 ): ChessState | null {
+  if (state.whiteUid == null) return null
+  if (state.clockMode == null) return null
   if (state.status !== 'playing') return null
   if (!state.pendingPromo) return null
   if (state.turnUid !== uid) return null
+  const flagged = flagChessOnTime(state)
+  if (flagged) return flagged
   if (kind !== 'q' && kind !== 'r' && kind !== 'b' && kind !== 'n') return null
   const { from, to } = state.pendingPromo
   const board = cloneBoard(state.board)
@@ -889,7 +1025,7 @@ export function applyChessPromo(
   if (!pawn || pawn.kind !== 'p') return null
   board[to] = { color: pawn.color, kind }
   const nextTurn = opponentColor(state.turn)
-  const nextUid = state.hotseat ? nextTurnUid(state.turnUid) : uidForColor(nextTurn)
+  const nextUid = state.hotseat ? nextTurnUid(state.turnUid) : uidForColor(nextTurn, state.whiteUid)
   const fullmove = state.turn === 'black' ? state.fullmove + 1 : state.fullmove
   const settled = settleStatus({
     ...state,
@@ -904,13 +1040,15 @@ export function applyChessPromo(
     updatedAt: Date.now(),
   })
   // Undo snapshot was already pushed when the pawn reached the promo square.
-  // Undo snapshot was already pushed when the pawn reached the promo square.
-  return logCompletedMove(
-    settled,
+  return finishChessAction(
     state,
-    from,
-    to,
-    describePromo(from, to, kind, state.pendingPromo.captured),
+    logCompletedMove(
+      settled,
+      state,
+      from,
+      to,
+      describePromo(from, to, kind, state.pendingPromo.captured),
+    ),
   )
 }
 
@@ -981,7 +1119,10 @@ function parseUndoSnapshot(raw: unknown): ChessUndoSnapshot | null {
   }
   const turn: ChessColor = s.turn === 'black' ? 'black' : 'white'
   const status: ChessStatus =
-    s.status === 'checkmate' || s.status === 'stalemate' || s.status === 'draw'
+    s.status === 'checkmate' ||
+    s.status === 'stalemate' ||
+    s.status === 'draw' ||
+    s.status === 'timeout'
       ? s.status
       : 'playing'
   const ep =
@@ -1011,6 +1152,11 @@ function parseUndoSnapshot(raw: unknown): ChessUndoSnapshot | null {
     moveLog: parseMoveLog(s.moveLog),
     pendingPromo: parsePromo(s.pendingPromo),
     inCheck: Boolean(s.inCheck),
+    clockMs: parseClockMs(s.clockMs),
+    clockTurnStartedAt:
+      s.clockTurnStartedAt == null
+        ? null
+        : Math.floor(clampNum(s.clockTurnStartedAt, 0)) || null,
   }
 }
 
@@ -1085,7 +1231,10 @@ export function normalizeChess(raw: unknown, fallbackTurnUid: string): ChessStat
   }
   const turn: ChessColor = s.turn === 'black' ? 'black' : 'white'
   const status: ChessStatus =
-    s.status === 'checkmate' || s.status === 'stalemate' || s.status === 'draw'
+    s.status === 'checkmate' ||
+    s.status === 'stalemate' ||
+    s.status === 'draw' ||
+    s.status === 'timeout'
       ? s.status
       : 'playing'
   const ep =
@@ -1120,6 +1269,18 @@ export function normalizeChess(raw: unknown, fallbackTurnUid: string): ChessStat
     undoStack: parseUndoStack(s.undoStack),
     pendingPromo: parsePromo(s.pendingPromo),
     inCheck: Boolean(s.inCheck),
+    clockMode: parseClockMode(s.clockMode),
+    clockMs: parseClockMs(s.clockMs),
+    clockTurnStartedAt:
+      s.clockTurnStartedAt == null
+        ? null
+        : Math.floor(clampNum(s.clockTurnStartedAt, 0)) || null,
+    clockIncrementMs: parseClockIncrementMs(s.clockIncrementMs),
+    whiteUid: parseOptionalSeatUid(
+      s.whiteUid,
+      'whiteUid' in s,
+      JENGA_PLAYER_UIDS[0]!,
+    ),
     hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
     roundId:

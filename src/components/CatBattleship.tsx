@@ -20,6 +20,7 @@ import {
   placeShip,
   removeShip,
   setPlayerReady,
+  selectBattleshipFirst,
   shipAtCell,
   shipCells,
   shipFits,
@@ -34,6 +35,7 @@ import { cattleshipIdleQuote, cattleshipShotQuote, type PetQuoteResult } from '.
 import { speakDurationMs, SPEAK_FRAME_MS } from '../lib/petSpeak'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
+import { GameSeatPicker } from './GameSeatPicker'
 import { PetSprite } from './PetSprite'
 
 const COACH_QUOTE_MS = 3_800
@@ -388,6 +390,7 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
+    if (game.firstUid == null) return 'Who fires first?'
     if (game.status === 'won') {
       if (game.hotseat) {
         return game.winnerUid === JENGA_PLAYER_UIDS[0] ? 'P1 wins!' : 'P2 wins!'
@@ -638,10 +641,22 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
             open={newGameOpen}
             onClose={() => setNewGameOpen(false)}
             onConfirm={(opts) => void resetGame(opts)}
-            blurb="Clears both fleets and starts a new round."
+            blurb="Clears both fleets. Pick who fires first, then place ships."
           />
 
-          {game.status === 'placing' ? (
+          {game.firstUid == null ? (
+            <div className="mt-6">
+              <GameSeatPicker
+                prompt="Who fires first?"
+                optionLabel={(name) => `${name} fires first`}
+                onPick={(seat) =>
+                  void commitGame(
+                    (prev) => selectBattleshipFirst(prev, seat) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : game.status === 'placing' ? (
             <div
               className={[
                 'mt-3 flex flex-col items-center gap-2',

@@ -7,6 +7,7 @@ import {
   colRowToIndex,
   dropRow,
   seatForUid,
+  selectConnect4First,
   themeForCatIcon,
   type C4Cell,
 } from '../lib/connect4'
@@ -14,6 +15,7 @@ import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { petIdleSrc } from '../lib/petAssets'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
+import { GameSeatPicker } from './GameSeatPicker'
 
 function CatDisc({
   icon,
@@ -83,6 +85,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
+    if (game.firstUid == null) return 'Who goes first?'
     if (game.status === 'won' && winnerSeat !== null) {
       if (game.hotseat) {
         return winnerSeat === 0 ? 'P1 wins!' : 'P2 wins!'
@@ -200,9 +203,22 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
             open={newGameOpen}
             onClose={() => setNewGameOpen(false)}
             onConfirm={(opts) => void resetGame(opts)}
-            blurb="Starts a fresh board for both of you."
+            blurb="Starts a fresh board. Pick who goes first."
           />
 
+          {game.firstUid == null ? (
+            <div className="mt-6">
+              <GameSeatPicker
+                prompt="Who goes first?"
+                optionLabel={(name) => `${name} goes first`}
+                onPick={(seat) =>
+                  void commitGame(
+                    (prev) => selectConnect4First(prev, seat) ?? prev,
+                  )
+                }
+              />
+            </div>
+          ) : (
           <div
             className={[
               'mt-3 flex justify-center',
@@ -318,6 +334,7 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
+          )}
         </div>
       )}
     </ArcadeStage>

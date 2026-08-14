@@ -9,14 +9,18 @@ import {
   chessRow,
   createInitialChess,
   chessToDoc,
+  flagChessOnTime,
   indexToAlg,
   legalDests,
   normalizeChess,
+  selectChessClockMode,
+  selectChessWhite,
   startNewChess,
   undoChessMove,
   type ChessKind,
   type ChessState,
 } from './chess'
+import { CHESS_CLOCK_MS } from './gameClock'
 
 const white = JENGA_PLAYER_UIDS[0]!
 const black = JENGA_PLAYER_UIDS[1]!
@@ -200,6 +204,20 @@ describe('chess', () => {
     expect(next.moveLog).toEqual([])
     expect(next.lastFrom).toBeNull()
     expect(next.lastTo).toBeNull()
+    expect(next.clockMode).toBeNull()
+    expect(next.whiteUid).toBeNull()
+  })
+
+  it('timed mode flags the player to move', () => {
+    let s = startNewChess(createInitialChess(white))
+    expect(applyChessMove(s, white, algToIndex('e2'), algToIndex('e4'))).toBeNull()
+    s = selectChessWhite(s, white)!
+    s = selectChessClockMode(s, 'timed', 1_000)!
+    expect(s.clockMode).toBe('timed')
+    expect(s.clockMs[white]).toBe(CHESS_CLOCK_MS)
+    const flagged = flagChessOnTime(s, 1_000 + CHESS_CLOCK_MS + 1)!
+    expect(flagged.status).toBe('timeout')
+    expect(flagged.winnerUid).toBe(black)
   })
 
   it('normalizeChess does not treat null last-move as a8', () => {
