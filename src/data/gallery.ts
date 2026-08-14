@@ -2,9 +2,17 @@ export type GalleryEntry = {
   id: string;
   title: string;
   type: "image" | "video";
+  /** Video clips default to timelapse unless set. */
+  kind?: "timelapse" | "video";
   src: string;
   date: string;
 };
+
+export function galleryKindLabel(entry: GalleryEntry): string {
+  if (entry.type === "image") return "🖼 Artwork";
+  if (entry.kind === "video") return "🎬 Video";
+  return "🎬 Timelapse";
+}
 
 export const galleryEntries: GalleryEntry[] = [
   {
@@ -76,5 +84,55 @@ export const galleryEntries: GalleryEntry[] = [
     type: "video",
     src: "/gallery/ram.mp4",
     date: "2026-08-12",
+  },
+  {
+    id: "coffee-cup",
+    title: "Coffee Cup",
+    type: "image",
+    src: "/gallery/coffee%20cup.jpg",
+    date: "2019-10-15",
+  },
+  {
+    id: "hand-study",
+    title: "Hand Study",
+    type: "image",
+    src: "/gallery/hand%20study.png",
+    date: "2020-08-13",
+  },
+  {
+    id: "ironman",
+    title: "Ironman",
+    type: "image",
+    src: "/gallery/ironman.png",
+    date: "2021-03-06",
+  },
+  {
+    id: "pokemon-starter-terrarium",
+    title: "Pokemon Starter Terrarium",
+    type: "image",
+    src: "/gallery/pokemon%20starter%20terrarium.jpg",
+    date: "2021-08-07",
+  },
+  {
+    id: "pokemon-pikachu-eevee-terrarium",
+    title: "Pokemon Pikachu & Eevee Terrarium",
+    type: "image",
+    src: "/gallery/pokemon%20pikachu%20and%20eevee%20terrarium.jpg",
+    date: "2021-08-07",
+  },
+  {
+    id: "pokemon-alolan-vulpix-terrarium",
+    title: "Pokemon Alolan Vulpix Terrarium",
+    type: "video",
+    kind: "video",
+    src: "/gallery/pokemon%20alolan%20vulpix%20terrarium.mp4",
+    date: "2020-02-12",
+  },
+  {
+    id: "valley-lake-sunset",
+    title: "Valley Lake Sunset",
+    type: "image",
+    src: "/gallery/valley%20lake%20sunset.jpg",
+    date: "2019-10-02",
   },
 ];

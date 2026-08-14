@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { CatWallpaper } from "../components/CatWallpaper";
 import { GalleryViewer } from "../components/GalleryViewer";
-import { galleryEntries } from "../data/gallery";
+import { galleryEntries, galleryKindLabel } from "../data/gallery";
 
 type SortOption = "newest" | "oldest" | "name-asc" | "name-desc";
 type MediaFilter = "all" | "image" | "video";
@@ -57,7 +57,7 @@ export function GalleryPage({
             >
               <option value="all">All</option>
               <option value="image">🖼 Images</option>
-              <option value="video">🎬 Timelapses</option>
+              <option value="video">🎬 Videos</option>
             </select>
           </label>
 
@@ -115,7 +115,7 @@ export function GalleryPage({
                     : "border border-cyan-300/30 bg-cyan-500/40 text-white",
                 ].join(" ")}
               >
-                {entry.type === "image" ? "🖼 Artwork" : "🎬 Timelapse"}
+                {galleryKindLabel(entry)}
               </span>
             </div>
 

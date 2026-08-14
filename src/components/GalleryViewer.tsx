@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import type { GalleryEntry } from "../data/gallery";
+import { galleryKindLabel, type GalleryEntry } from "../data/gallery";
 
 interface GalleryViewerProps {
   entries: GalleryEntry[];
@@ -79,7 +79,7 @@ export function GalleryViewer({
             </h2>
 
             <p className="text-[11px] text-muted">
-              {entry.type === "image" ? "🖼 Artwork" : "🎬 Timelapse"} ·{" "}
+              {galleryKindLabel(entry)} ·{" "}
               {entry.date}
             </p>
           </div>
