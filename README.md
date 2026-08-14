@@ -38,6 +38,26 @@ These are public client identifiers; access is protected by Firestore rules.
    replace the two placeholders in the rules file, and publish the rules. The
    database remains locked until those placeholders are replaced.
 
+### Turn notifications (optional)
+
+Chrome can ping you when Scrabble becomes your turn. The site already
+requests permission and stores an FCM token under
+`rooms/{room}/users/{uid}/pushTokens`. Lock-screen delivery needs a sender:
+
+1. Firebase Console → Project settings → Cloud Messaging → Web Push
+   certificates — generate a key pair, copy the **key pair** into
+   `VITE_FIREBASE_VAPID_KEY` (local + Vercel).
+2. Upgrade the project to Blaze (pay-as-you-go). Usage for two people stays
+   in the no-cost tier; set a $1 budget alert.
+3. `npm install` inside `functions/`, then
+   `npx firebase deploy --only functions`.
+4. Optional: `firebase functions:secrets:set` is not required. Set param
+   `APP_ORIGIN` to the production URL (e.g. `https://your-app.vercel.app`)
+   so the notification opens Arcade.
+
+Until the function is deployed, **Turn pings** still work as a local
+notification while the tab is actually running.
+
 The first authenticated load merges existing dailies and watchlist data from
 `localStorage` into the shared room. Theme is shared via Firestore;
 other presentation chrome (cursor trail, collapsed panels) stays device-local.

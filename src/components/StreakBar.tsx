@@ -3,6 +3,7 @@ import { appHour } from '../lib/date'
 import { type ThemeId } from '../lib/themes'
 import type { Streaks } from '../types'
 import { ThemePicker } from './ThemePicker'
+import { TurnPushToggle } from './TurnPushToggle'
 import {
   CALCIFER_BURST_MS,
   FireIcon,
@@ -486,6 +487,7 @@ export function StreakBar({
               />
               Cursor trail
             </label>
+            <TurnPushToggle />
           </div>
         </div>
       </div>

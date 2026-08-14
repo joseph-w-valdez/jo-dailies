@@ -2,7 +2,7 @@
 import { createReadStream, readdirSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -44,6 +44,48 @@ function listPngs(root: string): string[] {
 function isInsideRoot(root: string, file: string): boolean {
   const rel = path.relative(root, file)
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
+function firebaseMessagingSwPlugin(): Plugin {
+  let source = '// firebase messaging sw — config filled at build/dev\n'
+  return {
+    name: 'firebase-messaging-sw',
+    configResolved(config) {
+      const env = loadEnv(config.mode, config.envDir, 'VITE_')
+      const firebaseConfig = {
+        apiKey: env.VITE_FIREBASE_API_KEY ?? '',
+        authDomain: env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
+        projectId: env.VITE_FIREBASE_PROJECT_ID ?? '',
+        storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET ?? '',
+        messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '',
+        appId: env.VITE_FIREBASE_APP_ID ?? '',
+      }
+      source = `importScripts('https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.16.0/firebase-messaging-compat.js');
+firebase.initializeApp(${JSON.stringify(firebaseConfig)});
+firebase.messaging();
+`
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0]
+        if (url !== '/firebase-messaging-sw.js') {
+          next()
+          return
+        }
+        res.setHeader('Content-Type', 'application/javascript')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.end(source)
+      })
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'firebase-messaging-sw.js',
+        source,
+      })
+    },
+  }
 }
 
 function servePngTree(urlPrefix: '/cats' | '/chess', diskRoot: string): Plugin {
@@ -111,6 +153,7 @@ export default defineConfig({
     tailwindcss(),
     servePngTree('/cats', CATS_ROOT),
     servePngTree('/chess', CHESS_ROOT),
+    firebaseMessagingSwPlugin(),
   ],
   server: {
     watch: {

@@ -8,6 +8,7 @@ import {
 import { CatWallpaper } from '../components/CatWallpaper'
 import { CursorTrail, useCursorTrailSetting } from '../components/CursorTrail'
 import { ScrollTopButton } from '../components/ScrollTopButton'
+import { TurnPushToggle } from '../components/TurnPushToggle'
 
 export function ArcadePage() {
   const { trailEnabled } = useCursorTrailSetting()
@@ -36,10 +37,15 @@ export function ArcadePage() {
           </Suspense>
         ) : (
           <div className="rounded-2xl border border-border bg-surface-raised p-4 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)] sm:p-5">
-            <h1 className="text-lg font-semibold text-white">Arcade</h1>
-            <p className="mt-1 text-sm text-muted">
-              Pick a game — nothing loads until you open it.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-lg font-semibold text-white">Arcade</h1>
+                <p className="mt-1 text-sm text-muted">
+                  Pick a game — nothing loads until you open it.
+                </p>
+              </div>
+              <TurnPushToggle />
+            </div>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {ARCADE_TILES.map((tile) => (
                 <button

@@ -23,6 +23,7 @@ import {
   SharedThemeProvider,
   useSharedTheme,
 } from "./hooks/useSharedTheme";
+import { TurnPushListener } from "./hooks/useTurnPush";
 import { useShellLayout } from "./hooks/useShellLayout";
 import { parseKey } from "./lib/date";
 import { isRoomUid } from "./lib/jenga";
@@ -288,6 +289,7 @@ function AppContent() {
     return (
       <div className="min-h-screen">
         <AppHeader />
+        <TurnPushListener />
         {/* Paths must stay in sync with NAV_LINKS in src/nav.ts */}
         <Routes>
           <Route path="/" element={<HomePage />} />
