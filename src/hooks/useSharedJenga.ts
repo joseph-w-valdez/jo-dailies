@@ -8,6 +8,7 @@ import {
 } from 'firebase/database'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db, rtdb, syncRoomId, toFirestoreData } from '../lib/firebase'
+import { maybeRecordArcadeMatch } from '../lib/arcadeMatches'
 import { withBumpedVersion } from '../lib/gameCommit'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
@@ -86,22 +87,26 @@ export function useSharedJenga() {
           pendingVersionRef.current = null
         }
 
-        setGame((prev) => {
+        const prev = gameRef.current
+        maybeRecordArcadeMatch('jenga', prev, remote)
+
+        setGame((cur) => {
           if (
-            prev.version === remote.version &&
-            prev.updatedAt === remote.updatedAt &&
-            prev.status === remote.status &&
-            prev.turnUid === remote.turnUid &&
-            prev.endReason === remote.endReason &&
-            prev.explodeCount === remote.explodeCount &&
-            prev.meteorCount === remote.meteorCount &&
-            prev.removedCount === remote.removedCount &&
-            prev.roundId === remote.roundId
+            cur.version === remote.version &&
+            cur.updatedAt === remote.updatedAt &&
+            cur.status === remote.status &&
+            cur.turnUid === remote.turnUid &&
+            cur.endReason === remote.endReason &&
+            cur.explodeCount === remote.explodeCount &&
+            cur.meteorCount === remote.meteorCount &&
+            cur.removedCount === remote.removedCount &&
+            cur.roundId === remote.roundId
           ) {
-            return prev
+            return cur
           }
           return remote
         })
+        gameRef.current = remote
         setReady(true)
       },
       (error) => {
@@ -176,16 +181,18 @@ export function useSharedJenga() {
         | JengaGameState
         | ((prev: JengaGameState) => JengaGameState),
     ) => {
-      const base = typeof next === 'function' ? next(gameRef.current) : next
+      const prev = gameRef.current
+      const base = typeof next === 'function' ? next(prev) : next
       // Always advance past the latest known version so rapid chaos clicks
       // (meteor → explode) can't clobber each other with the same version.
-      const resolved = withBumpedVersion(base, gameRef.current.version)
+      const resolved = withBumpedVersion(base, prev.version)
       gameRef.current = resolved
       pendingVersionRef.current = resolved.version
       setGame(resolved)
       saveJengaLocal(resolved)
       try {
         await setDoc(gameDocRef(), toFirestoreData(resolved))
+        maybeRecordArcadeMatch('jenga', prev, resolved)
       } catch (error: unknown) {
         console.error('Could not save jenga', error)
       }

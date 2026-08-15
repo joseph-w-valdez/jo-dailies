@@ -87,8 +87,9 @@ rooms/{syncRoomId}/
   pet/current                    // PetKennel
   whiteboardStrokes/{strokeId}
   whiteboard/current             // legacy blob, migrated away
-  jenga|connect4|battleship|scrabble/current
+  jenga|connect4|battleship|scrabble|chess|wordle|hangman|codenames/current
   suika/best                     // high score only; bowl is in-memory
+  arcadeMatches/{id}             // append-only finished 2P matches (not Suika)
 ```
 
 ### Outside the room (inconsistent)
@@ -129,6 +130,7 @@ Typical hook:
 | `useSharedJenga` | `jenga/current` + RTDB `jengaLive` | versioned doc + ghosts |
 | `useSharedConnect4` / Battleship / Scrabble | `*/current` | versioned doc |
 | `useSharedSuika` | `suika/best` | high score only |
+| `useArcadeMatches` | `arcadeMatches` | collection (finished 2P games) |
 | `src/lib/scrapbook.ts` | top-level `scrapbook` | collection + Storage |
 
 ## Auth and identity

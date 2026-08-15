@@ -1,5 +1,6 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { maybeRecordArcadeMatch } from '../lib/arcadeMatches'
 import { db, syncRoomId, toFirestoreData } from '../lib/firebase'
 import { withBumpedVersion } from '../lib/gameCommit'
 import { updateSyncSource } from '../lib/syncStatus'
@@ -98,6 +99,8 @@ export function useSharedGameDoc<T extends VersionedGame>(
         ) {
           pendingVersionRef.current = null
         }
+        const prev = gameRef.current
+        maybeRecordArcadeMatch(collectionId, prev, remote)
         gameRef.current = remote
         setGame(remote)
         setReady(true)
@@ -119,8 +122,9 @@ export function useSharedGameDoc<T extends VersionedGame>(
   }, [user, collectionId, syncId])
 
   const commitGame = useCallback(async (next: T | ((prev: T) => T)) => {
-    const base = typeof next === 'function' ? next(gameRef.current) : next
-    const resolved = withBumpedVersion(base, gameRef.current.version)
+    const prev = gameRef.current
+    const base = typeof next === 'function' ? next(prev) : next
+    const resolved = withBumpedVersion(base, prev.version)
     gameRef.current = resolved
     pendingVersionRef.current = resolved.version
     setGame(resolved)
@@ -128,6 +132,7 @@ export function useSharedGameDoc<T extends VersionedGame>(
       const ref = doc(db, 'rooms', syncRoomId, collectionId, 'current')
       const payload = toDocRef.current ? toDocRef.current(resolved) : resolved
       await setDoc(ref, toFirestoreData(payload))
+      maybeRecordArcadeMatch(collectionId, prev, resolved)
     } catch (error) {
       console.error(`Could not save ${syncId}`, error)
     }

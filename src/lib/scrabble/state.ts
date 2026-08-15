@@ -96,6 +96,8 @@ export interface ScrabbleMoveLogEntry {
   definitions: { word: string; definition: string }[]
   /** Optional roast / flavor (invalid attempts). */
   note?: string
+  /** Tiles freshly placed this turn (plays only). */
+  tilesPlayed?: number
   /** For newGame: both players' scores when the previous round ended. */
   finals?: Record<string, number>
   at: number
@@ -612,6 +614,7 @@ export function applyPlay(
       score: playScore,
       total: nextTotal,
       definitions,
+      tilesPlayed: placements.length,
       ...(meowtiply ? { note: 'Meowtiply ×3' } : {}),
     }),
     updatedAt: Date.now(),
@@ -1009,6 +1012,10 @@ export function normalizeScrabble(
           finals[id] = Math.floor(clampNum(finalsRaw[id], 0))
         }
       }
+      const tilesPlayed =
+        kind === 'play' && typeof m.tilesPlayed === 'number'
+          ? Math.floor(clampNum(m.tilesPlayed, 0))
+          : undefined
       moveLog.push({
         uid,
         kind,
@@ -1018,6 +1025,7 @@ export function normalizeScrabble(
         definitions,
         at: Math.floor(clampNum(m.at, Date.now())),
         ...(note ? { note } : {}),
+        ...(tilesPlayed != null && tilesPlayed > 0 ? { tilesPlayed } : {}),
         ...(finals ? { finals } : {}),
       })
       if (moveLog.length >= MOVE_LOG_MAX) break
