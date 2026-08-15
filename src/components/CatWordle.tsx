@@ -7,6 +7,7 @@ import {
   selectWordleLength,
   selectWordleMode,
   submitVersusWord,
+  surrenderWordle,
   WORDLE_MAX_GUESSES,
   type WordleGuessRow,
 } from '../lib/wordle'
@@ -19,6 +20,7 @@ import {
 } from '../lib/wordleWords'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
+import { SurrenderButton } from './SurrenderButton'
 import {
   WordGameLengthPicker,
   WordGameModePicker,
@@ -197,7 +199,7 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     >
       {() => (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setNewGameOpen(true)}
@@ -205,6 +207,19 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
             >
               New game
             </button>
+            <SurrenderButton
+              disabled={
+                !uid ||
+                game.mode !== 'versus' ||
+                game.phase !== 'playing' ||
+                game.status !== 'playing'
+              }
+              onSurrender={() =>
+                void commitGame(
+                  (prev) => surrenderWordle(prev, actorUid) ?? prev,
+                )
+              }
+            />
           </div>
 
           {game.phase === 'pickMode' ? (

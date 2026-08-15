@@ -378,6 +378,15 @@ export function endCodenamesGuesses(
   return spendTurn(state, state.cards)
 }
 
+/** Co-op concede — mark the round lost. */
+export function surrenderCodenames(
+  state: CodenamesState,
+): CodenamesState | null {
+  if (state.status !== 'playing' || state.phase === 'finished') return null
+  if (state.wordPack == null || state.clueUid == null) return null
+  return finishLoss(state, state.cards)
+}
+
 function touchCard(
   cards: CodenamesCard[],
   cardId: number,

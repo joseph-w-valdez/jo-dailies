@@ -29,6 +29,7 @@ import {
   flagScrabbleOnTime,
   selectScrabbleClockMode,
   selectScrabbleFirst,
+  surrenderScrabble,
   SCRABBLE_SIZE,
   type Placement,
   type Premium,
@@ -47,6 +48,7 @@ import {
 } from "./GameClockModePicker";
 import { NewGameConfirm } from "./NewGameConfirm";
 import { GameSeatPicker } from "./GameSeatPicker";
+import { SurrenderButton } from "./SurrenderButton";
 
 interface DraftCell {
   row: number;
@@ -1192,6 +1194,20 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                 >
                   New game
                 </button>
+                <SurrenderButton
+                  disabled={
+                    !uid ||
+                    game.status !== "playing" ||
+                    game.firstUid == null ||
+                    game.clockMode == null
+                  }
+                  onSurrender={() =>
+                    void commitGame(
+                      (prev) => surrenderScrabble(prev, actorUid) ?? prev,
+                    )
+                  }
+                  className="whitespace-nowrap rounded-lg border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-100 hover:bg-rose-500/20 disabled:opacity-40 sm:px-2.5 sm:text-xs"
+                />
               </div>
             </div>
           </div>

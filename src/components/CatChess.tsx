@@ -20,6 +20,7 @@ import {
   flagChessOnTime,
   selectChessClockMode,
   selectChessWhite,
+  surrenderChess,
   type ChessKind,
   type ChessMoveLogEntry,
   type ChessPiece,
@@ -36,6 +37,7 @@ import {
 } from './GameClockModePicker'
 import { GameSeatPicker } from './GameSeatPicker'
 import { NewGameConfirm } from './NewGameConfirm'
+import { SurrenderButton } from './SurrenderButton'
 
 const PROMO_KINDS: ChessKind[] = ['q', 'r', 'b', 'n']
 const QUOTE_SHOW_MS = 3_800
@@ -349,6 +351,16 @@ export function CatChess({ onClose }: { onClose: () => void }) {
       }
       return game.winnerUid === uid ? 'Time — you win' : 'Time — opponent wins'
     }
+    if (game.status === 'resign') {
+      if (game.hotseat) {
+        return game.winnerUid === uidForColor('white', game.whiteUid)
+          ? 'Surrender — P1 wins'
+          : 'Surrender — P2 wins'
+      }
+      return game.winnerUid === uid
+        ? 'Surrender — you win'
+        : 'Surrender — opponent wins'
+    }
     if (game.status === 'checkmate') {
       if (game.hotseat) {
         return game.winnerUid === uidForColor('white', game.whiteUid)
@@ -653,6 +665,19 @@ export function CatChess({ onClose }: { onClose: () => void }) {
               >
                 New game
               </button>
+              <SurrenderButton
+                disabled={
+                  !uid ||
+                  game.status !== 'playing' ||
+                  game.whiteUid == null ||
+                  game.clockMode == null
+                }
+                onSurrender={() =>
+                  void commitGame(
+                    (prev) => surrenderChess(prev, actorUid) ?? prev,
+                  )
+                }
+              />
             </div>
           </div>
 

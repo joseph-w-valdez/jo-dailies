@@ -24,6 +24,7 @@ import {
   shipAtCell,
   shipCells,
   shipFits,
+  surrenderBattleship,
   themeForCatIcon,
   type BsShip,
   type BoardVitals,
@@ -37,6 +38,7 @@ import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
 import { GameSeatPicker } from './GameSeatPicker'
 import { PetSprite } from './PetSprite'
+import { SurrenderButton } from './SurrenderButton'
 
 const COACH_QUOTE_MS = 3_800
 /** Silence between idle coach lines (after a bubble clears). */
@@ -628,13 +630,23 @@ export function CatBattleship({ onClose }: { onClose: () => void }) {
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => setNewGameOpen(true)}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
-            >
-              New game
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setNewGameOpen(true)}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
+              >
+                New game
+              </button>
+              <SurrenderButton
+                disabled={!uid || game.status !== 'playing'}
+                onSurrender={() =>
+                  void commitGame(
+                    (prev) => surrenderBattleship(prev, actorUid) ?? prev,
+                  )
+                }
+              />
+            </div>
           </div>
 
           <NewGameConfirm

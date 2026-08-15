@@ -83,6 +83,21 @@ export function selectConnect4First(
   }
 }
 
+/** Loser concedes — opponent wins. */
+export function surrenderConnect4(
+  state: Connect4State,
+  loserUid: string,
+): Connect4State | null {
+  if (state.status !== 'playing' || state.firstUid == null) return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'won',
+    winnerUid: nextTurnUid(loserUid),
+    updatedAt: Date.now(),
+  }
+}
+
 export function seatForUid(uid: string | null): 0 | 1 | null {
   if (!uid) return null
   const idx = JENGA_PLAYER_UIDS.findIndex((id) => id === uid)

@@ -28,7 +28,13 @@ export const CHESS_SQUARES = 64
 
 export type ChessColor = 'white' | 'black'
 export type ChessKind = 'k' | 'q' | 'r' | 'b' | 'n' | 'p'
-export type ChessStatus = 'playing' | 'checkmate' | 'stalemate' | 'draw' | 'timeout'
+export type ChessStatus =
+  | 'playing'
+  | 'checkmate'
+  | 'stalemate'
+  | 'draw'
+  | 'timeout'
+  | 'resign'
 
 export interface ChessPiece {
   color: ChessColor
@@ -454,6 +460,25 @@ export function flagChessOnTime(
     status: 'timeout',
     winnerUid: nextTurnUid(loser),
     clockMs: { ...state.clockMs, [loser]: 0 },
+    clockTurnStartedAt: null,
+    pendingPromo: null,
+    updatedAt: now,
+  }
+}
+
+/** Loser concedes — opponent wins. */
+export function surrenderChess(
+  state: ChessState,
+  loserUid: string,
+  now = Date.now(),
+): ChessState | null {
+  if (state.status !== 'playing') return null
+  if (state.whiteUid == null || state.clockMode == null) return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'resign',
+    winnerUid: nextTurnUid(loserUid),
     clockTurnStartedAt: null,
     pendingPromo: null,
     updatedAt: now,
@@ -1122,7 +1147,8 @@ function parseUndoSnapshot(raw: unknown): ChessUndoSnapshot | null {
     s.status === 'checkmate' ||
     s.status === 'stalemate' ||
     s.status === 'draw' ||
-    s.status === 'timeout'
+    s.status === 'timeout' ||
+    s.status === 'resign'
       ? s.status
       : 'playing'
   const ep =
@@ -1234,7 +1260,8 @@ export function normalizeChess(raw: unknown, fallbackTurnUid: string): ChessStat
     s.status === 'checkmate' ||
     s.status === 'stalemate' ||
     s.status === 'draw' ||
-    s.status === 'timeout'
+    s.status === 'timeout' ||
+    s.status === 'resign'
       ? s.status
       : 'playing'
   const ep =

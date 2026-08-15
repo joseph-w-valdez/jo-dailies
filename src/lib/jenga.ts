@@ -281,6 +281,22 @@ export function selectJengaFirst(
   }
 }
 
+/** Loser concedes — opponent wins (tower marked collapsed). */
+export function surrenderJenga(
+  state: JengaGameState,
+  loserUid: string,
+): JengaGameState | null {
+  if (state.status !== 'playing' || state.firstUid == null) return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'collapsed',
+    winnerUid: nextTurnUid(loserUid),
+    endReason: null,
+    updatedAt: Date.now(),
+  }
+}
+
 function clampNum(n: unknown, fallback = 0): number {
   return typeof n === 'number' && Number.isFinite(n) ? n : fallback
 }

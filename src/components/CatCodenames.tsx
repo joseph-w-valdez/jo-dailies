@@ -10,6 +10,7 @@ import {
   selectCodenamesFirstClue,
   selectCodenamesPack,
   submitCodenamesClue,
+  surrenderCodenames,
   type CodenamesCard,
   type DuetRole,
 } from '../lib/codenames'
@@ -17,6 +18,7 @@ import { otherPlayerUid } from '../lib/jenga'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { GameSeatPicker } from './GameSeatPicker'
 import { NewGameConfirm } from './NewGameConfirm'
+import { SurrenderButton } from './SurrenderButton'
 
 const choiceClass =
   'rounded-xl border border-border bg-surface/80 px-4 py-8 text-left hover:border-muted'
@@ -187,13 +189,28 @@ export function CatCodenames({ onClose }: { onClose: () => void }) {
                 </>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => setNewGameOpen(true)}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-app-text hover:border-muted"
-            >
-              New game
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setNewGameOpen(true)}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-app-text hover:border-muted"
+              >
+                New game
+              </button>
+              <SurrenderButton
+                disabled={
+                  !uid ||
+                  game.status !== 'playing' ||
+                  game.phase === 'finished' ||
+                  game.wordPack == null ||
+                  game.clueUid == null
+                }
+                body="Concede this round — you both lose."
+                onSurrender={() =>
+                  void commitGame((prev) => surrenderCodenames(prev) ?? prev)
+                }
+              />
+            </div>
           </div>
 
           {pickingPack ? (

@@ -463,6 +463,21 @@ export function applyBattleshipShot(
   }
 }
 
+/** Loser concedes — opponent wins. */
+export function surrenderBattleship(
+  state: BattleshipState,
+  loserUid: string,
+): BattleshipState | null {
+  if (state.status !== 'playing') return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'won',
+    winnerUid: nextTurnUid(loserUid),
+    updatedAt: Date.now(),
+  }
+}
+
 function normalizeBoard(raw: unknown): BsPlayerBoard {
   if (!raw || typeof raw !== 'object') return emptyPlayerBoard()
   const b = raw as Record<string, unknown>

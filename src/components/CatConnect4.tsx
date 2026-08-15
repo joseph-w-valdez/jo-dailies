@@ -8,6 +8,7 @@ import {
   dropRow,
   seatForUid,
   selectConnect4First,
+  surrenderConnect4,
   themeForCatIcon,
   type C4Cell,
 } from '../lib/connect4'
@@ -16,6 +17,7 @@ import { petIdleSrc } from '../lib/petAssets'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
 import { GameSeatPicker } from './GameSeatPicker'
+import { SurrenderButton } from './SurrenderButton'
 
 function CatDisc({
   icon,
@@ -190,13 +192,23 @@ export function CatConnect4({ onClose }: { onClose: () => void }) {
                 </span>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => setNewGameOpen(true)}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
-            >
-              New game
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setNewGameOpen(true)}
+                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
+              >
+                New game
+              </button>
+              <SurrenderButton
+                disabled={!uid || game.status !== 'playing' || game.firstUid == null}
+                onSurrender={() =>
+                  void commitGame(
+                    (prev) => surrenderConnect4(prev, actorUid) ?? prev,
+                  )
+                }
+              />
+            </div>
           </div>
 
           <NewGameConfirm

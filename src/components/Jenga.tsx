@@ -22,6 +22,7 @@ import { useSharedJenga } from '../hooks/useSharedJenga'
 import { useThemeCssColor } from '../hooks/useThemeCssColor'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { GameSeatPicker } from './GameSeatPicker'
+import { SurrenderButton } from './SurrenderButton'
 import { ThemeClearColor } from './ThemeClearColor'
 import {
   BRICK_H,
@@ -35,6 +36,7 @@ import {
   markFieldDebris,
   nextTurnUid,
   selectJengaFirst,
+  surrenderJenga,
   type JengaBrick,
   type JengaEndReason,
   type JengaGameState,
@@ -1781,6 +1783,17 @@ export function Jenga({ onClose }: { onClose: () => void }) {
                   Reset
                 </button>
               )}
+              <SurrenderButton
+                disabled={
+                  !uid || game.status !== 'playing' || game.firstUid == null
+                }
+                onSurrender={() => {
+                  if (!uid) return
+                  void commitGame(
+                    (prev) => surrenderJenga(prev, uid) ?? prev,
+                  )
+                }}
+              />
             </div>
           </div>
 

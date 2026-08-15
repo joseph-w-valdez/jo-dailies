@@ -7,12 +7,14 @@ import {
   selectHangmanLength,
   selectHangmanMode,
   submitHangmanWord,
+  surrenderHangman,
 } from '../lib/hangman'
 import { householdName } from '../lib/household'
 import { otherPlayerUid } from '../lib/jenga'
 import { isValidSecretWord, secretMaxLen } from '../lib/wordBank'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { NewGameConfirm } from './NewGameConfirm'
+import { SurrenderButton } from './SurrenderButton'
 import {
   WordGameLengthPicker,
   WordGameModePicker,
@@ -103,7 +105,7 @@ export function CatHangman({ onClose }: { onClose: () => void }) {
     >
       {() => (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setNewGameOpen(true)}
@@ -111,6 +113,19 @@ export function CatHangman({ onClose }: { onClose: () => void }) {
             >
               New game
             </button>
+            <SurrenderButton
+              disabled={
+                !uid ||
+                game.mode !== 'versus' ||
+                game.phase !== 'playing' ||
+                game.status !== 'playing'
+              }
+              onSurrender={() =>
+                void commitGame(
+                  (prev) => surrenderHangman(prev, actorUid) ?? prev,
+                )
+              }
+            />
           </div>
 
           {game.phase === 'pickMode' ? (

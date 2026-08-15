@@ -376,6 +376,25 @@ export function flagScrabbleOnTime(
   }
 }
 
+/** Loser concedes — opponent wins. */
+export function surrenderScrabble(
+  state: ScrabbleState,
+  loserUid: string,
+  now = Date.now(),
+): ScrabbleState | null {
+  if (state.status !== 'playing') return null
+  if (state.firstUid == null || state.clockMode == null) return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'finished',
+    winnerUid: nextTurnUid(loserUid),
+    clockTurnStartedAt: null,
+    peek: null,
+    updatedAt: now,
+  }
+}
+
 function finishScrabbleTurn(
   prev: ScrabbleState,
   next: ScrabbleState,

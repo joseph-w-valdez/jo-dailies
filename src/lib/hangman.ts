@@ -1,6 +1,7 @@
 import {
   bothSeatsReady,
   hostSeatUid,
+  isRoomUid,
   JENGA_PLAYER_UIDS,
   nextTurnUid,
   otherPlayerUid,
@@ -260,6 +261,23 @@ export function applyHangmanGuess(
     ...state,
     seats,
     turnUid: nextTurnUid(uid),
+    updatedAt: Date.now(),
+  }
+}
+
+/** Versus only — loser concedes, opponent wins. */
+export function surrenderHangman(
+  state: HangmanState,
+  loserUid: string,
+): HangmanState | null {
+  if (state.mode !== 'versus' || state.phase !== 'playing') return null
+  if (state.status !== 'playing') return null
+  if (!isRoomUid(loserUid)) return null
+  return {
+    ...state,
+    status: 'won',
+    phase: 'finished',
+    winnerUid: nextTurnUid(loserUid),
     updatedAt: Date.now(),
   }
 }

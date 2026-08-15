@@ -101,7 +101,8 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
         status === 'checkmate' ||
         status === 'stalemate' ||
         status === 'draw' ||
-        status === 'timeout'
+        status === 'timeout' ||
+        status === 'resign'
       )
     case 'connect4':
       return status === 'won' || status === 'draw'
@@ -135,6 +136,7 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
       if (status === 'checkmate') return 'Checkmate'
       if (status === 'stalemate') return 'Stalemate'
       if (status === 'timeout') return 'On time'
+      if (status === 'resign') return 'Surrender'
       if (status === 'draw') return 'Draw'
       return undefined
     }
@@ -342,7 +344,8 @@ function resultFor(
   if (status === 'lost') return 'loss'
   if (typeof state.winnerUid === 'string' && state.winnerUid) return 'win'
   if (status === 'won') return 'win'
-  if (status === 'checkmate' || status === 'timeout') return 'win'
+  if (status === 'checkmate' || status === 'timeout' || status === 'resign')
+    return 'win'
   return 'draw'
 }
 
