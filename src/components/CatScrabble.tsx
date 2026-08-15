@@ -81,23 +81,40 @@ function TileFace({
   blank,
   selected,
   small,
+  sizePx,
 }: {
   letter: string;
   blank?: boolean;
   selected?: boolean;
   small?: boolean;
+  /** Immersive rack — match board cell size when set. */
+  sizePx?: number;
 }) {
   const points = letterValue(letter, Boolean(blank));
+  const sized = sizePx != null && sizePx > 0;
   return (
     <span
       className={[
         "relative inline-flex items-center justify-center rounded-md border font-semibold shadow-sm",
-        small ? "h-7 w-7 text-xs" : "h-9 w-9 text-sm",
+        sized
+          ? ""
+          : small
+            ? "h-7 w-7 text-xs"
+            : "h-9 w-9 text-sm",
         blank
           ? "border-dashed border-amber-700/50 bg-amber-50/90 text-amber-900"
           : "border-amber-800/30 bg-[#f3e6c8] text-amber-950",
         selected ? "ring-2 ring-golden" : "",
       ].join(" ")}
+      style={
+        sized
+          ? {
+              width: sizePx,
+              height: sizePx,
+              fontSize: `${Math.max(11, Math.floor(sizePx * 0.48))}px`,
+            }
+          : undefined
+      }
     >
       <span className="leading-none">{letter || (blank ? "?" : "")}</span>
       <span
@@ -330,35 +347,70 @@ function useTheaterBoardPx(
   rowRef: RefObject<HTMLDivElement | null>,
   rackRef: RefObject<HTMLDivElement | null>,
   sidebarWidth: number,
-): number | null {
+): { boardPx: number | null; sideRack: boolean; rackTilePx: number | null } {
   const [px, setPx] = useState<number | null>(null);
+  const [sideRack, setSideRack] = useState(false);
+  const [rackTilePx, setRackTilePx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!enabled) {
       setPx(null);
+      setSideRack(false);
+      setRackTilePx(null);
       return;
     }
     const row = rowRef.current;
     if (!row) return;
 
     const measure = () => {
-      const rackH = rackRef.current?.offsetHeight ?? 0;
+      const rackH = rackRef.current?.offsetHeight ?? 72;
       let availableH: number;
       let availableW: number;
+      let nextSide = false;
+      let nextRackTile: number | null = null;
       if (stacked) {
         availableW = row.clientWidth;
         availableH =
           row.clientHeight - rackH - STACKED_SIDEBAR_H - PLAY_GAP_PX * 2;
       } else {
-        availableH = row.clientHeight - rackH - PLAY_GAP_PX;
         availableW =
           row.clientWidth - sidebarWidth - HANDLE_PX - PLAY_GAP_PX;
+        // Prefer full-height board; dock rack in the leftover left gutter
+        // when that gutter can hold cell-sized tiles (keeps board centered).
+        const fullH = row.clientHeight - PLAY_GAP_PX;
+        const candidate = Math.max(
+          BOARD_MIN_PX,
+          Math.floor(Math.min(fullH, availableW)),
+        );
+        const packW = candidate + sidebarWidth + HANDLE_PX + PLAY_GAP_PX;
+        const leftGutter = Math.max(0, (row.clientWidth - packW) / 2);
+        const cell = candidate / SCRABBLE_SIZE;
+        nextSide = leftGutter >= Math.max(44, cell * 0.9);
+        availableH = nextSide
+          ? fullH
+          : row.clientHeight - rackH - PLAY_GAP_PX;
       }
       const next = Math.max(
         BOARD_MIN_PX,
         Math.floor(Math.min(availableH, availableW)),
       );
+      const cell = next / SCRABBLE_SIZE;
+      if (!stacked) {
+        if (nextSide) {
+          const packW = next + sidebarWidth + HANDLE_PX + PLAY_GAP_PX;
+          const leftGutter = Math.max(0, (row.clientWidth - packW) / 2);
+          nextRackTile = Math.max(
+            Math.round(cell),
+            Math.min(Math.round(cell * 1.25), Math.floor(leftGutter - 12)),
+          );
+        } else {
+          // Under-board rack: at least match board cells.
+          nextRackTile = Math.max(28, Math.round(cell));
+        }
+      }
       setPx((prev) => (prev === next ? prev : next));
+      setSideRack((prev) => (prev === nextSide ? prev : nextSide));
+      setRackTilePx((prev) => (prev === nextRackTile ? prev : nextRackTile));
     };
 
     measure();
@@ -369,7 +421,11 @@ function useTheaterBoardPx(
     return () => ro.disconnect();
   }, [enabled, stacked, rowRef, rackRef, sidebarWidth]);
 
-  return enabled ? px : null;
+  return {
+    boardPx: enabled ? px : null,
+    sideRack: enabled ? sideRack : false,
+    rackTilePx: enabled ? rackTilePx : null,
+  };
 }
 
 function TheaterPlayRow({
@@ -381,6 +437,8 @@ function TheaterPlayRow({
   stacked: boolean;
   children: (ctx: {
     boardPx: number | null;
+    sideRack: boolean;
+    rackTilePx: number | null;
     rowRef: RefObject<HTMLDivElement | null>;
     rackRef: RefObject<HTMLDivElement | null>;
     sidebarWidth: number;
@@ -397,7 +455,7 @@ function TheaterPlayRow({
     startX: number;
     startWidth: number;
   } | null>(null);
-  const boardPx = useTheaterBoardPx(
+  const { boardPx, sideRack, rackTilePx } = useTheaterBoardPx(
     immersive,
     stacked,
     rowRef,
@@ -476,6 +534,8 @@ function TheaterPlayRow({
 
   return children({
     boardPx,
+    sideRack,
+    rackTilePx,
     rowRef,
     rackRef,
     sidebarWidth,
@@ -1146,6 +1206,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
           <TheaterPlayRow immersive={immersive} stacked={stacked}>
             {({
               boardPx,
+              sideRack,
+              rackTilePx,
               rowRef,
               rackRef,
               sidebarWidth,
@@ -1153,6 +1215,214 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
               onResizePointerDown,
               stacked: layoutStacked,
             }) => {
+              const rackEl = (
+                    <div
+                      ref={rackRef}
+                      data-scrabble-rack="1"
+                      className={[
+                        "flex shrink-0 flex-col gap-1.5 rounded-lg p-1 sm:gap-2",
+                        sideRack
+                          ? "max-h-full items-center justify-center overflow-y-auto"
+                          : "mt-2 w-full items-start sm:mt-3",
+                        hoverRack ? "ring-2 ring-emerald-400/70" : "",
+                      ].join(" ")}
+                    >
+                      <div
+                        className={[
+                          "flex items-center gap-1 sm:gap-1.5",
+                          sideRack
+                            ? "max-h-full flex-col flex-wrap justify-center"
+                            : "flex-wrap",
+                        ].join(" ")}
+                      >
+                        {(exchangeMode || blankStareMode
+                          ? myRack
+                          : rackVisible
+                        ).map((tile) => {
+                          const selected = exchangeMode
+                            ? exchangeIds.has(tile.id)
+                            : blankStareMode
+                              ? false
+                              : selectedId === tile.id;
+                          const placeMode =
+                            !exchangeMode && !blankStareMode && !game.peek;
+                          return (
+                            <button
+                              key={tile.id}
+                              type="button"
+                              disabled={
+                                (!canDraft && !exchangeMode && !blankStareMode) ||
+                                busy ||
+                                Boolean(game.peek) ||
+                                (!exchangeMode &&
+                                  !blankStareMode &&
+                                  draftIds.has(tile.id))
+                              }
+                              className={[
+                                "touch-none",
+                                placeMode ? "cursor-grab active:cursor-grabbing" : "",
+                                draggingTileId === tile.id ? "opacity-0" : "",
+                              ].join(" ")}
+                              onClick={() => {
+                                if (suppressClickRef.current) {
+                                  suppressClickRef.current = false;
+                                  return;
+                                }
+                                onRackTileClick(tile);
+                              }}
+                              onPointerDown={
+                                placeMode
+                                  ? (event) =>
+                                      onTilePointerDown(event, "rack", tile)
+                                  : undefined
+                              }
+                              onPointerMove={
+                                placeMode ? onTilePointerMove : undefined
+                              }
+                              onPointerUp={
+                                placeMode ? onTilePointerUp : undefined
+                              }
+                              onPointerCancel={
+                                placeMode ? onTilePointerCancel : undefined
+                              }
+                            >
+                              <TileFace
+                                letter={tile.letter}
+                                blank={tile.blank}
+                                selected={selected && draggingTileId !== tile.id}
+                                small={layoutStacked && rackTilePx == null}
+                                sizePx={rackTilePx ?? undefined}
+                              />
+                            </button>
+                          );
+                        })}
+                        {draft.map((d) => (
+                          <button
+                            key={`draft-${d.tile.id}`}
+                            type="button"
+                            disabled={!canDraft || busy}
+                            title="Return to rack"
+                            onClick={() => {
+                              if (suppressClickRef.current) {
+                                suppressClickRef.current = false;
+                                return;
+                              }
+                              setDraft((prev) =>
+                                prev.filter((x) => x.tile.id !== d.tile.id),
+                              );
+                            }}
+                          >
+                            <TileFace
+                              letter={d.chosenLetter || d.tile.letter}
+                              blank={d.tile.blank}
+                              small={rackTilePx == null}
+                              sizePx={rackTilePx ?? undefined}
+                            />
+                          </button>
+                        ))}
+                      </div>
+
+                      <div
+                        className={[
+                          "flex flex-wrap items-center gap-1.5",
+                          sideRack ? "max-w-[9rem] justify-center" : "",
+                        ].join(" ")}
+                      >
+                        {exchangeMode ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                !canAct || busy || game.bag.length === 0
+                              }
+                              onClick={confirmExchange}
+                              className="rounded-lg border border-sky-500/55 bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-sky-500/30 disabled:opacity-40"
+                            >
+                              Confirm exchange
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExchangeMode(false);
+                                setExchangeIds(new Set());
+                              }}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : blankStareMode ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBlankStareMode(false);
+                              setMessage(null);
+                            }}
+                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white"
+                          >
+                            Cancel Blank Stare
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={!canAct || busy || draft.length === 0}
+                              onClick={() => void play()}
+                              className="rounded-lg border border-emerald-500/55 bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-emerald-500/30 disabled:opacity-40"
+                            >
+                              Play
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                busy ||
+                                game.status !== "playing" ||
+                                myRack.length < 2
+                              }
+                              onClick={shuffle}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
+                            >
+                              Shuffle
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canDraft || busy || draft.length === 0}
+                              onClick={recall}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
+                            >
+                              Recall
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                !canAct ||
+                                busy ||
+                                game.bag.length === 0 ||
+                                Boolean(game.peek)
+                              }
+                              onClick={() => {
+                                recall();
+                                setBlankStareMode(false);
+                                setExchangeMode(true);
+                              }}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
+                            >
+                              Exchange
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canAct || busy || Boolean(game.peek)}
+                              onClick={pass}
+                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white disabled:opacity-40"
+                            >
+                              Pass
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+              );
+
               return (
               <div
                 ref={rowRef}
@@ -1161,12 +1431,19 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   immersive
                     ? layoutStacked
                       ? "min-h-0 flex-1 flex-col gap-2 overflow-hidden"
-                      : "min-h-0 flex-1 justify-center overflow-hidden"
+                      : sideRack
+                        ? "min-h-0 flex-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-stretch gap-2 overflow-hidden"
+                        : "min-h-0 flex-1 justify-center overflow-hidden"
                     : layoutStacked
                       ? "flex-col gap-3"
                       : "items-stretch gap-3",
                 ].join(" ")}
               >
+                {immersive && !layoutStacked && sideRack ? (
+                  <div className="flex min-h-0 min-w-0 items-center justify-end overflow-hidden pr-1">
+                    {rackEl}
+                  </div>
+                ) : null}
                 {/*
                   Theater desktop: pack board + panel, then center.
                   Theater phone: `contents` so board+rack and aside are direct
@@ -1322,194 +1599,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                       )}
                     </div>
 
-                    <div
-                      ref={rackRef}
-                      data-scrabble-rack="1"
-                      className={[
-                        "mt-2 flex w-full shrink-0 flex-col items-start gap-1.5 rounded-lg p-1 sm:mt-3 sm:gap-2",
-                        hoverRack ? "ring-2 ring-emerald-400/70" : "",
-                      ].join(" ")}
-                    >
-                      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
-                        {(exchangeMode || blankStareMode
-                          ? myRack
-                          : rackVisible
-                        ).map((tile) => {
-                          const selected = exchangeMode
-                            ? exchangeIds.has(tile.id)
-                            : blankStareMode
-                              ? false
-                              : selectedId === tile.id;
-                          const placeMode =
-                            !exchangeMode && !blankStareMode && !game.peek;
-                          return (
-                            <button
-                              key={tile.id}
-                              type="button"
-                              disabled={
-                                (!canDraft && !exchangeMode && !blankStareMode) ||
-                                busy ||
-                                Boolean(game.peek) ||
-                                (!exchangeMode &&
-                                  !blankStareMode &&
-                                  draftIds.has(tile.id))
-                              }
-                              className={[
-                                "touch-none",
-                                placeMode ? "cursor-grab active:cursor-grabbing" : "",
-                                draggingTileId === tile.id ? "opacity-0" : "",
-                              ].join(" ")}
-                              onClick={() => {
-                                if (suppressClickRef.current) {
-                                  suppressClickRef.current = false;
-                                  return;
-                                }
-                                onRackTileClick(tile);
-                              }}
-                              onPointerDown={
-                                placeMode
-                                  ? (event) =>
-                                      onTilePointerDown(event, "rack", tile)
-                                  : undefined
-                              }
-                              onPointerMove={
-                                placeMode ? onTilePointerMove : undefined
-                              }
-                              onPointerUp={
-                                placeMode ? onTilePointerUp : undefined
-                              }
-                              onPointerCancel={
-                                placeMode ? onTilePointerCancel : undefined
-                              }
-                            >
-                              <TileFace
-                                letter={tile.letter}
-                                blank={tile.blank}
-                                selected={selected && draggingTileId !== tile.id}
-                                small={layoutStacked}
-                              />
-                            </button>
-                          );
-                        })}
-                        {draft.map((d) => (
-                          <button
-                            key={`draft-${d.tile.id}`}
-                            type="button"
-                            disabled={!canDraft || busy}
-                            title="Return to rack"
-                            onClick={() => {
-                              if (suppressClickRef.current) {
-                                suppressClickRef.current = false;
-                                return;
-                              }
-                              setDraft((prev) =>
-                                prev.filter((x) => x.tile.id !== d.tile.id),
-                              );
-                            }}
-                          >
-                            <TileFace
-                              letter={d.chosenLetter || d.tile.letter}
-                              blank={d.tile.blank}
-                              small
-                            />
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {exchangeMode ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={
-                                !canAct || busy || game.bag.length === 0
-                              }
-                              onClick={confirmExchange}
-                              className="rounded-lg border border-sky-500/55 bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-sky-500/30 disabled:opacity-40"
-                            >
-                              Confirm exchange
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExchangeMode(false);
-                                setExchangeIds(new Set());
-                              }}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : blankStareMode ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBlankStareMode(false);
-                              setMessage(null);
-                            }}
-                            className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white"
-                          >
-                            Cancel Blank Stare
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={!canAct || busy || draft.length === 0}
-                              onClick={() => void play()}
-                              className="rounded-lg border border-emerald-500/55 bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-app-text hover:bg-emerald-500/30 disabled:opacity-40"
-                            >
-                              Play
-                            </button>
-                            <button
-                              type="button"
-                              disabled={
-                                busy ||
-                                game.status !== "playing" ||
-                                myRack.length < 2
-                              }
-                              onClick={shuffle}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
-                            >
-                              Shuffle
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!canDraft || busy || draft.length === 0}
-                              onClick={recall}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
-                            >
-                              Recall
-                            </button>
-                            <button
-                              type="button"
-                              disabled={
-                                !canAct ||
-                                busy ||
-                                game.bag.length === 0 ||
-                                Boolean(game.peek)
-                              }
-                              onClick={() => {
-                                recall();
-                                setBlankStareMode(false);
-                                setExchangeMode(true);
-                              }}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
-                            >
-                              Exchange
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!canAct || busy || Boolean(game.peek)}
-                              onClick={pass}
-                              className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-muted hover:text-white disabled:opacity-40"
-                            >
-                              Pass
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                    {!(immersive && sideRack) ? rackEl : null}
                   </div>
 
                   {immersive && !layoutStacked ? (
@@ -1770,6 +1860,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                     </div>
                   </aside>
                 </div>
+                {immersive && !layoutStacked && sideRack ? (
+                  <div aria-hidden className="min-w-0" />
+                ) : null}
               </div>
               );
             }}
@@ -1855,6 +1948,17 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   <TileFace
                     letter={fromDraft?.chosenLetter || tile.letter}
                     blank={tile.blank}
+                    sizePx={
+                      boardRef.current
+                        ? Math.max(
+                            28,
+                            Math.round(
+                              boardRef.current.getBoundingClientRect().width /
+                                SCRABBLE_SIZE,
+                            ),
+                          )
+                        : undefined
+                    }
                   />
                 );
               })()}
