@@ -533,7 +533,35 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     setHoverCell(null);
     setHoverRack(false);
     tileDragRef.current = null;
-  }, [game.roundId, game.turnUid]);
+  }, [game.roundId]);
+
+  // Off-turn practice draft returns to the rack when the turn flips — opponent
+  // may have covered cells or stolen tiles, so start the real turn clean.
+  useEffect(() => {
+    setDraft([]);
+    setExchangeMode(false);
+    setExchangeIds(new Set());
+    setBlankStareMode(false);
+    setSelectedId(null);
+    setMessage(null);
+    setDraggingTileId(null);
+    setHoverCell(null);
+    setHoverRack(false);
+    tileDragRef.current = null;
+  }, [game.turnUid]);
+
+  // Also prune mid-wait if a skill steals a tile or fills a cell without
+  // flipping the turn (shouldn't normally happen on a play, but be safe).
+  useEffect(() => {
+    const rackIds = new Set(myRack.map((t) => t.id));
+    setDraft((prev) => {
+      const next = prev.filter(
+        (d) =>
+          rackIds.has(d.tile.id) && !game.board[cellIndex(d.row, d.col)],
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [game.board, myRack]);
 
   useEffect(() => {
     if (!game.peek) {
@@ -599,8 +627,19 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
       }
       return "Your turn";
     }
+    if (draft.length > 0) return "Planning… (waiting)";
     return "Waiting for opponent";
   })();
+
+  /** Local rack→board draft only (no commits). Allowed while waiting. */
+  const canDraft =
+    game.status === "playing" &&
+    game.clockMode != null &&
+    game.firstUid != null &&
+    !busy &&
+    !exchangeMode &&
+    !blankStareMode &&
+    !game.peek;
 
   const letterOnBoard = (row: number, col: number): string | null => {
     const d = draft.find((x) => x.row === row && x.col === col);
@@ -620,7 +659,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     col: number,
     existingChosen?: string,
   ): boolean => {
-    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) {
+    if (!canDraft) {
       return false;
     }
     if (game.board[cellIndex(row, col)]) return false;
@@ -648,7 +687,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   };
 
   const placeSelectedAt = (row: number, col: number) => {
-    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) return;
+    if (!canDraft) return;
     if (game.board[cellIndex(row, col)]) return;
 
     const draftHere = draft.find((d) => d.row === row && d.col === col);
@@ -693,7 +732,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     tile: ScrabbleTile,
     chosenLetter?: string,
   ) => {
-    if (!canAct || exchangeMode || blankStareMode || busy || game.peek) return;
+    if (!canDraft) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     suppressClickRef.current = false;
     tileDragRef.current = {
@@ -901,8 +940,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   };
 
   const onRackTileClick = (tile: ScrabbleTile) => {
-    if (!canAct || busy) return;
+    if (busy) return;
     if (blankStareMode) {
+      if (!canAct) return;
       if (tile.blank) {
         setMessage("Pick a non-blank tile");
         return;
@@ -917,6 +957,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
       return;
     }
     if (exchangeMode) {
+      if (!canAct) return;
       setExchangeIds((prev) => {
         const next = new Set(prev);
         if (next.has(tile.id)) next.delete(tile.id);
@@ -925,6 +966,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
       });
       return;
     }
+    if (!canDraft) return;
     setSelectedId((id) => (id === tile.id ? null : tile.id));
   };
 
@@ -1204,7 +1246,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                               type="button"
                               data-scrabble-row={row}
                               data-scrabble-col={col}
-                              disabled={!canAct || exchangeMode || busy}
+                              disabled={!canDraft}
                               onClick={() => {
                                 if (suppressClickRef.current) {
                                   suppressClickRef.current = false;
@@ -1305,7 +1347,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                               key={tile.id}
                               type="button"
                               disabled={
-                                !canAct ||
+                                (!canDraft && !exchangeMode && !blankStareMode) ||
                                 busy ||
                                 Boolean(game.peek) ||
                                 (!exchangeMode &&
@@ -1353,7 +1395,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                           <button
                             key={`draft-${d.tile.id}`}
                             type="button"
-                            disabled={!canAct || busy}
+                            disabled={!canDraft || busy}
                             title="Return to rack"
                             onClick={() => {
                               if (suppressClickRef.current) {
@@ -1433,7 +1475,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                             </button>
                             <button
                               type="button"
-                              disabled={!canAct || busy || draft.length === 0}
+                              disabled={!canDraft || busy || draft.length === 0}
                               onClick={recall}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs text-white hover:border-muted disabled:opacity-40"
                             >
