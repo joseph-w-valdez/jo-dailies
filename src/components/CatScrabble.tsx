@@ -625,30 +625,30 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     tileDragRef.current = null;
   }, [game.roundId]);
 
-  // Off-turn practice draft returns to the rack when the turn flips — opponent
-  // may have covered cells or stolen tiles, so start the real turn clean.
+  // Reset exchange / blank-stare chrome on turn flip; leave practice draft alone
+  // unless the board prune below finds a conflict.
   useEffect(() => {
-    setDraft([]);
     setExchangeMode(false);
     setExchangeIds(new Set());
     setBlankStareMode(false);
     setSelectedId(null);
-    setMessage(null);
     setDraggingTileId(null);
     setHoverCell(null);
     setHoverRack(false);
     tileDragRef.current = null;
   }, [game.turnUid]);
 
-  // Also prune mid-wait if a skill steals a tile or fills a cell without
-  // flipping the turn (shouldn't normally happen on a play, but be safe).
+  // Keep off-turn draft when the turn returns — unless the opponent covered any
+  // square we drafted on (then recall everything). Also drop tiles stolen off the rack.
   useEffect(() => {
     const rackIds = new Set(myRack.map((t) => t.id));
     setDraft((prev) => {
-      const next = prev.filter(
-        (d) =>
-          rackIds.has(d.tile.id) && !game.board[cellIndex(d.row, d.col)],
+      if (prev.length === 0) return prev;
+      const anyDraftCellTaken = prev.some(
+        (d) => game.board[cellIndex(d.row, d.col)],
       );
+      if (anyDraftCellTaken) return [];
+      const next = prev.filter((d) => rackIds.has(d.tile.id));
       return next.length === prev.length ? prev : next;
     });
   }, [game.board, myRack]);
