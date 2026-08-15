@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 const THEATER_KEY = 'jo-dailies:arcade-theater:v1'
 
@@ -137,13 +138,14 @@ export function ArcadeStage({
     }
   }
 
-  return (
+  const stage = (
     <section
       ref={frameRef}
       className={[
         'border border-border bg-surface-raised shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]',
         theater
-          ? 'fixed inset-0 z-[60] flex flex-col rounded-none p-4'
+          ? // Above AppHeader (z-50). Portaled to body so page `z-10` cannot trap it.
+            'fixed inset-0 z-[70] flex flex-col rounded-none p-3 sm:p-4'
           : 'rounded-2xl p-4',
         fullscreen ? 'flex h-screen flex-col rounded-none p-4' : '',
       ].join(' ')}
@@ -190,4 +192,11 @@ export function ArcadeStage({
       </div>
     </section>
   )
+
+  // Escape ArcadePage's `relative z-10` stacking context so the sticky nav
+  // cannot paint over theater chrome / skills / board.
+  if (theater && typeof document !== 'undefined') {
+    return createPortal(stage, document.body)
+  }
+  return stage
 }

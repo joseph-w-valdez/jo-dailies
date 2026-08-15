@@ -101,10 +101,7 @@ function TileFace({
     >
       <span className="leading-none">{letter || (blank ? "?" : "")}</span>
       <span
-        className={[
-          "absolute bottom-0.5 right-0.5 font-bold tabular-nums leading-none text-amber-950/70",
-          small ? "text-[8px]" : "text-[10px]",
-        ].join(" ")}
+        className="absolute bottom-[0.06em] right-[0.08em] text-[0.42em] font-bold tabular-nums leading-none text-amber-950/70"
         aria-hidden
       >
         {points}
@@ -239,7 +236,32 @@ const SIDEBAR_DEFAULT_PX = 320;
 const SIDEBAR_MIN_PX = 180;
 const HANDLE_PX = 8;
 const PLAY_GAP_PX = 12;
+/** Reserved height for score/moves when theater stacks on phones. */
+const STACKED_SIDEBAR_H = 200;
+const BOARD_MIN_PX = 140;
 const TILE_DRAG_THRESHOLD = 6;
+
+/** Narrow phones or short landscape — board above sidebar. */
+function useScrabbleStackedLayout(): boolean {
+  const [stacked, setStacked] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(
+      "(max-width: 639px), (max-height: 520px)",
+    ).matches;
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia(
+      "(max-width: 639px), (max-height: 520px)",
+    );
+    const sync = () => setStacked(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return stacked;
+}
 
 function promptBlankLetter(): string | null {
   const raw = window.prompt("Letter for blank tile?", "A");
@@ -301,9 +323,10 @@ function writeSidebarWidth(px: number) {
   }
 }
 
-/** Largest square that fits above the rack and beside the moves panel. */
+/** Largest square that fits with rack (+ stacked sidebar in theater). */
 function useTheaterBoardPx(
   enabled: boolean,
+  stacked: boolean,
   rowRef: RefObject<HTMLDivElement | null>,
   rackRef: RefObject<HTMLDivElement | null>,
   sidebarWidth: number,
@@ -320,10 +343,21 @@ function useTheaterBoardPx(
 
     const measure = () => {
       const rackH = rackRef.current?.offsetHeight ?? 0;
-      const availableH = row.clientHeight - rackH - PLAY_GAP_PX;
-      const availableW =
-        row.clientWidth - sidebarWidth - HANDLE_PX - PLAY_GAP_PX;
-      const next = Math.max(160, Math.floor(Math.min(availableH, availableW)));
+      let availableH: number;
+      let availableW: number;
+      if (stacked) {
+        availableW = row.clientWidth;
+        availableH =
+          row.clientHeight - rackH - STACKED_SIDEBAR_H - PLAY_GAP_PX * 2;
+      } else {
+        availableH = row.clientHeight - rackH - PLAY_GAP_PX;
+        availableW =
+          row.clientWidth - sidebarWidth - HANDLE_PX - PLAY_GAP_PX;
+      }
+      const next = Math.max(
+        BOARD_MIN_PX,
+        Math.floor(Math.min(availableH, availableW)),
+      );
       setPx((prev) => (prev === next ? prev : next));
     };
 
@@ -333,16 +367,18 @@ function useTheaterBoardPx(
     const rack = rackRef.current;
     if (rack) ro.observe(rack);
     return () => ro.disconnect();
-  }, [enabled, rowRef, rackRef, sidebarWidth]);
+  }, [enabled, stacked, rowRef, rackRef, sidebarWidth]);
 
   return enabled ? px : null;
 }
 
 function TheaterPlayRow({
   immersive,
+  stacked,
   children,
 }: {
   immersive: boolean;
+  stacked: boolean;
   children: (ctx: {
     boardPx: number | null;
     rowRef: RefObject<HTMLDivElement | null>;
@@ -350,6 +386,7 @@ function TheaterPlayRow({
     sidebarWidth: number;
     setSidebarWidth: (px: number) => void;
     onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    stacked: boolean;
   }) => ReactNode;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -360,7 +397,13 @@ function TheaterPlayRow({
     startX: number;
     startWidth: number;
   } | null>(null);
-  const boardPx = useTheaterBoardPx(immersive, rowRef, rackRef, sidebarWidth);
+  const boardPx = useTheaterBoardPx(
+    immersive,
+    stacked,
+    rowRef,
+    rackRef,
+    sidebarWidth,
+  );
 
   useEffect(() => {
     if (!immersive) return;
@@ -379,7 +422,7 @@ function TheaterPlayRow({
   };
 
   const onResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!immersive) return;
+    if (!immersive || stacked) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
@@ -390,7 +433,7 @@ function TheaterPlayRow({
   };
 
   useEffect(() => {
-    if (!immersive) return;
+    if (!immersive || stacked) return;
 
     const onMove = (event: PointerEvent) => {
       const drag = dragRef.current;
@@ -429,7 +472,7 @@ function TheaterPlayRow({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [immersive]);
+  }, [immersive, stacked]);
 
   return children({
     boardPx,
@@ -438,12 +481,14 @@ function TheaterPlayRow({
     sidebarWidth,
     setSidebarWidth: (px) => setSidebarWidth(clampSidebar(px)),
     onResizePointerDown,
+    stacked,
   });
 }
 
 export function CatScrabble({ onClose }: { onClose: () => void }) {
   const { game, ready, uid, actorUid, myRack, canAct, commitGame, resetGame } =
     useSharedScrabble();
+  const stacked = useScrabbleStackedLayout();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftCell[]>([]);
   const [exchangeMode, setExchangeMode] = useState(false);
@@ -910,7 +955,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
       {({ immersive }) => (
         <div className={immersive ? "flex min-h-0 flex-1 flex-col" : undefined}>
           {immersive ? null : (
-            <div className="mt-2 rounded-xl border border-border bg-surface/60 px-3.5 py-3">
+            <div className="mt-2 hidden rounded-xl border border-border bg-surface/60 px-3.5 py-3 sm:block">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                   Skills
@@ -920,7 +965,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                 </p>
                 <TurnPushToggle />
               </div>
-              <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {(
                   [
                     ["Cat Burglar", "steal a vowel from opponent’s rack"],
@@ -947,8 +992,18 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted">
+          <div
+            className={[
+              "mt-2 flex shrink-0 flex-col gap-1.5 sm:mt-3",
+              immersive ? "gap-1" : "",
+            ].join(" ")}
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted sm:gap-3 sm:text-[11px]">
+              {!immersive ? (
+                <span className="sm:hidden">
+                  <TurnPushToggle />
+                </span>
+              ) : null}
               <span>Bag {game.bag.length}</span>
               {game.hotseat ? (
                 <span>
@@ -965,43 +1020,47 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                 </span>
               ) : null}
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              {SKILL_BUTTONS.map((btn) => {
-                const left = mySkills[btn.id] ?? 0;
-                return (
-                  <button
-                    key={btn.id}
-                    type="button"
-                    title={btn.title}
-                    disabled={
-                      !canAct ||
-                      busy ||
-                      left <= 0 ||
-                      Boolean(game.peek) ||
-                      (btn.id === "meowtiply" && game.meowtiplyFor === actorUid)
-                    }
-                    onClick={() => runSkill(btn.id)}
-                    className={[
-                      "rounded-md border px-2 py-1 text-[10px] font-medium leading-tight transition disabled:opacity-40",
-                      btn.cls,
-                    ].join(" ")}
-                  >
-                    {btn.label} ({left})
-                  </button>
-                );
-              })}
-              {game.hotseat ? (
-                <span className="rounded-md border border-amber-500/55 bg-amber-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-app-text">
-                  Debug hotseat
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setNewGameOpen(true)}
-                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
-              >
-                New game
-              </button>
+            {/* One row — scroll horizontally on narrow theater instead of wrapping. */}
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+                {SKILL_BUTTONS.map((btn) => {
+                  const left = mySkills[btn.id] ?? 0;
+                  return (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      title={btn.title}
+                      disabled={
+                        !canAct ||
+                        busy ||
+                        left <= 0 ||
+                        Boolean(game.peek) ||
+                        (btn.id === "meowtiply" &&
+                          game.meowtiplyFor === actorUid)
+                      }
+                      onClick={() => runSkill(btn.id)}
+                      className={[
+                        "whitespace-nowrap rounded-md border px-1.5 py-1 text-[9px] font-medium leading-tight transition disabled:opacity-40 sm:px-2 sm:text-[10px]",
+                        btn.cls,
+                      ].join(" ")}
+                    >
+                      {btn.label} ({left})
+                    </button>
+                  );
+                })}
+                {game.hotseat ? (
+                  <span className="whitespace-nowrap rounded-md border border-amber-500/55 bg-amber-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-app-text">
+                    Debug hotseat
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setNewGameOpen(true)}
+                  className="whitespace-nowrap rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted sm:px-2.5 sm:text-xs"
+                >
+                  New game
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1042,7 +1101,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
               />
             </div>
           ) : (
-          <TheaterPlayRow immersive={immersive}>
+          <TheaterPlayRow immersive={immersive} stacked={stacked}>
             {({
               boardPx,
               rowRef,
@@ -1050,37 +1109,65 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
               sidebarWidth,
               setSidebarWidth,
               onResizePointerDown,
-            }) => (
+              stacked: layoutStacked,
+            }) => {
+              return (
               <div
                 ref={rowRef}
                 className={[
-                  "mt-3 flex min-h-0",
-                  immersive ? "flex-1 justify-center" : "items-stretch gap-3",
+                  "mt-2 flex min-h-0 sm:mt-3",
+                  immersive
+                    ? layoutStacked
+                      ? "min-h-0 flex-1 flex-col gap-2 overflow-hidden"
+                      : "min-h-0 flex-1 justify-center overflow-hidden"
+                    : layoutStacked
+                      ? "flex-col gap-3"
+                      : "items-stretch gap-3",
                 ].join(" ")}
               >
-                {/* Theater: pack board + panel as one unit, then center the unit. */}
+                {/*
+                  Theater desktop: pack board + panel, then center.
+                  Theater phone: `contents` so board+rack and aside are direct
+                  column siblings (avoids flex-1 board column overlapping aside).
+                */}
                 <div
                   className={
-                    immersive
-                      ? "flex h-full min-h-0 max-w-full items-stretch gap-2"
+                    immersive && !layoutStacked
+                      ? "flex h-full min-h-0 max-w-full items-stretch gap-2 overflow-hidden"
                       : "contents"
                   }
                 >
-                  <div className="flex min-h-0 shrink-0 flex-col">
+                  <div
+                    className={[
+                      "relative z-[1] flex min-h-0 flex-col",
+                      layoutStacked
+                        ? "w-full max-w-full shrink-0 items-center"
+                        : immersive
+                          ? // Theater desktop: hug the measured square — never a fixed 36rem column.
+                            "shrink-0"
+                          : "w-[36rem] max-w-full shrink-0",
+                    ].join(" ")}
+                  >
                     <div
                       ref={boardRef}
-                      className="grid shrink-0 gap-0.5 rounded-xl border border-border bg-board-frame p-1.5"
+                      className={[
+                        "@container/scrabble-board grid shrink-0 gap-0.5 rounded-xl border border-border bg-board-frame p-1 sm:p-1.5",
+                        !immersive
+                          ? "aspect-square w-full max-w-full"
+                          : "",
+                      ].join(" ")}
                       style={
                         immersive
                           ? {
-                              width: boardPx ?? 160,
-                              height: boardPx ?? 160,
+                              width: boardPx ?? BOARD_MIN_PX,
+                              height: boardPx ?? BOARD_MIN_PX,
                               gridTemplateColumns: `repeat(${SCRABBLE_SIZE}, minmax(0, 1fr))`,
                               gridTemplateRows: `repeat(${SCRABBLE_SIZE}, minmax(0, 1fr))`,
                             }
                           : {
-                              gridTemplateColumns: `repeat(${SCRABBLE_SIZE}, 2.25rem)`,
-                              gridTemplateRows: `repeat(${SCRABBLE_SIZE}, 2.25rem)`,
+                              containerType: "inline-size",
+                              gridTemplateColumns: `repeat(${SCRABBLE_SIZE}, minmax(0, 1fr))`,
+                              gridTemplateRows: `repeat(${SCRABBLE_SIZE}, minmax(0, 1fr))`,
                             }
                       }
                       role="grid"
@@ -1142,7 +1229,11 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                 isDraft ? onTilePointerCancel : undefined
                               }
                               className={[
-                                "relative flex min-h-0 min-w-0 touch-none items-center justify-center rounded-md border border-black/20 text-sm font-semibold uppercase leading-none",
+                                "relative flex min-h-0 min-w-0 touch-none items-center justify-center rounded-md border border-black/20 font-semibold uppercase leading-none",
+                                // ~0.48 of a cell; points below use em so they track this size.
+                                immersive
+                                  ? ""
+                                  : "text-[max(0.4rem,3.15cqw)]",
                                 letter
                                   ? isDraft
                                     ? "cursor-grab border-amber-800/30 bg-[#f3e6c8] text-amber-950 ring-2 ring-golden active:cursor-grabbing"
@@ -1160,19 +1251,26 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                   : "",
                                 draggingThis ? "opacity-0" : "",
                               ].join(" ")}
+                              style={
+                                immersive && boardPx
+                                  ? {
+                                      fontSize: `${Math.max(6, Math.floor((boardPx / SCRABBLE_SIZE) * 0.48))}px`,
+                                    }
+                                  : undefined
+                              }
                             >
                               {letter ? (
                                 <>
                                   <span className="leading-none">{letter}</span>
                                   <span
-                                    className="absolute bottom-0.5 right-0.5 text-[9px] font-bold tabular-nums leading-none text-amber-950/70"
+                                    className="absolute bottom-[0.06em] right-[0.08em] text-[0.42em] font-bold tabular-nums leading-none text-amber-950/70"
                                     aria-hidden
                                   >
                                     {letterValue(letter, blank)}
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-[9px] font-bold opacity-80">
+                                <span className="text-[0.42em] font-bold leading-none opacity-80">
                                   {premiumLabel(prem)}
                                 </span>
                               )}
@@ -1186,11 +1284,11 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                       ref={rackRef}
                       data-scrabble-rack="1"
                       className={[
-                        "mt-3 flex shrink-0 flex-col items-start gap-2 rounded-lg p-1",
+                        "mt-2 flex w-full shrink-0 flex-col items-start gap-1.5 rounded-lg p-1 sm:mt-3 sm:gap-2",
                         hoverRack ? "ring-2 ring-emerald-400/70" : "",
                       ].join(" ")}
                     >
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
                         {(exchangeMode || blankStareMode
                           ? myRack
                           : rackVisible
@@ -1246,6 +1344,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                                 letter={tile.letter}
                                 blank={tile.blank}
                                 selected={selected && draggingTileId !== tile.id}
+                                small={layoutStacked}
                               />
                             </button>
                           );
@@ -1371,7 +1470,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
 
-                  {immersive ? (
+                  {immersive && !layoutStacked ? (
                     <div
                       role="separator"
                       aria-orientation="vertical"
@@ -1401,15 +1500,42 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   <aside
                     className={[
                       "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface/70",
-                      immersive ? "shrink-0" : "min-w-0 flex-1",
+                      immersive && !layoutStacked
+                        ? "shrink-0"
+                        : "min-w-0 w-full",
+                      // Theater phone: fill leftover height under board+rack.
+                      immersive && layoutStacked
+                        ? "min-h-0 flex-1"
+                        : "",
+                      !immersive && layoutStacked
+                        ? "min-h-[17rem] flex-1"
+                        : !immersive
+                          ? "flex-1"
+                          : "",
                     ].join(" ")}
-                    style={immersive ? { width: sidebarWidth } : undefined}
+                    style={
+                      immersive && !layoutStacked
+                        ? { width: sidebarWidth }
+                        : undefined
+                    }
                   >
-                    <div className="shrink-0 border-b border-border px-3 py-2.5">
+                    <div
+                      className={[
+                        "shrink-0 border-b border-border px-2.5 py-2 sm:px-3 sm:py-2.5",
+                        layoutStacked ? "sm:border-b" : "",
+                      ].join(" ")}
+                    >
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                         Score
                       </p>
-                      <div className="mt-2 space-y-1.5">
+                      <div
+                        className={[
+                          "mt-1.5 gap-1.5 sm:mt-2 sm:space-y-1.5",
+                          layoutStacked
+                            ? "grid grid-cols-2"
+                            : "space-y-1.5",
+                        ].join(" ")}
+                      >
                         {JENGA_PLAYER_UIDS.map((id) => {
                           const turn =
                             game.turnUid === id && game.status === "playing";
@@ -1454,11 +1580,21 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
 
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <div
+                      className={[
+                        "flex min-h-0 flex-1 flex-col overflow-hidden",
+                        layoutStacked ? "min-h-[9.5rem]" : "",
+                      ].join(" ")}
+                    >
                       <p className="shrink-0 px-3 pt-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                         Moves
                       </p>
-                      <div className="relative mt-2 min-h-0 flex-1">
+                      <div
+                        className={[
+                          "relative mt-2 min-h-0 flex-1",
+                          layoutStacked ? "min-h-[7.5rem]" : "",
+                        ].join(" ")}
+                      >
                         <ul className="jo-scroll absolute inset-0 space-y-1.5 overflow-y-auto overscroll-contain px-3 pb-2">
                           {game.moveLog.length === 0 ? (
                             <li className="text-[11px] text-muted">
@@ -1593,7 +1729,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   </aside>
                 </div>
               </div>
-            )}
+              );
+            }}
           </TheaterPlayRow>
           )}
 
