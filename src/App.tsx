@@ -39,6 +39,7 @@ import { RecipeEditorPage } from "./pages/RecipeEditorPage";
 import { RecipeViewerPage } from "./pages/RecipeViewerPage";
 import { ShoppingPage } from "./pages/ShoppingPage";
 import { WheelPage } from "./pages/WheelPage";
+import { TrackerPage } from "./pages/TrackerPage";
 
 function HomePage() {
   const {
@@ -305,6 +306,7 @@ function AppContent() {
           />
           <Route path="/shopping" element={<ShoppingPage />} />
           <Route path="/wheel" element={<WheelPage />} />
+          <Route path="/tracker" element={<TrackerPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
