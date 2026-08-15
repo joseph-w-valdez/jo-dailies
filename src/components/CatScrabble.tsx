@@ -82,6 +82,7 @@ function TileFace({
   selected,
   small,
   sizePx,
+  recallHint,
 }: {
   letter: string;
   blank?: boolean;
@@ -89,6 +90,8 @@ function TileFace({
   small?: boolean;
   /** Immersive rack — match board cell size when set. */
   sizePx?: number;
+  /** Draft slot on the rack — tap to pull the tile back off the board. */
+  recallHint?: boolean;
 }) {
   const points = letterValue(letter, Boolean(blank));
   const sized = sizePx != null && sizePx > 0;
@@ -101,9 +104,13 @@ function TileFace({
           : small
             ? "h-7 w-7 text-xs"
             : "h-9 w-9 text-sm",
-        blank
-          ? "border-dashed border-amber-700/50 bg-amber-50/90 text-amber-900"
-          : "border-amber-800/30 bg-[#f3e6c8] text-amber-950",
+        recallHint
+          ? blank
+            ? "border-dashed border-rose-700/45 bg-amber-900/70 text-amber-100/70"
+            : "border-amber-900/45 bg-amber-900/65 text-amber-100/65"
+          : blank
+            ? "border-dashed border-amber-700/50 bg-amber-50/90 text-amber-900"
+            : "border-amber-800/30 bg-[#f3e6c8] text-amber-950",
         selected ? "ring-2 ring-golden" : "",
       ].join(" ")}
       style={
@@ -118,11 +125,34 @@ function TileFace({
     >
       <span className="leading-none">{letter || (blank ? "?" : "")}</span>
       <span
-        className="absolute bottom-[0.06em] right-[0.08em] text-[0.42em] font-bold tabular-nums leading-none text-amber-950/70"
+        className={[
+          "absolute bottom-[0.06em] right-[0.08em] text-[0.42em] font-bold tabular-nums leading-none",
+          recallHint ? "text-amber-100/45" : "text-amber-950/70",
+        ].join(" ")}
         aria-hidden
       >
         {points}
       </span>
+      {recallHint ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-[0.92em] w-[0.92em] text-rose-500 drop-shadow-[0_1px_1px_rgba(0,0,0,0.55)]"
+            style={{ width: "2.55em", height: "2.55em" }}
+          >
+            <path
+              d="M5 5l14 14M19 5L5 19"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.25"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -1302,6 +1332,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                             type="button"
                             disabled={!canDraft || busy}
                             title="Return to rack"
+                            aria-label={`Recall ${d.chosenLetter || d.tile.letter || "blank"} from board`}
                             onClick={() => {
                               if (suppressClickRef.current) {
                                 suppressClickRef.current = false;
@@ -1317,6 +1348,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                               blank={d.tile.blank}
                               small={rackTilePx == null}
                               sizePx={rackTilePx ?? undefined}
+                              recallHint
                             />
                           </button>
                         ))}
