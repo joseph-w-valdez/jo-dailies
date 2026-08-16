@@ -11,8 +11,16 @@ import {
 } from "react";
 import * as THREE from "three";
 import { useThemeCssColor } from "../hooks/useThemeCssColor";
-import { agentById, roleMeta, type ValorantAgent } from "../lib/valorantAgents";
+import {
+  agentById,
+  roleMeta,
+  type ValorantAgent,
+} from "../lib/valorantAgents";
 import { GUESS_WHO_BOARD_COLS } from "../lib/guessWho";
+import {
+  GuessWhoAgentCard,
+  idealGuessWhoPortraitH,
+} from "./GuessWhoAgentCard";
 
 /** World units — table-top board, cards stand on Y. */
 const CARD_W = 0.72;
@@ -324,97 +332,22 @@ function slotPos(
   };
 }
 
-function CardFace({
-  agent,
-  selected,
-  guessArmed,
-  compact,
-  large,
-}: {
-  agent: ValorantAgent;
-  selected?: boolean;
-  guessArmed?: boolean;
-  compact?: boolean;
-  /** Fill more of the preview pane. */
-  large?: boolean;
-}) {
-  const theme = roleMeta(agent.role);
-  const w = large ? 248 : compact ? 124 : 140;
-  const h = large ? 396 : compact ? 192 : 225;
-  const portraitH = large ? 272 : compact ? 128 : 152;
-  const nameSize = large ? 13 : 10;
-  const metaSize = large ? 10 : 7;
-  return (
-    <div
-      className={[
-        "flex h-full w-full flex-col overflow-hidden rounded-[5px] border-[3px] shadow-sm",
-        selected
-          ? "border-amber-300"
-          : guessArmed
-            ? "border-rose-400"
-            : "border-white/90",
-      ].join(" ")}
-      style={{ width: w, height: h }}
-    >
-      <div
-        className="relative w-full shrink-0 overflow-hidden"
-        style={{
-          height: portraitH,
-          background:
-            "linear-gradient(180deg, #cfcfcf 0%, #ffffff 6%, #ffffff 94%, #cfcfcf 100%)",
-        }}
-      >
-        <img
-          src={agent.icon}
-          alt=""
-          className="absolute inset-0 h-full w-full object-contain object-bottom"
-          draggable={false}
-        />
-      </div>
-      <div
-        className="flex min-h-0 flex-1 flex-col justify-center px-1.5 py-1.5"
-        style={{ backgroundColor: theme.bar }}
-      >
-        <div
-          className="truncate text-center font-bold uppercase tracking-wide"
-          style={{ color: "#ffffff", fontSize: nameSize }}
-        >
-          {agent.name}
-        </div>
-        <div className="mt-0.5 flex items-center justify-center gap-1">
-          <img
-            src={theme.icon}
-            alt=""
-            className={[
-              "shrink-0 object-contain opacity-95",
-              large ? "size-4" : "size-2.5",
-            ].join(" ")}
-            draggable={false}
-          />
-          <span
-            className="truncate font-semibold uppercase tracking-wider"
-            style={{ color: theme.accent, fontSize: metaSize }}
-          >
-            {agent.role}
-          </span>
-        </div>
-        <div className="mt-0.5 border-t border-white/15 pt-0.5">
-          <div
-            className="truncate text-center leading-tight"
-            style={{ color: "#ffffff", fontSize: metaSize }}
-          >
-            {agent.origin} — {agent.kind}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const FACE_TEX_W = 288;
 const FACE_TEX_H = 448;
 /** Pixel rim matching FRAME / outer flap so plastic + face are one texture. */
 const FACE_TEX_RIM = Math.round(FACE_TEX_W * (FRAME / (CARD_W + FRAME * 2)));
+const PREVIEW_PX = 280;
+
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
 
 /** Full flap front (theme plastic rim + card) as one mesh-locked canvas texture. */
 function useFlapFaceTexture(
@@ -443,7 +376,10 @@ function useFlapFaceTexture(
     map.anisotropy = 4;
     map.flipY = true;
 
-    const paint = (portrait: HTMLImageElement | null) => {
+    const paint = (
+      portrait: HTMLImageElement | null,
+      roleIcon: HTMLImageElement | null,
+    ) => {
       if (cancelled) return;
       const W = FACE_TEX_W;
       const H = FACE_TEX_H;
@@ -471,7 +407,6 @@ function useFlapFaceTexture(
       const ih = ch - inset * 2;
 
       if (blinded) {
-        // Phoenix flash — blank face plate, no portrait / name
         const flash = ctx.createLinearGradient(0, iy, 0, iy + ih);
         flash.addColorStop(0, "#fff7ed");
         flash.addColorStop(0.45, "#fdba74");
@@ -516,17 +451,31 @@ function useFlapFaceTexture(
       ctx.font = "bold 26px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const nameY = iy + portraitH + 32;
+      const nameY = iy + portraitH + 28;
       ctx.fillText(agent.name.toUpperCase(), W / 2, nameY, iw - 12);
 
-      ctx.fillStyle = role.accent;
+      const roleY = nameY + 26;
+      const roleLabel = agent.role.toUpperCase();
       ctx.font = "600 15px system-ui, sans-serif";
-      ctx.fillText(agent.role.toUpperCase(), W / 2, nameY + 26, iw - 12);
+      const roleTextW = ctx.measureText(roleLabel).width;
+      const iconSize = 16;
+      const roleGap = 6;
+      const roleBlockW =
+        (roleIcon ? iconSize + roleGap : 0) + roleTextW;
+      let roleX = W / 2 - roleBlockW / 2;
+      if (roleIcon && roleIcon.naturalWidth > 0) {
+        ctx.drawImage(roleIcon, roleX, roleY - iconSize / 2, iconSize, iconSize);
+        roleX += iconSize + roleGap;
+      }
+      ctx.fillStyle = role.accent;
+      ctx.textAlign = "left";
+      ctx.fillText(roleLabel, roleX, roleY, iw - 12);
+      ctx.textAlign = "center";
 
       ctx.strokeStyle = "rgba(255,255,255,0.2)";
       ctx.beginPath();
-      ctx.moveTo(ix + 10, nameY + 40);
-      ctx.lineTo(ix + iw - 10, nameY + 40);
+      ctx.moveTo(ix + 10, roleY + 14);
+      ctx.lineTo(ix + iw - 10, roleY + 14);
       ctx.stroke();
 
       ctx.fillStyle = "#ffffff";
@@ -534,14 +483,14 @@ function useFlapFaceTexture(
       ctx.fillText(
         `${agent.origin} — ${agent.kind}`,
         W / 2,
-        nameY + 56,
+        roleY + 30,
         iw - 12,
       );
 
       map.needsUpdate = true;
     };
 
-    paint(null);
+    paint(null, null);
     setTexture(map);
 
     if (blinded) {
@@ -552,17 +501,14 @@ function useFlapFaceTexture(
       };
     }
 
-    const img = new Image();
-    img.decoding = "async";
-    img.crossOrigin = "anonymous";
-    img.onload = () => paint(img);
-    img.onerror = () => paint(null);
-    img.src = agent.icon;
+    void Promise.all([loadImage(agent.icon), loadImage(role.icon)]).then(
+      ([portrait, roleIcon]) => {
+        if (!cancelled) paint(portrait, roleIcon);
+      },
+    );
 
     return () => {
       cancelled = true;
-      img.onload = null;
-      img.onerror = null;
       setTexture(null);
       map.dispose();
     };
@@ -576,6 +522,7 @@ function useFlapFaceTexture(
     cardEdge,
     role.accent,
     role.bar,
+    role.icon,
     palette.flap,
     palette.flapHi,
     blinded,
@@ -1158,12 +1105,14 @@ export function GuessWhoBoard3D({
           </div>
           <div className="flex min-h-0 flex-1 items-start justify-center px-2.5 pb-2.5 pt-8">
             {hovered && !facesBlinded ? (
-              <CardFace
+              <GuessWhoAgentCard
                 agent={hovered}
-                large
+                sizePx={PREVIEW_PX}
+                portraitH={idealGuessWhoPortraitH(PREVIEW_PX)}
                 guessArmed={
                   Boolean(guessArmed) && !flippedSet.has(hovered.id)
                 }
+                interactive={false}
               />
             ) : facesBlinded ? (
               <p className="px-2 pt-6 text-center text-[11px] leading-snug text-muted">
