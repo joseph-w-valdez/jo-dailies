@@ -8,6 +8,7 @@ import {
   getActiveWheelTab,
   isPinnedWheelTab,
   isValorantAgentWheel,
+  loadWheelAgentPreset,
   normalizeWheel,
   pickWheelColor,
   pickWeightedIndex,
@@ -15,8 +16,10 @@ import {
   renameWheelTab,
   resetValorantAgentsTab,
   rotationForWinner,
+  saveWheelAgentPreset,
   setValorantRoleEnabled,
   valorantRoleFilterState,
+  wheelAgentPresetSaved,
   wheelIconPose,
   wheelSlicePath,
   wheelToDoc,
@@ -235,6 +238,45 @@ describe('wheel', () => {
     expect(
       restored.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!.entries,
     ).toHaveLength(entries.length)
+  })
+
+  it('saves and loads Joseph / Joha agent presets', () => {
+    let state = createInitialWheel()
+    expect(wheelAgentPresetSaved(state, 'joseph')).toBe(false)
+    expect(loadWheelAgentPreset(state, 'joseph')).toBeNull()
+
+    const agents = state.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
+    const keep = new Set(agents.entries.slice(0, 5).map((e) => e.id))
+    state = {
+      ...state,
+      tabs: state.tabs.map((t) =>
+        t.id === WHEEL_VALORANT_TAB_ID
+          ? {
+              ...t,
+              entries: t.entries.map((e) => ({
+                ...e,
+                enabled: keep.has(e.id),
+                weight: keep.has(e.id) ? 3 : 1,
+              })),
+            }
+          : t,
+      ),
+    }
+
+    const saved = saveWheelAgentPreset(state, 'joseph')!
+    expect(wheelAgentPresetSaved(saved, 'joseph')).toBe(true)
+    expect(saved.agentPresets.joseph).toHaveLength(5)
+
+    const loaded = loadWheelAgentPreset(saved, 'joseph')!
+    const next = loaded.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
+    expect(next.entries.filter((e) => e.enabled).map((e) => e.id).sort()).toEqual(
+      [...keep].sort(),
+    )
+    expect(next.entries.every((e) => e.weight === 1)).toBe(true)
+
+    const doc = wheelToDoc(saved)
+    const roundTrip = normalizeWheel(doc)
+    expect(roundTrip.agentPresets.joseph).toEqual(saved.agentPresets.joseph)
   })
 
   it('promotes a legacy Agents tab to the pinned id', () => {

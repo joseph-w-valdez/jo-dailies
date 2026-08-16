@@ -39,10 +39,44 @@ export interface WheelRoomState {
   activeTabId: string
   version: number
   updatedAt: number
+  /**
+   * Usual agent pools — entry ids (`agent-{uuid}`) that should be enabled.
+   * `null` = never saved yet.
+   */
+  agentPresets: {
+    joseph: string[] | null
+    joha: string[] | null
+  }
 }
+
+export type WheelAgentPresetWho = keyof WheelRoomState['agentPresets']
 
 export const WHEEL_TAB_MAX = 8
 export const WHEEL_DEFAULT_TAB_NAME = 'Main'
+
+export const WHEEL_AGENT_PRESET_LABELS: Record<WheelAgentPresetWho, string> = {
+  joseph: 'Joseph',
+  joha: 'Joha',
+}
+
+function emptyAgentPresets(): WheelRoomState['agentPresets'] {
+  return { joseph: null, joha: null }
+}
+
+function parseAgentPresets(raw: unknown): WheelRoomState['agentPresets'] {
+  const out = emptyAgentPresets()
+  if (!raw || typeof raw !== 'object') return out
+  const o = raw as Record<string, unknown>
+  for (const who of ['joseph', 'joha'] as const) {
+    const v = o[who]
+    if (v == null) continue
+    if (!Array.isArray(v)) continue
+    out[who] = v
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      .map((id) => id.trim())
+  }
+  return out
+}
 
 /** Slice colors that read well on dark UI — spaced hues so neighbors don't clash. */
 export const WHEEL_COLORS = [
@@ -270,6 +304,7 @@ export function createInitialWheel(): WheelRoomState {
     activeTabId: main.id,
     version: 1,
     updatedAt: Date.now(),
+    agentPresets: emptyAgentPresets(),
   }
 }
 
@@ -483,7 +518,13 @@ export function parseWheelState(raw: unknown): WheelRoomState {
       tabs.some((t) => t.id === s.activeTabId)
         ? s.activeTabId
         : tabs[0]!.id
-    return { tabs, activeTabId, version, updatedAt }
+    return {
+      tabs,
+      activeTabId,
+      version,
+      updatedAt,
+      agentPresets: parseAgentPresets(s.agentPresets),
+    }
   }
 
   // Legacy single-wheel docs: wrap `entries` (+ spin fields) into Main.
@@ -501,6 +542,7 @@ export function parseWheelState(raw: unknown): WheelRoomState {
     activeTabId: tab.id,
     version,
     updatedAt,
+    agentPresets: parseAgentPresets(s.agentPresets),
   }
 }
 
@@ -525,6 +567,10 @@ export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
     activeTabId: state.activeTabId,
     version: state.version,
     updatedAt: state.updatedAt,
+    agentPresets: {
+      joseph: state.agentPresets.joseph,
+      joha: state.agentPresets.joha,
+    },
   }
 }
 
@@ -646,6 +692,59 @@ export function resetValorantAgentsTab(
     ),
     updatedAt: Date.now(),
   }
+}
+
+/** Snapshot currently-enabled Agents onto a Joseph / Joha preset. */
+export function saveWheelAgentPreset(
+  state: WheelRoomState,
+  who: WheelAgentPresetWho,
+): WheelRoomState | null {
+  const tab = state.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
+  if (!tab) return null
+  const enabledIds = tab.entries.filter((e) => e.enabled).map((e) => e.id)
+  return {
+    ...state,
+    agentPresets: { ...state.agentPresets, [who]: enabledIds },
+    updatedAt: Date.now(),
+  }
+}
+
+/** Apply a saved preset: full roster, weight 1, only preset ids enabled. */
+export function loadWheelAgentPreset(
+  state: WheelRoomState,
+  who: WheelAgentPresetWho,
+): WheelRoomState | null {
+  const preset = state.agentPresets[who]
+  if (!preset) return null
+  if (!state.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
+  const enabled = new Set(preset)
+  const entries = createValorantAgentWheelEntries().map((entry) => ({
+    ...entry,
+    enabled: enabled.has(entry.id),
+    weight: 1,
+  }))
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) =>
+      tab.id === WHEEL_VALORANT_TAB_ID
+        ? {
+            ...tab,
+            name: WHEEL_VALORANT_TAB_NAME,
+            entries,
+            winnerId: null,
+            spinId: null,
+          }
+        : tab,
+    ),
+    updatedAt: Date.now(),
+  }
+}
+
+export function wheelAgentPresetSaved(
+  state: WheelRoomState,
+  who: WheelAgentPresetWho,
+): boolean {
+  return state.agentPresets[who] != null
 }
 
 /** True when this tab is mostly the Valorant agent roster. */

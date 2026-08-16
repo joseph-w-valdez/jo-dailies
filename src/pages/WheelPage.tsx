@@ -13,6 +13,7 @@ import {
   getActiveWheelTab,
   isPinnedWheelTab,
   isWheelOutcomeFresh,
+  loadWheelAgentPreset,
   newWheelSpinId,
   normalizeWeight,
   patchActiveWheelTab,
@@ -21,16 +22,17 @@ import {
   renameWheelTab,
   resetValorantAgentsTab,
   rotationForWinner,
+  saveWheelAgentPreset,
   setActiveWheelTab,
-  setAllWheelEntriesEnabled,
   setValorantRoleEnabled,
-  equalizeWheelEntryWeights,
   valorantRoleFilterState,
+  wheelAgentPresetSaved,
   wheelIconPose,
   wheelLabelPose,
   wheelOutcomeExpiresAt,
   wheelSlicePath,
   pickWheelColor,
+  WHEEL_AGENT_PRESET_LABELS,
   WHEEL_OUTCOME_HOLD_MS,
   WHEEL_QUICK_ADDS,
   WHEEL_TAB_MAX,
@@ -38,6 +40,7 @@ import {
   WHEEL_WEIGHT_MIN,
   WHEEL_WEIGHT_SLIDER_MAX,
   WHEEL_WEIGHT_STEP,
+  type WheelAgentPresetWho,
   type WheelEntry,
 } from '../lib/wheel'
 import {
@@ -55,6 +58,9 @@ const AGENT_ROLES = Object.keys(VALORANT_ROLE_META) as Exclude<
   ValorantRole,
   'Unknown'
 >[]
+const AGENT_PRESET_WHO = Object.keys(
+  WHEEL_AGENT_PRESET_LABELS,
+) as WheelAgentPresetWho[]
 
 function OptionColorButton({
   color,
@@ -477,6 +483,20 @@ export function WheelPage() {
     void commitWheel((prev) => resetValorantAgentsTab(prev) ?? prev)
   }
 
+  const saveAgentPreset = (who: WheelAgentPresetWho) => {
+    if (spinning || !agentsTab) return
+    void commitWheel((prev) => saveWheelAgentPreset(prev, who) ?? prev)
+  }
+
+  const loadAgentPreset = (who: WheelAgentPresetWho) => {
+    if (spinning || !agentsTab) return
+    if (!wheelAgentPresetSaved(wheel, who)) return
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => loadWheelAgentPreset(prev, who) ?? prev)
+  }
+
   const setEntries = (
     next: WheelEntry[] | ((prev: WheelEntry[]) => WheelEntry[]),
   ) => {
@@ -896,52 +916,106 @@ export function WheelPage() {
               ) : null}
 
               {agentsTab ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    disabled={spinning}
-                    onClick={resetAgentsTab}
-                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Restore every agent, equal weights, default colors"
-                  >
-                    Reset defaults
-                  </button>
-                  <button
-                    type="button"
-                    disabled={spinning || entries.length === 0}
-                    onClick={() => {
-                      clearOutcome()
-                      setEntries((prev) => setAllWheelEntriesEnabled(prev, true))
-                    }}
-                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Enable all
-                  </button>
-                  <button
-                    type="button"
-                    disabled={spinning || entries.length === 0}
-                    onClick={() => {
-                      clearOutcome()
-                      setEntries((prev) =>
-                        setAllWheelEntriesEnabled(prev, false),
+                <div className="mt-3 space-y-2.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      disabled={spinning}
+                      onClick={resetAgentsTab}
+                      className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Full roster, all enabled, weight 1"
+                    >
+                      Restore default
+                    </button>
+                    {AGENT_PRESET_WHO.map((who) => {
+                      const label = WHEEL_AGENT_PRESET_LABELS[who]
+                      const saved = wheelAgentPresetSaved(wheel, who)
+                      return (
+                        <span key={who} className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            disabled={spinning || !saved}
+                            onClick={() => loadAgentPreset(who)}
+                            className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                            title={
+                              saved
+                                ? `Load ${label}'s saved agents`
+                                : `No ${label} preset saved yet`
+                            }
+                          >
+                            Load {label}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={spinning}
+                            onClick={() => saveAgentPreset(who)}
+                            className="rounded-full border border-dashed border-border bg-surface/50 px-2.5 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            title={`Save currently enabled agents as ${label}'s preset`}
+                          >
+                            Save {label}
+                          </button>
+                        </span>
                       )
-                    }}
-                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Disable all
-                  </button>
-                  <button
-                    type="button"
-                    disabled={spinning || entries.length === 0}
-                    onClick={() => {
-                      clearOutcome()
-                      setEntries((prev) => equalizeWheelEntryWeights(prev))
-                    }}
-                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Set every agent weight to 1"
-                  >
-                    Equal weights
-                  </button>
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      Roles
+                    </span>
+                    {AGENT_ROLES.map((role) => {
+                      const meta = roleMeta(role)
+                      const state = valorantRoleFilterState(entries, role)
+                      const active = state !== 'none'
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          disabled={spinning}
+                          onClick={() => {
+                            clearOutcome()
+                            setEntries((prev) =>
+                              setValorantRoleEnabled(
+                                prev,
+                                role,
+                                state === 'none',
+                              ),
+                            )
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40"
+                          style={{
+                            backgroundColor: active ? meta.bar : meta.barDark,
+                            borderColor: meta.border,
+                            color: '#ffffff',
+                            opacity: state === 'some' ? 0.75 : 1,
+                          }}
+                          title={
+                            active
+                              ? `Turn off all ${role}s`
+                              : `Turn on all ${role}s`
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            readOnly
+                            tabIndex={-1}
+                            checked={state === 'all'}
+                            ref={(el) => {
+                              if (el) el.indeterminate = state === 'some'
+                            }}
+                            className="pointer-events-none size-3 shrink-0 rounded border-white/30 bg-black/25"
+                            aria-hidden
+                          />
+                          <img
+                            src={meta.icon}
+                            alt=""
+                            className="size-3 object-contain"
+                            draggable={false}
+                          />
+                          {role}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               ) : (
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -958,52 +1032,6 @@ export function WheelPage() {
                   ))}
                 </div>
               )}
-
-              {agentsTab ? (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                    Roles
-                  </span>
-                  {AGENT_ROLES.map((role) => {
-                    const meta = roleMeta(role)
-                    const state = valorantRoleFilterState(entries, role)
-                    const active = state !== 'none'
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        disabled={spinning}
-                        onClick={() => {
-                          clearOutcome()
-                          setEntries((prev) =>
-                            setValorantRoleEnabled(prev, role, state === 'none'),
-                          )
-                        }}
-                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40"
-                        style={{
-                          backgroundColor: active ? meta.bar : meta.barDark,
-                          borderColor: meta.border,
-                          color: '#ffffff',
-                          opacity: state === 'some' ? 0.75 : 1,
-                        }}
-                        title={
-                          active
-                            ? `Turn off all ${role}s`
-                            : `Turn on all ${role}s`
-                        }
-                      >
-                        <img
-                          src={meta.icon}
-                          alt=""
-                          className="size-3 object-contain"
-                          draggable={false}
-                        />
-                        {role}
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : null}
 
               {!agentsTab ? (
                 <div className="mt-3 flex gap-2">
