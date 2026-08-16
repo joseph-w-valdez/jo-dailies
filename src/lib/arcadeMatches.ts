@@ -9,6 +9,7 @@ import type { ArcadeGameId } from '../arcade'
 import { db, syncRoomId, toFirestoreData } from './firebase'
 import { householdName } from './household'
 import { JENGA_PLAYER_UIDS } from './jenga'
+import { agentById } from './valorantAgents'
 
 export type MatchHistoryGameId = Exclude<ArcadeGameId, 'suika'>
 
@@ -30,6 +31,16 @@ export type ScrabbleMatchExtras = {
   exchanges: number
   skills: number
   margin: number
+}
+
+/** How a Guess Who round ended. */
+export type GuessWhoWinKind = 'correct' | 'wrong' | 'surrender'
+
+/** Snapshot of a finished Guess Who round for fun stats / history. */
+export type GuessWhoMatchExtras = {
+  winKind: GuessWhoWinKind
+  /** Secret agent id each seat locked in. */
+  secretsByUid: Record<string, string>
 }
 
 export function emptyScrabblePlayerBest(): ScrabblePlayerBest {
@@ -55,6 +66,8 @@ export type ArcadeMatch = {
   detail?: string
   /** Present on Scrabble finishes when moveLog was available. */
   scrabble?: ScrabbleMatchExtras
+  /** Present on Guess Who finishes. */
+  guesswho?: GuessWhoMatchExtras
   players: [string, string]
   hotseat: boolean
 }
@@ -70,6 +83,7 @@ const HISTORY_GAME_IDS = new Set<MatchHistoryGameId>([
   'wordle',
   'hangman',
   'codenames',
+  'guesswho',
 ])
 
 export function isMatchHistoryGameId(
@@ -115,6 +129,8 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
       return phase === 'finished'
     case 'codenames':
       return phase === 'finished' || status === 'won' || status === 'lost'
+    case 'guesswho':
+      return phase === 'finished' || status === 'won'
     default:
       return false
   }
@@ -166,6 +182,15 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
       const status = typeof state.status === 'string' ? state.status : ''
       const pack = state.wordPack === 'full' ? 'Full' : 'Standard'
       return status ? `${pack} · ${status}` : pack
+    }
+    case 'guesswho': {
+      const guess = state.lastGuess
+      if (guess && typeof guess === 'object') {
+        const g = guess as Record<string, unknown>
+        if (g.correct === true) return 'Correct guess'
+        if (g.correct === false) return 'Wrong guess'
+      }
+      return 'Surrender'
     }
     default:
       return undefined
@@ -256,6 +281,55 @@ export function scrabbleExtrasFromState(
     skills,
     margin,
   }
+}
+
+/** Pull Guess Who finish facts from the shared room doc. */
+export function guessWhoExtrasFromState(
+  state: LooseGame,
+): GuessWhoMatchExtras | undefined {
+  const seats = Array.isArray(state.seats) ? state.seats : null
+  if (!seats || seats.length < 2) return undefined
+
+  const secretsByUid: Record<string, string> = {}
+  for (let i = 0; i < 2; i += 1) {
+    const uid = JENGA_PLAYER_UIDS[i]!
+    const seat = seats[i]
+    if (!seat || typeof seat !== 'object') continue
+    const secretId = (seat as Record<string, unknown>).secretId
+    if (typeof secretId === 'string' && secretId) {
+      secretsByUid[uid] = secretId
+    }
+  }
+  if (Object.keys(secretsByUid).length === 0) return undefined
+
+  let winKind: GuessWhoWinKind = 'surrender'
+  const guess = state.lastGuess
+  if (guess && typeof guess === 'object') {
+    const g = guess as Record<string, unknown>
+    if (g.correct === true) winKind = 'correct'
+    else if (g.correct === false) winKind = 'wrong'
+  }
+
+  return { winKind, secretsByUid }
+}
+
+function normalizeGuessWhoExtras(raw: unknown): GuessWhoMatchExtras | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const s = raw as Record<string, unknown>
+  const winKind: GuessWhoWinKind =
+    s.winKind === 'correct' || s.winKind === 'wrong' || s.winKind === 'surrender'
+      ? s.winKind
+      : 'surrender'
+  const secretsByUid: Record<string, string> = {}
+  if (s.secretsByUid && typeof s.secretsByUid === 'object') {
+    const bag = s.secretsByUid as Record<string, unknown>
+    for (const uid of JENGA_PLAYER_UIDS) {
+      const id = bag[uid]
+      if (typeof id === 'string' && id) secretsByUid[uid] = id
+    }
+  }
+  if (Object.keys(secretsByUid).length === 0) return undefined
+  return { winKind, secretsByUid }
 }
 
 function normalizePlayerBest(raw: unknown): ScrabblePlayerBest {
@@ -379,6 +453,8 @@ export function matchFromGameTransition(
   const detail = detailFor(collectionId, next)
   const scrabble =
     collectionId === 'scrabble' ? scrabbleExtrasFromState(next) : undefined
+  const guesswho =
+    collectionId === 'guesswho' ? guessWhoExtrasFromState(next) : undefined
   const endedAt =
     typeof next.updatedAt === 'number' && Number.isFinite(next.updatedAt)
       ? next.updatedAt
@@ -393,6 +469,7 @@ export function matchFromGameTransition(
     result: resultFor(collectionId, next),
     ...(detail ? { detail } : {}),
     ...(scrabble ? { scrabble } : {}),
+    ...(guesswho ? { guesswho } : {}),
     players: [JENGA_PLAYER_UIDS[0]!, JENGA_PLAYER_UIDS[1]!],
     hotseat: false,
   }
@@ -443,6 +520,12 @@ export function normalizeArcadeMatch(raw: unknown): ArcadeMatch | null {
           return scrabble ? { scrabble } : {}
         })()
       : {}),
+    ...(gameId === 'guesswho'
+      ? (() => {
+          const guesswho = normalizeGuessWhoExtras(s.guesswho)
+          return guesswho ? { guesswho } : {}
+        })()
+      : {}),
     players,
     hotseat: Boolean(s.hotseat),
   }
@@ -488,6 +571,8 @@ export function arcadeGameTitle(gameId: MatchHistoryGameId): string {
       return 'Hangman'
     case 'codenames':
       return 'Codenames'
+    case 'guesswho':
+      return 'Guess Who'
   }
 }
 
@@ -534,6 +619,15 @@ export type ArcadeHouseholdStats = {
   scrabbleBingos: number
   scrabbleBiggestMargin: number | null
   scrabbleGames: number
+  /** Wins by correctly naming the opponent's agent. */
+  guessWhoCorrectGuesses: number
+  /** Wins because the opponent's final guess was wrong. */
+  guessWhoWrongGuessWins: number
+  /** Most-picked secret agent per seat. */
+  guessWhoFavoriteSecretByUid: Record<
+    string,
+    { agentId: string; name: string; count: number } | null
+  >
   matchesThisWeek: number
   daysSinceLastMatch: number | null
   flavor: string
@@ -576,6 +670,12 @@ function pickFlavor(stats: Omit<ArcadeHouseholdStats, 'flavor'>): string {
   if (stats.scrabbleHighScore != null && stats.scrabbleHighScore >= 200) {
     return `Someone dropped a ${stats.scrabbleHighScore}-point Scrabble bomb.`
   }
+  if (stats.guessWhoWrongGuessWins >= 2) {
+    return 'Wrong-guess energy. Someone keep baiting.'
+  }
+  if (stats.guessWhoCorrectGuesses >= 3) {
+    return 'Sharpshooter season in Guess Who.'
+  }
   if (aWins > bWins) return `${householdName(a)} is slightly unbearable right now.`
   if (bWins > aWins) return `${householdName(b)} is collecting bragging rights.`
   return 'Play more. The spreadsheet demands tribute.'
@@ -607,6 +707,12 @@ export function computeArcadeStats(matches: ArcadeMatch[]): ArcadeHouseholdStats
   let scrabbleBingos = 0
   let scrabbleBiggestMargin: number | null = null
   let scrabbleGames = 0
+  let guessWhoCorrectGuesses = 0
+  let guessWhoWrongGuessWins = 0
+  const secretCountsByUid: Record<string, Record<string, number>> = {
+    [JENGA_PLAYER_UIDS[0]!]: {},
+    [JENGA_PLAYER_UIDS[1]!]: {},
+  }
   let matchesThisWeek = 0
 
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
@@ -618,6 +724,26 @@ export function computeArcadeStats(matches: ArcadeMatch[]): ArcadeHouseholdStats
     if (match.gameId === 'chess') {
       if (match.detail === 'Checkmate') chessCheckmates += 1
       if (match.detail === 'On time') chessTimeouts += 1
+    }
+    if (match.gameId === 'guesswho') {
+      const kind =
+        match.guesswho?.winKind ??
+        (match.detail === 'Correct guess'
+          ? 'correct'
+          : match.detail === 'Wrong guess'
+            ? 'wrong'
+            : null)
+      if (kind === 'correct') guessWhoCorrectGuesses += 1
+      if (kind === 'wrong') guessWhoWrongGuessWins += 1
+      const secrets = match.guesswho?.secretsByUid
+      if (secrets) {
+        for (const uid of JENGA_PLAYER_UIDS) {
+          const agentId = secrets[uid]
+          if (!agentId) continue
+          const bag = secretCountsByUid[uid]!
+          bag[agentId] = (bag[agentId] ?? 0) + 1
+        }
+      }
     }
     if (match.gameId === 'scrabble') {
       scrabbleGames += 1
@@ -697,6 +823,28 @@ export function computeArcadeStats(matches: ArcadeMatch[]): ArcadeHouseholdStats
       decided === 0 ? 0 : Math.round(((winsByUid[uid] ?? 0) / decided) * 100)
   }
 
+  const guessWhoFavoriteSecretByUid = emptyUidRecord(null as {
+    agentId: string
+    name: string
+    count: number
+  } | null)
+  for (const uid of JENGA_PLAYER_UIDS) {
+    const bag = secretCountsByUid[uid]!
+    let favorite: { agentId: string; name: string; count: number } | null = null
+    for (const [agentId, count] of Object.entries(bag)) {
+      const agent = agentById(agentId)
+      if (!agent) continue
+      if (
+        !favorite ||
+        count > favorite.count ||
+        (count === favorite.count && agent.name.localeCompare(favorite.name) < 0)
+      ) {
+        favorite = { agentId, name: agent.name, count }
+      }
+    }
+    guessWhoFavoriteSecretByUid[uid] = favorite
+  }
+
   let mostPlayed: ArcadeHouseholdStats['mostPlayed'] = null
   let leastPlayed: ArcadeHouseholdStats['leastPlayed'] = null
   for (const [gameId, count] of Object.entries(played) as [
@@ -736,6 +884,9 @@ export function computeArcadeStats(matches: ArcadeMatch[]): ArcadeHouseholdStats
     scrabbleBingos,
     scrabbleBiggestMargin,
     scrabbleGames,
+    guessWhoCorrectGuesses,
+    guessWhoWrongGuessWins,
+    guessWhoFavoriteSecretByUid,
     matchesThisWeek,
     daysSinceLastMatch,
   }

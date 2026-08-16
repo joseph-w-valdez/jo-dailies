@@ -104,6 +104,26 @@ export function ArcadeStatsPanel({ matches }: { matches: ArcadeMatch[] }) {
                 : '—'
             }
           />
+          <StatRow
+            label="Guess Who correct"
+            value={String(stats.guessWhoCorrectGuesses)}
+          />
+          <StatRow
+            label="Guess Who bait wins"
+            value={String(stats.guessWhoWrongGuessWins)}
+          />
+          {[a, b].map((uid) => {
+            const fav = stats.guessWhoFavoriteSecretByUid[uid]
+            return (
+              <StatRow
+                key={`gw-fav-${uid}`}
+                label={`${householdName(uid)} Guess Who main`}
+                value={
+                  fav ? `${fav.name} (${fav.count})` : '—'
+                }
+              />
+            )
+          })}
           {[a, b].map((uid) => (
             <StatRow
               key={`turn-${uid}`}

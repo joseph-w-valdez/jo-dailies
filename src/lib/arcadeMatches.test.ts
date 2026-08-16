@@ -198,4 +198,57 @@ describe('arcadeMatches', () => {
     expect(stats.scrabbleBingos).toBe(1)
     expect(Object.keys(stats.winRateByUid)).toContain(a)
   })
+
+  it('records guess who extras and stats', () => {
+    const agentA = 'add6443a-41bd-e414-f6ad-e58d267f4e95' // Jett
+    const agentB = 'a3bfb853-43b2-7238-a4f1-ad90e9e46bcc' // Reyna
+    const match = matchFromGameTransition(
+      'guesswho',
+      { phase: 'playing', status: 'playing', roundId: 'gw1' },
+      {
+        phase: 'finished',
+        status: 'won',
+        roundId: 'gw1',
+        winnerUid: a,
+        updatedAt: 3_000,
+        lastGuess: { uid: a, agentId: agentB, correct: true },
+        seats: [
+          { secretId: agentA, flipped: [] },
+          { secretId: agentB, flipped: [] },
+        ],
+      },
+    )
+    expect(match).toMatchObject({
+      gameId: 'guesswho',
+      detail: 'Correct guess',
+      guesswho: {
+        winKind: 'correct',
+        secretsByUid: { [a]: agentA, [b]: agentB },
+      },
+    })
+
+    const bait = matchFromGameTransition(
+      'guesswho',
+      { phase: 'playing', status: 'playing', roundId: 'gw2' },
+      {
+        phase: 'finished',
+        status: 'won',
+        roundId: 'gw2',
+        winnerUid: b,
+        updatedAt: 4_000,
+        lastGuess: { uid: a, agentId: agentA, correct: false },
+        seats: [
+          { secretId: agentA, flipped: [] },
+          { secretId: agentB, flipped: [] },
+        ],
+      },
+    )
+    expect(bait?.guesswho?.winKind).toBe('wrong')
+
+    const stats = computeArcadeStats([match!, bait!])
+    expect(stats.guessWhoCorrectGuesses).toBe(1)
+    expect(stats.guessWhoWrongGuessWins).toBe(1)
+    expect(stats.guessWhoFavoriteSecretByUid[a]?.name).toBe('Jett')
+    expect(stats.guessWhoFavoriteSecretByUid[b]?.name).toBe('Reyna')
+  })
 })

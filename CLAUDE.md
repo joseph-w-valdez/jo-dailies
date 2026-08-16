@@ -87,7 +87,7 @@ rooms/{syncRoomId}/
   pet/current                    // PetKennel
   whiteboardStrokes/{strokeId}
   whiteboard/current             // legacy blob, migrated away
-  jenga|connect4|battleship|scrabble|chess|wordle|hangman|codenames/current
+  jenga|connect4|battleship|scrabble|chess|wordle|hangman|codenames|guesswho/current
   suika/best                     // high score only; bowl is in-memory
   arcadeMatches/{id}             // append-only finished 2P matches (not Suika)
 ```
