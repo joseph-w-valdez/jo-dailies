@@ -12,6 +12,7 @@ import {
 import * as THREE from "three";
 import { useThemeCssColor } from "../hooks/useThemeCssColor";
 import { agentById, roleMeta, type ValorantAgent } from "../lib/valorantAgents";
+import { GUESS_WHO_BOARD_COLS } from "../lib/guessWho";
 
 /** World units — table-top board, cards stand on Y. */
 const CARD_W = 0.72;
@@ -39,7 +40,7 @@ const FLAP_LIFT = 0.02;
 /** Upright = straight up (no lean). Flipped = flat into the well. */
 const UPRIGHT_LEAN = 0;
 /** Classic-ish columns (real game is 6×4; wider for our agent roster). */
-const COLS = 8;
+const COLS = GUESS_WHO_BOARD_COLS;
 
 /** Default seated view — keep Canvas `camera` + reset button in sync. */
 const DEFAULT_CAMERA_POS: [number, number, number] = [0, 3.7, 9.1];
@@ -73,6 +74,8 @@ function useBoardPalette(): BoardPalette {
 }
 
 type PlasticMaps = {
+  /** Multiplies with material `color` — mottled so plastics aren't flat fills. */
+  colorMap: THREE.CanvasTexture;
   bumpMap: THREE.CanvasTexture;
   roughnessMap: THREE.CanvasTexture;
 };
@@ -83,6 +86,17 @@ function usePlasticMaps(): PlasticMaps {
   const ctx = useContext(PlasticMapsContext);
   if (!ctx) throw new Error("PlasticMaps missing");
   return ctx;
+}
+
+function plasticSurfaceProps(maps: PlasticMaps, bumpScale = 0.06) {
+  return {
+    map: maps.colorMap,
+    bumpMap: maps.bumpMap,
+    bumpScale,
+    roughnessMap: maps.roughnessMap,
+    roughness: 0.62,
+    metalness: 0.02,
+  } as const;
 }
 
 function shadeHex(hex: string, deltaL: number): string {
@@ -117,29 +131,89 @@ function useGuessWhoPalette(): BoardPalette {
   );
 }
 
-/** Injection-mold plastic grain — chunky bump + roughness for toy plastic. */
-function usePlasticSurfaceMaps(repeatX = 7, repeatY = 5.5): PlasticMaps {
+/** Soft injection-mold plastic — light mottle, gentle bump (not rocky). */
+function usePlasticSurfaceMaps(repeatX = 3.2, repeatY = 2.6): PlasticMaps {
   const maps = useMemo(() => {
-    const size = 512;
+    const size = 256;
 
-    const paintGrain = (contrast: number, ridges: boolean) => {
+    const paintData = (
+      mode: "albedo" | "bump" | "rough",
+      contrast: number,
+      ridges: boolean,
+    ) => {
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) return canvas;
 
+      if (mode === "albedo") {
+        // Near-white multiply base — keeps theme colors clean
+        ctx.fillStyle = "#eceae6";
+        ctx.fillRect(0, 0, size, size);
+
+        for (let i = 0; i < 12; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          const r = 60 + Math.random() * 100;
+          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+          const dark = Math.random() > 0.5;
+          g.addColorStop(
+            0,
+            dark ? "rgba(40,36,32,0.07)" : "rgba(255,255,252,0.1)",
+          );
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const img = ctx.getImageData(0, 0, size, size);
+        for (let i = 0; i < img.data.length; i += 4) {
+          const px = (i / 4) % size;
+          const py = Math.floor(i / 4 / size);
+          const n =
+            (Math.random() - 0.5) * 10 +
+            Math.sin(px * 0.04 + py * 0.03) * 4 +
+            Math.sin(px * 0.015 - py * 0.02) * 5;
+          img.data[i] = Math.max(0, Math.min(255, img.data[i]! + n));
+          img.data[i + 1] = Math.max(
+            0,
+            Math.min(255, img.data[i + 1]! + n * 0.95),
+          );
+          img.data[i + 2] = Math.max(
+            0,
+            Math.min(255, img.data[i + 2]! + n * 0.9),
+          );
+        }
+        ctx.putImageData(img, 0, 0);
+
+        for (let i = 0; i < 180; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          ctx.fillStyle =
+            Math.random() > 0.5
+              ? "rgba(20,18,15,0.06)"
+              : "rgba(255,255,255,0.08)";
+          ctx.beginPath();
+          ctx.arc(x, y, 0.4 + Math.random() * 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        return canvas;
+      }
+
       ctx.fillStyle = "#808080";
       ctx.fillRect(0, 0, size, size);
       const img = ctx.getImageData(0, 0, size, size);
       for (let i = 0; i < img.data.length; i += 4) {
-        // Layered noise — fine grain + coarser orange-peel
         const fine = (Math.random() - 0.5) * contrast;
         const px = (i / 4) % size;
         const py = Math.floor(i / 4 / size);
         const peel =
-          Math.sin(px * 0.35 + py * 0.21) * contrast * 0.22 +
-          Math.sin(px * 0.11 - py * 0.17) * contrast * 0.18;
+          Math.sin(px * 0.12 + py * 0.09) * contrast * 0.22 +
+          Math.sin(px * 0.05 - py * 0.07) * contrast * 0.18;
         const v = Math.max(0, Math.min(255, 128 + fine + peel));
         img.data[i] = v;
         img.data[i + 1] = v;
@@ -148,74 +222,60 @@ function usePlasticSurfaceMaps(repeatX = 7, repeatY = 5.5): PlasticMaps {
       ctx.putImageData(img, 0, 0);
 
       if (ridges) {
-        // Molded flow / knit lines
-        for (let y = 6; y < size; y += 18) {
-          ctx.strokeStyle = "rgba(255,255,255,0.28)";
-          ctx.lineWidth = 2;
+        for (let y = 8; y < size; y += 28) {
+          ctx.strokeStyle = "rgba(255,255,255,0.12)";
+          ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(0, y);
           for (let x = 0; x <= size; x += 6) {
-            ctx.lineTo(x, y + Math.sin(x * 0.09 + y * 0.04) * 3.5);
-          }
-          ctx.stroke();
-          ctx.strokeStyle = "rgba(0,0,0,0.22)";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(0, y + 3);
-          for (let x = 0; x <= size; x += 6) {
-            ctx.lineTo(x, y + 3 + Math.sin(x * 0.09 + y * 0.04) * 3.5);
-          }
-          ctx.stroke();
-        }
-        // Cross-grain
-        for (let x = 8; x < size; x += 36) {
-          ctx.strokeStyle = "rgba(0,0,0,0.12)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          for (let y = 0; y <= size; y += 8) {
-            ctx.lineTo(x + Math.sin(y * 0.07) * 2, y);
+            ctx.lineTo(x, y + Math.sin(x * 0.08 + y * 0.03) * 2);
           }
           ctx.stroke();
         }
       }
 
-      // Deep pits + raised speckles
-      for (let i = 0; i < 420; i++) {
+      for (let i = 0; i < 120; i++) {
         const x = Math.random() * size;
         const y = Math.random() * size;
-        const r = 0.7 + Math.random() * 2.8;
-        const dark = Math.random() > 0.45;
-        ctx.fillStyle = dark
-          ? `rgba(0,0,0,${0.2 + Math.random() * 0.35})`
-          : `rgba(255,255,255,${0.15 + Math.random() * 0.28})`;
+        ctx.fillStyle =
+          Math.random() > 0.5
+            ? "rgba(0,0,0,0.08)"
+            : "rgba(255,255,255,0.07)";
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.arc(x, y, 0.5 + Math.random() * 1.4, 0, Math.PI * 2);
         ctx.fill();
       }
 
       return canvas;
     };
 
-    const bumpMap = new THREE.CanvasTexture(paintGrain(96, true));
+    const colorMap = new THREE.CanvasTexture(paintData("albedo", 0, false));
+    colorMap.wrapS = colorMap.wrapT = THREE.RepeatWrapping;
+    colorMap.repeat.set(repeatX, repeatY);
+    colorMap.anisotropy = 4;
+    colorMap.colorSpace = THREE.SRGBColorSpace;
+    colorMap.needsUpdate = true;
+
+    const bumpMap = new THREE.CanvasTexture(paintData("bump", 28, true));
     bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
-    bumpMap.repeat.set(repeatX, repeatY);
+    bumpMap.repeat.set(repeatX * 1.1, repeatY * 1.1);
     bumpMap.anisotropy = 4;
     bumpMap.colorSpace = THREE.NoColorSpace;
     bumpMap.needsUpdate = true;
 
-    const roughnessMap = new THREE.CanvasTexture(paintGrain(110, false));
+    const roughnessMap = new THREE.CanvasTexture(paintData("rough", 32, false));
     roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
-    roughnessMap.repeat.set(repeatX * 1.15, repeatY * 1.15);
+    roughnessMap.repeat.set(repeatX * 1.2, repeatY * 1.2);
     roughnessMap.anisotropy = 4;
     roughnessMap.colorSpace = THREE.NoColorSpace;
     roughnessMap.needsUpdate = true;
 
-    return { bumpMap, roughnessMap };
+    return { colorMap, bumpMap, roughnessMap };
   }, [repeatX, repeatY]);
 
   useLayoutEffect(() => {
     return () => {
+      maps.colorMap.dispose();
       maps.bumpMap.dispose();
       maps.roughnessMap.dispose();
     };
@@ -361,6 +421,7 @@ function useFlapFaceTexture(
   agent: ValorantAgent,
   selected?: boolean,
   guessArmed?: boolean,
+  blinded?: boolean,
 ) {
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const role = roleMeta(agent.role);
@@ -397,20 +458,6 @@ function useFlapFaceTexture(
       ctx.fillStyle = palette.flap;
       ctx.fillRect(5, 5, W - 10, H - 10);
 
-      // Speckle the plastic rim so fronts match the bumpy mesh sides
-      for (let i = 0; i < 220; i++) {
-        const x = Math.random() * W;
-        const y = Math.random() * H;
-        if (x > rim && x < W - rim && y > rim && y < H - rim) continue;
-        ctx.fillStyle =
-          Math.random() > 0.5
-            ? "rgba(0,0,0,0.14)"
-            : "rgba(255,255,255,0.18)";
-        ctx.beginPath();
-        ctx.arc(x, y, 0.4 + Math.random() * 1.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
       const x0 = rim;
       const y0 = rim;
       const cw = W - rim * 2;
@@ -422,6 +469,24 @@ function useFlapFaceTexture(
       const iy = y0 + inset;
       const iw = cw - inset * 2;
       const ih = ch - inset * 2;
+
+      if (blinded) {
+        // Phoenix flash — blank face plate, no portrait / name
+        const flash = ctx.createLinearGradient(0, iy, 0, iy + ih);
+        flash.addColorStop(0, "#fff7ed");
+        flash.addColorStop(0.45, "#fdba74");
+        flash.addColorStop(1, "#fb923c");
+        ctx.fillStyle = flash;
+        ctx.fillRect(ix, iy, iw, ih);
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.font = "bold 120px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("?", W / 2, iy + ih * 0.48, iw - 16);
+        map.needsUpdate = true;
+        return;
+      }
+
       const portraitH = Math.floor(ih * 0.68);
 
       const grad = ctx.createLinearGradient(0, iy, 0, iy + portraitH);
@@ -479,6 +544,14 @@ function useFlapFaceTexture(
     paint(null);
     setTexture(map);
 
+    if (blinded) {
+      return () => {
+        cancelled = true;
+        setTexture(null);
+        map.dispose();
+      };
+    }
+
     const img = new Image();
     img.decoding = "async";
     img.crossOrigin = "anonymous";
@@ -505,6 +578,7 @@ function useFlapFaceTexture(
     role.bar,
     palette.flap,
     palette.flapHi,
+    blinded,
   ]);
 
   return texture;
@@ -515,16 +589,18 @@ function FlapFace({
   agent,
   selected,
   guessArmed,
+  blinded,
   width,
   height,
 }: {
   agent: ValorantAgent;
   selected?: boolean;
   guessArmed?: boolean;
+  blinded?: boolean;
   width: number;
   height: number;
 }) {
-  const map = useFlapFaceTexture(agent, selected, guessArmed);
+  const map = useFlapFaceTexture(agent, selected, guessArmed, blinded);
   const { flap } = useBoardPalette();
   return (
     <mesh position={[0, 0, CARD_D / 2 + 0.001]}>
@@ -555,6 +631,7 @@ function FlipFlap({
   flipped,
   selected,
   guessArmed,
+  blinded,
   disabled,
   onClick,
   onHover,
@@ -564,13 +641,13 @@ function FlipFlap({
   flipped: boolean;
   selected?: boolean;
   guessArmed?: boolean;
+  blinded?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   onHover?: (id: string | null) => void;
 }) {
   const hinge = useRef<THREE.Group>(null);
   const { flap } = useBoardPalette();
-  const { bumpMap, roughnessMap } = usePlasticMaps();
   const frameColor = useMemo(() => new THREE.Color(flap), [flap]);
 
   useFrame((_, dt) => {
@@ -616,11 +693,8 @@ function FlipFlap({
             <boxGeometry args={[fw, fh, CARD_D]} />
             <meshStandardMaterial
               color={frameColor}
-              roughness={0.58}
-              metalness={0.03}
-              bumpMap={bumpMap}
-              bumpScale={0.09}
-              roughnessMap={roughnessMap}
+              roughness={0.55}
+              metalness={0.02}
             />
           </mesh>
 
@@ -629,6 +703,7 @@ function FlipFlap({
             agent={agent}
             selected={selected}
             guessArmed={guessArmed}
+            blinded={blinded}
             width={fw}
             height={fh}
           />
@@ -646,7 +721,7 @@ function MysteryStand({
   boardDepth: number;
 }) {
   const { mystery, flap, lip } = useBoardPalette();
-  const { bumpMap, roughnessMap } = usePlasticMaps();
+  const plastic = usePlasticMaps();
   const z = boardDepth / 2 + 0.85;
   const fw = FLAP_W;
   const fh = FLAP_H;
@@ -656,11 +731,7 @@ function MysteryStand({
         <boxGeometry args={[CARD_W + 0.25, 0.12, 0.35]} />
         <meshStandardMaterial
           color={mystery}
-          roughness={0.62}
-          metalness={0.03}
-          bumpMap={bumpMap}
-          bumpScale={0.1}
-          roughnessMap={roughnessMap}
+          {...plasticSurfaceProps(plastic, 0.055)}
         />
       </mesh>
       <group position={[0, 0.12, 0]}>
@@ -670,11 +741,8 @@ function MysteryStand({
               <boxGeometry args={[fw, fh, CARD_D]} />
               <meshStandardMaterial
                 color={flap}
-                roughness={0.58}
-                metalness={0.03}
-                bumpMap={bumpMap}
-                bumpScale={0.09}
-                roughnessMap={roughnessMap}
+                roughness={0.55}
+                metalness={0.02}
               />
             </mesh>
             {agent ? (
@@ -682,7 +750,10 @@ function MysteryStand({
             ) : (
               <mesh position={[0, 0, CARD_D / 2 + 0.001]}>
                 <planeGeometry args={[fw, fh]} />
-                <meshBasicMaterial color={lip} toneMapped={false} />
+                <meshStandardMaterial
+                  color={lip}
+                  {...plasticSurfaceProps(plastic, 0.04)}
+                />
               </mesh>
             )}
           </group>
@@ -702,7 +773,7 @@ function BoardBase({
   rows: number;
 }) {
   const { tray, terrace, well, lip } = useBoardPalette();
-  const { bumpMap, roughnessMap } = usePlasticMaps();
+  const plastic = usePlasticMaps();
   const w = gridW + 0.75;
   const d = gridD + 0.7;
   return (
@@ -712,11 +783,7 @@ function BoardBase({
         <boxGeometry args={[w, 0.12, d]} />
         <meshStandardMaterial
           color={tray}
-          roughness={0.72}
-          metalness={0.02}
-          bumpMap={bumpMap}
-          bumpScale={0.11}
-          roughnessMap={roughnessMap}
+          {...plasticSurfaceProps(plastic, 0.07)}
         />
       </mesh>
 
@@ -741,33 +808,21 @@ function BoardBase({
               />
               <meshStandardMaterial
                 color={tray}
-                roughness={0.7}
-                metalness={0.02}
-                bumpMap={bumpMap}
-                bumpScale={0.1}
-                roughnessMap={roughnessMap}
+                {...plasticSurfaceProps(plastic, 0.065)}
               />
             </mesh>
             <mesh position={[0, rise + TERRACE_Y, z]} receiveShadow>
               <boxGeometry args={[gridW + 0.28, TERRACE_H, ROW_PITCH * 0.92]} />
               <meshStandardMaterial
                 color={terrace}
-                roughness={0.68}
-                metalness={0.02}
-                bumpMap={bumpMap}
-                bumpScale={0.095}
-                roughnessMap={roughnessMap}
+                {...plasticSurfaceProps(plastic, 0.06)}
               />
             </mesh>
             <mesh position={[0, rise + WELL_Y, z]} receiveShadow>
               <boxGeometry args={[gridW + 0.12, WELL_H, ROW_PITCH * 0.72]} />
               <meshStandardMaterial
                 color={well}
-                roughness={0.82}
-                metalness={0.015}
-                bumpMap={bumpMap}
-                bumpScale={0.085}
-                roughnessMap={roughnessMap}
+                {...plasticSurfaceProps(plastic, 0.05)}
               />
             </mesh>
           </group>
@@ -779,11 +834,7 @@ function BoardBase({
         <boxGeometry args={[w * 0.98, 0.12, 0.18]} />
         <meshStandardMaterial
           color={lip}
-          roughness={0.65}
-          metalness={0.04}
-          bumpMap={bumpMap}
-          bumpScale={0.1}
-          roughnessMap={roughnessMap}
+          {...plasticSurfaceProps(plastic, 0.055)}
         />
       </mesh>
     </group>
@@ -796,6 +847,7 @@ function BoardScene({
   secretId,
   selectedId,
   guessArmed,
+  facesBlinded,
   disabled,
   cameraResetNonce,
   onAgentClick,
@@ -806,6 +858,7 @@ function BoardScene({
   secretId?: string | null;
   selectedId?: string | null;
   guessArmed?: boolean;
+  facesBlinded?: boolean;
   disabled?: boolean;
   cameraResetNonce: number;
   onAgentClick?: (id: string) => void;
@@ -833,14 +886,15 @@ function BoardScene({
 
   return (
     <>
-      <ambientLight intensity={0.7} />
+      <ambientLight intensity={0.62} />
       <directionalLight
         castShadow
-        intensity={1.25}
-        position={[3, 10, 6]}
+        intensity={1.15}
+        position={[3.5, 10, 6]}
         shadow-mapSize={[1024, 1024]}
       />
-      <hemisphereLight args={[lip, "#0f172a", 0.4]} />
+      <directionalLight intensity={0.35} position={[-4, 5, 2.5]} />
+      <hemisphereLight args={[lip, "#0f172a", 0.42]} />
 
       <BoardBase gridW={meta.gridW} gridD={meta.gridD} rows={meta.rows} />
 
@@ -854,6 +908,7 @@ function BoardScene({
             flipped={flipped.has(agent.id)}
             selected={selectedId === agent.id}
             guessArmed={Boolean(guessArmed) && !flipped.has(agent.id)}
+            blinded={facesBlinded}
             disabled={disabled}
             onClick={() => onAgentClick?.(agent.id)}
             onHover={onHoverAgent}
@@ -883,6 +938,7 @@ export function GuessWhoBoard3D({
   secretId,
   selectedId,
   guessArmed,
+  facesBlinded,
   disabled,
   canGuess,
   canPass,
@@ -898,6 +954,8 @@ export function GuessWhoBoard3D({
   secretId?: string | null;
   selectedId?: string | null;
   guessArmed?: boolean;
+  /** Phoenix flash — hide face textures on this board. */
+  facesBlinded?: boolean;
   disabled?: boolean;
   canGuess?: boolean;
   canPass?: boolean;
@@ -910,7 +968,7 @@ export function GuessWhoBoard3D({
   onPass?: () => void;
 }) {
   const palette = useGuessWhoPalette();
-  const plasticMaps = usePlasticSurfaceMaps(7.5, 5.5);
+  const plasticMaps = usePlasticSurfaceMaps(2.8, 2.2);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [cameraResetNonce, setCameraResetNonce] = useState(0);
   const hovered = agentById(hoveredId);
@@ -936,7 +994,9 @@ export function GuessWhoBoard3D({
               Flip list
             </div>
             <div className="text-[10px] text-muted/80">
-              Check = flipped down
+              {facesBlinded
+                ? "Phoenix flash — faces hidden"
+                : "Check = flipped down"}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
@@ -950,7 +1010,9 @@ export function GuessWhoBoard3D({
                     isFlipped ? "text-muted" : "text-white",
                     !canToggleFlip ? "cursor-not-allowed opacity-50" : "",
                   ].join(" ")}
-                  onMouseEnter={() => setHoveredId(agent.id)}
+                  onMouseEnter={() =>
+                    facesBlinded ? undefined : setHoveredId(agent.id)
+                  }
                   onMouseLeave={() => setHoveredId(null)}
                 >
                   <input
@@ -962,15 +1024,24 @@ export function GuessWhoBoard3D({
                       if (canToggleFlip) onToggleFlip?.(agent.id);
                     }}
                   />
-                  <img
-                    src={agent.icon}
-                    alt=""
-                    className={[
-                      "size-5 shrink-0 rounded object-cover",
-                      isFlipped ? "opacity-45" : "",
-                    ].join(" ")}
-                    draggable={false}
-                  />
+                  {facesBlinded ? (
+                    <span
+                      className="flex size-5 shrink-0 items-center justify-center rounded bg-orange-400/80 text-[10px] font-bold text-white"
+                      aria-hidden
+                    >
+                      ?
+                    </span>
+                  ) : (
+                    <img
+                      src={agent.icon}
+                      alt=""
+                      className={[
+                        "size-5 shrink-0 rounded object-cover",
+                        isFlipped ? "opacity-45" : "",
+                      ].join(" ")}
+                      draggable={false}
+                    />
+                  )}
                   <span
                     className={[
                       "min-w-0 truncate font-medium",
@@ -979,7 +1050,7 @@ export function GuessWhoBoard3D({
                         : "",
                     ].join(" ")}
                   >
-                    {agent.name}
+                    {facesBlinded ? "???" : agent.name}
                   </span>
                 </label>
               );
@@ -1032,6 +1103,7 @@ export function GuessWhoBoard3D({
                 secretId={secretId}
                 selectedId={selectedId}
                 guessArmed={guessArmed}
+                facesBlinded={facesBlinded}
                 disabled={disabled}
                 cameraResetNonce={cameraResetNonce}
                 onAgentClick={onAgentClick}
@@ -1085,12 +1157,18 @@ export function GuessWhoBoard3D({
             </button>
           </div>
           <div className="flex min-h-0 flex-1 items-start justify-center px-2.5 pb-2.5 pt-8">
-            {hovered ? (
+            {hovered && !facesBlinded ? (
               <CardFace
                 agent={hovered}
                 large
-                guessArmed={Boolean(guessArmed) && !flippedSet.has(hovered.id)}
+                guessArmed={
+                  Boolean(guessArmed) && !flippedSet.has(hovered.id)
+                }
               />
+            ) : facesBlinded ? (
+              <p className="px-2 pt-6 text-center text-[11px] leading-snug text-muted">
+                Flashed — agent faces are hidden until you finish your turn.
+              </p>
             ) : null}
           </div>
         </aside>

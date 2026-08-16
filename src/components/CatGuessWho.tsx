@@ -4,6 +4,7 @@ import { isGuessWhoDebugEnabled } from '../lib/debugFlags'
 import {
   GUESS_WHO_SKILLS,
   guessGuessWhoAgent,
+  guessWhoRowCount,
   hasUsedGuessWhoSkill,
   passGuessWhoTurn,
   pickGuessWhoSecret,
@@ -379,7 +380,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
   const [pendingGuessId, setPendingGuessId] = useState<string | null>(null)
   const [roleFilter, setRoleFilter] = useState<ValorantRole | 'All'>('All')
   const [query, setQuery] = useState('')
-  const [razeArmed, setRazeArmed] = useState(false)
+  const [tejoArmed, setTejoArmed] = useState(false)
   const debugSolo = isGuessWhoDebugEnabled()
   const debugSeededRef = useRef(false)
 
@@ -452,6 +453,10 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
         : null
   const intelRole = oppUid ? game.revealedRoleByUid[oppUid] : undefined
   const intelHalf = oppUid ? game.nameHalfByUid[oppUid] : undefined
+  const boardOwnerUid =
+    boardSeat != null ? JENGA_PLAYER_UIDS[boardSeat]! : null
+  const facesBlinded =
+    boardOwnerUid != null && game.flashedBoardUid === boardOwnerUid
 
   useEffect(() => {
     if (!guessMode) return
@@ -469,7 +474,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
     if (game.phase !== 'playing') {
       setGuessMode(false)
       setPendingGuessId(null)
-      setRazeArmed(false)
+      setTejoArmed(false)
     }
   }, [game.phase, game.roundId])
 
@@ -499,7 +504,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
       }
       return 'Pick your secret agent'
     }
-    if (razeArmed) return 'Raze — tap a role chip to nuke'
+    if (tejoArmed) return 'Tejo — pick a board row to laser'
     if (canGuess) {
       return guessMode
         ? 'Guess armed — tap their agent'
@@ -554,16 +559,19 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
     if (pick) setDraftSecret(pick.id)
   }
 
-  const fireSkill = (skill: GuessWhoSkillId, role?: ValorantRole) => {
-    if (skill === 'raze' && !role) {
-      setRazeArmed(true)
+  const fireSkill = (
+    skill: GuessWhoSkillId,
+    opts?: { row?: number },
+  ) => {
+    if (skill === 'tejo' && opts?.row == null) {
+      setTejoArmed(true)
       setGuessMode(false)
       return
     }
     void commitGame(
-      (prev) => useGuessWhoSkill(prev, skillActorUid, skill, { role }) ?? prev,
+      (prev) => useGuessWhoSkill(prev, skillActorUid, skill, opts) ?? prev,
     )
-    setRazeArmed(false)
+    setTejoArmed(false)
   }
 
   const pendingGuessAgent = agentById(pendingGuessId)
@@ -606,7 +614,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
               setDraftSecret(null)
               setGuessMode(false)
               setPendingGuessId(null)
-              setRazeArmed(false)
+              setTejoArmed(false)
               void resetGame(opts)
             }}
             blurb="Fresh board — both of you pick new secret agents."
@@ -646,7 +654,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
             <>
               {/* Status + controls in one compact bar */}
               <div className="mt-2 shrink-0 space-y-1.5 rounded-2xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     {([0, 1] as const).map((seat) => {
                       const isTurn =
@@ -682,29 +690,69 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                       )
                     })}
                     {shownSecret ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-50">
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          backgroundColor: '#bae6fd',
+                          borderColor: '#38bdf8',
+                          color: '#0f172a',
+                        }}
+                      >
                         <img
                           src={shownSecret.icon}
                           alt=""
                           className="size-4 rounded object-cover"
                           draggable={false}
                         />
-                        <span className="font-semibold">{shownSecret.name}</span>
+                        {shownSecret.name}
                       </span>
                     ) : null}
                     {game.hotseat ? (
-                      <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-100">
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: '#78350f',
+                          borderColor: '#fbbf24',
+                          color: '#ffffff',
+                        }}
+                      >
                         Hotseat
                       </span>
                     ) : null}
                     {intelRole ? (
-                      <span className="rounded-full border border-sky-400/35 bg-sky-500/15 px-2 py-0.5 text-[10px] text-sky-100">
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: '#0c4a6e',
+                          borderColor: '#38bdf8',
+                          color: '#ffffff',
+                        }}
+                      >
                         Role {intelRole}
                       </span>
                     ) : null}
                     {intelHalf ? (
-                      <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-100">
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: '#78350f',
+                          borderColor: '#fbbf24',
+                          color: '#ffffff',
+                        }}
+                      >
                         Name {intelHalf === 'early' ? 'A–M' : 'N–Z'}
+                      </span>
+                    ) : null}
+                    {facesBlinded ? (
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: '#9a3412',
+                          borderColor: '#fb923c',
+                          color: '#ffffff',
+                        }}
+                      >
+                        Flashed
                       </span>
                     ) : null}
                     {game.lastSkill ? (
@@ -716,6 +764,27 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                       </span>
                     ) : null}
                   </div>
+
+                  {game.phase === 'playing' ? (
+                    <div className="min-w-0 flex-1 basis-[12rem]">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 lg:grid-cols-3">
+                        {GUESS_WHO_SKILLS.map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="flex min-w-0 items-baseline gap-1.5 text-[10px] leading-snug"
+                          >
+                            <span className="shrink-0 font-semibold text-white/85">
+                              {skill.label}
+                            </span>
+                            <span className="min-w-0 text-muted">
+                              {skill.blurb}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="flex shrink-0 flex-wrap items-center gap-1">
                     <button
                       type="button"
@@ -839,42 +908,38 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
 
-                    {razeArmed ? (
+                    {tejoArmed ? (
                       <div className="flex flex-wrap items-center gap-1">
-                        {(
-                          [
-                            'Duelist',
-                            'Initiator',
-                            'Controller',
-                            'Sentinel',
-                          ] as const
-                        ).map((role) => {
-                          const meta = VALORANT_ROLE_META[role]
-                          return (
-                            <button
-                              key={role}
-                              type="button"
-                              onClick={() => fireSkill('raze', role)}
-                              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                              style={{
-                                backgroundColor: '#7c2d12',
-                                borderColor: '#fb923c',
-                                color: '#ffffff',
-                              }}
-                            >
-                              <img
-                                src={meta.icon}
-                                alt=""
-                                className="size-3.5 object-contain"
-                                draggable={false}
-                              />
-                              Nuke {role}
-                            </button>
-                          )
-                        })}
+                        {Array.from(
+                          { length: guessWhoRowCount() },
+                          (_, row) => {
+                            const rows = guessWhoRowCount()
+                            const label =
+                              row === 0
+                                ? 'Front row'
+                                : row === rows - 1
+                                  ? 'Back row'
+                                  : `Row ${row + 1}`
+                            return (
+                              <button
+                                key={row}
+                                type="button"
+                                onClick={() => fireSkill('tejo', { row })}
+                                className="rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                                style={{
+                                  backgroundColor: '#713f12',
+                                  borderColor: '#facc15',
+                                  color: '#ffffff',
+                                }}
+                              >
+                                Laser {label}
+                              </button>
+                            )
+                          },
+                        )}
                         <button
                           type="button"
-                          onClick={() => setRazeArmed(false)}
+                          onClick={() => setTejoArmed(false)}
                           className="rounded-full border px-2.5 py-1 text-[11px]"
                           style={{
                             backgroundColor: '#0b1220',
@@ -882,7 +947,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                             color: '#ffffff',
                           }}
                         >
-                          Cancel Raze
+                          Cancel Tejo
                         </button>
                       </div>
                     ) : null}
@@ -1002,6 +1067,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                   immersive={immersive}
                   agents={VALORANT_AGENTS}
                   flippedIds={board.flipped}
+                  facesBlinded={facesBlinded}
                   secretId={
                     game.hotseat || mySeat === boardSeat
                       ? board.secretId
@@ -1018,12 +1084,12 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                   }
                   onAgentClick={onAgentClick}
                   onToggleGuess={() => {
-                    setRazeArmed(false)
+                    setTejoArmed(false)
                     setGuessMode((v) => !v)
                   }}
                   onPass={() => {
                     setGuessMode(false)
-                    setRazeArmed(false)
+                    setTejoArmed(false)
                     void commitGame(
                       (prev) => passGuessWhoTurn(prev, actorUid) ?? prev,
                     )

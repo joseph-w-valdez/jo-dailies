@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentsInGuessWhoRow,
   createInitialGuessWho,
   flipGuessWhoRole,
   guessGuessWhoAgent,
@@ -43,10 +44,12 @@ describe('guessWho', () => {
     expect(state.firstUid).toBe(b)
   })
 
-  it('flips agents on your board and blocks flipping your secret', () => {
+  it('flips agents on your board including your own secret face', () => {
     let state = bothPicked()
     state = selectGuessWhoFirst(state, a!)!
-    expect(toggleGuessWhoFlip(state, a!, agentA)).toBeNull()
+    // Your secret face is still a candidate for *their* mystery.
+    state = toggleGuessWhoFlip(state, a!, agentA)!
+    expect(state.seats[0].flipped).toContain(agentA)
     state = toggleGuessWhoFlip(state, a!, agentC)!
     expect(state.seats[0].flipped).toContain(agentC)
     state = toggleGuessWhoFlip(state, a!, agentC)!
@@ -121,24 +124,38 @@ describe('guessWho', () => {
         return rng % 1
       },
     })!
-    expect(jett.seats[0].flipped.length).toBe(4)
-    expect(jett.seats[0].flipped).not.toContain(agentA)
+    expect(jett.seats[1].flipped.length).toBe(4)
+    expect(jett.seats[0].flipped.length).toBe(0)
 
-    const raze = useGuessWhoSkill(state, a!, 'raze', {
-      role: agentById(agentC)!.role,
+    let cloveRng = 0
+    const clove = useGuessWhoSkill(state, a!, 'clove', {
+      random: () => {
+        cloveRng += 0.31
+        return cloveRng % 1
+      },
     })!
-    expect(
-      VALORANT_AGENTS.filter(
-        (ag) =>
-          ag.role === agentById(agentC)!.role &&
-          ag.id !== agentA &&
-          raze.seats[0].flipped.includes(ag.id),
-      ).length,
-    ).toBeGreaterThan(0)
+    expect(clove.seats[1].flipped.length).toBe(4)
+    expect(clove.seats[0].flipped.length).toBe(0)
+    expect(clove.lastSkill?.note).toMatch(/Clove smoked/)
 
-    const flipped = toggleGuessWhoFlip(state, a!, agentC)!
-    const reyna = useGuessWhoSkill(flipped, a!, 'reyna')!
-    expect(reyna.seats[0].flipped).toEqual([])
+    const phoenix = useGuessWhoSkill(state, a!, 'phoenix')!
+    expect(phoenix.flashedBoardUid).toBe(b)
+    expect(phoenix.lastSkill?.note).toMatch(/Phoenix flash/)
+    const afterPass = passGuessWhoTurn(phoenix, a!)!
+    expect(afterPass.flashedBoardUid).toBe(b)
+    const cleared = passGuessWhoTurn(afterPass, b!)!
+    expect(cleared.flashedBoardUid).toBeNull()
+
+    const secretIdx = VALORANT_AGENTS.findIndex((ag) => ag.id === agentB)
+    const tejoRow = Math.floor(secretIdx / 8)
+    const tejoHit = useGuessWhoSkill(state, a!, 'tejo', { row: tejoRow })!
+    expect(tejoHit.lastSkill?.note).toMatch(/DIRECT HIT/)
+    for (const ag of agentsInGuessWhoRow(tejoRow)) {
+      expect(tejoHit.seats[0].flipped).toContain(ag.id)
+    }
+    const missRow = tejoRow === 0 ? 1 : 0
+    const tejoMiss = useGuessWhoSkill(state, a!, 'tejo', { row: missRow })!
+    expect(tejoMiss.lastSkill?.note).toMatch(/miss/)
   })
 
   it('bulk-flips a role for QOL', () => {
@@ -148,11 +165,7 @@ describe('guessWho', () => {
     state = flipGuessWhoRole(state, a!, role, true)!
     for (const ag of VALORANT_AGENTS) {
       if (ag.role !== role) continue
-      if (ag.id === agentA) {
-        expect(state.seats[0].flipped).not.toContain(ag.id)
-      } else {
-        expect(state.seats[0].flipped).toContain(ag.id)
-      }
+      expect(state.seats[0].flipped).toContain(ag.id)
     }
   })
 })

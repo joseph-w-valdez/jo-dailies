@@ -9,6 +9,7 @@ import {
 import {
   agentById,
   VALORANT_AGENTS,
+  type ValorantAgent,
   type ValorantRole,
 } from './valorantAgents'
 
@@ -16,46 +17,101 @@ export type GuessWhoPhase = 'picking' | 'playing' | 'finished'
 export type GuessWhoStatus = 'playing' | 'won'
 
 /** Optional once-per-game cheat skills (funny, not balanced). */
-export type GuessWhoSkillId = 'sova' | 'cypher' | 'jett' | 'raze' | 'reyna'
+export type GuessWhoSkillId =
+  | 'sova'
+  | 'cypher'
+  | 'jett'
+  | 'clove'
+  | 'phoenix'
+  | 'tejo'
+
+/** Matches the 3D board column count. */
+export const GUESS_WHO_BOARD_COLS = 8
+
+export function guessWhoRowCount(
+  agentCount = VALORANT_AGENTS.length,
+): number {
+  const cols = Math.min(GUESS_WHO_BOARD_COLS, Math.max(1, agentCount))
+  return Math.ceil(agentCount / cols)
+}
+
+/** Agents in a board row (0 = front / closest to you). */
+export function agentsInGuessWhoRow(
+  row: number,
+  agentCount = VALORANT_AGENTS.length,
+): ValorantAgent[] {
+  const cols = Math.min(GUESS_WHO_BOARD_COLS, Math.max(1, agentCount))
+  if (row < 0 || row >= guessWhoRowCount(agentCount)) return []
+  return VALORANT_AGENTS.slice(row * cols, row * cols + cols)
+}
+
+/** Full 2×2 blocks that fit on the agent grid (for Clove). */
+export function guessWho2x2Blocks(
+  agentCount = VALORANT_AGENTS.length,
+): string[][] {
+  const cols = Math.min(GUESS_WHO_BOARD_COLS, Math.max(1, agentCount))
+  const rows = guessWhoRowCount(agentCount)
+  const blocks: string[][] = []
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const idxs = [
+        r * cols + c,
+        r * cols + c + 1,
+        (r + 1) * cols + c,
+        (r + 1) * cols + c + 1,
+      ]
+      if (idxs.every((i) => i < agentCount)) {
+        blocks.push(idxs.map((i) => VALORANT_AGENTS[i]!.id))
+      }
+    }
+  }
+  return blocks
+}
 
 export const GUESS_WHO_SKILLS: readonly {
   id: GuessWhoSkillId
   label: string
   blurb: string
-  /** Needs a role tap afterward. */
-  needsRole?: boolean
+  /** Needs a board-row tap afterward (Tejo). */
+  needsRow?: boolean
   cls: string
 }[] = [
   {
     id: 'sova',
     label: 'Sova Dart',
-    blurb: 'Reveal their role',
+    blurb: "Recon dart — peek their secret's role.",
     cls: 'border-sky-500/55 bg-sky-500/20 text-app-text hover:bg-sky-500/30',
   },
   {
     id: 'cypher',
     label: 'Cypher Cam',
-    blurb: 'A–M or N–Z name?',
+    blurb: 'Tripwire the alphabet — name A–M or N–Z?',
     cls: 'border-amber-500/55 bg-amber-500/20 text-app-text hover:bg-amber-500/30',
   },
   {
     id: 'jett',
     label: 'Jett Dash',
-    blurb: 'Flip 4 random faces',
+    blurb: 'Dash their board — flip 4 random upright faces over there.',
     cls: 'border-cyan-500/55 bg-cyan-500/20 text-app-text hover:bg-cyan-500/30',
   },
   {
-    id: 'raze',
-    label: 'Raze Satchel',
-    blurb: 'Nuke a whole role',
-    needsRole: true,
-    cls: 'border-orange-500/55 bg-orange-500/20 text-app-text hover:bg-orange-500/30',
+    id: 'clove',
+    label: 'Clove Ruse',
+    blurb: 'Smoke their board — flip a random 2×2 on their side.',
+    cls: 'border-rose-500/55 bg-rose-500/20 text-app-text hover:bg-rose-500/30',
   },
   {
-    id: 'reyna',
-    label: 'Reyna Dismiss',
-    blurb: 'Unflip your board',
-    cls: 'border-fuchsia-500/55 bg-fuchsia-500/20 text-app-text hover:bg-fuchsia-500/30',
+    id: 'tejo',
+    label: 'Tejo Armageddon',
+    blurb: 'Laser a row on your board; learn if they got hit.',
+    needsRow: true,
+    cls: 'border-yellow-500/55 bg-yellow-500/20 text-app-text hover:bg-yellow-500/30',
+  },
+  {
+    id: 'phoenix',
+    label: 'Phoenix Flash',
+    blurb: "Curveball their board — faces blank until they finish their turn.",
+    cls: 'border-orange-500/55 bg-orange-500/20 text-app-text hover:bg-orange-500/30',
   },
 ] as const
 
@@ -91,6 +147,10 @@ export interface GuessWhoState {
   revealedRoleByUid: Partial<Record<string, ValorantRole>>
   /** Name-half intel about a seat's secret (Cypher). */
   nameHalfByUid: Partial<Record<string, 'early' | 'late'>>
+  /**
+   * Whose board faces are blanked (Phoenix). Clears when that player passes.
+   */
+  flashedBoardUid: string | null
   lastSkill: GuessWhoLastSkill | null
   hotseat: boolean
   version: number
@@ -160,6 +220,7 @@ export function createInitialGuessWho(
     skillsUsedByUid: emptySkillsUsed(),
     revealedRoleByUid: {},
     nameHalfByUid: {},
+    flashedBoardUid: null,
     lastSkill: null,
     hotseat: Boolean(opts?.hotseat),
     version: 1,
@@ -216,8 +277,9 @@ function parseSkillId(raw: unknown): GuessWhoSkillId | null {
   return raw === 'sova' ||
     raw === 'cypher' ||
     raw === 'jett' ||
-    raw === 'raze' ||
-    raw === 'reyna'
+    raw === 'clove' ||
+    raw === 'phoenix' ||
+    raw === 'tejo'
     ? raw
     : null
 }
@@ -311,6 +373,11 @@ export function normalizeGuessWho(raw: unknown, uid: string): GuessWhoState {
     }
   }
 
+  const flashedBoardUid =
+    typeof s.flashedBoardUid === 'string' && isRoomUid(s.flashedBoardUid)
+      ? s.flashedBoardUid
+      : null
+
   let lastSkill: GuessWhoLastSkill | null = null
   if (s.lastSkill && typeof s.lastSkill === 'object') {
     const g = s.lastSkill as Record<string, unknown>
@@ -349,6 +416,7 @@ export function normalizeGuessWho(raw: unknown, uid: string): GuessWhoState {
     skillsUsedByUid: parseSkillsUsed(s.skillsUsedByUid),
     revealedRoleByUid,
     nameHalfByUid,
+    flashedBoardUid,
     lastSkill,
     hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
@@ -375,6 +443,7 @@ export function guessWhoToDoc(state: GuessWhoState): Record<string, unknown> {
     skillsUsedByUid: state.skillsUsedByUid,
     revealedRoleByUid: state.revealedRoleByUid,
     nameHalfByUid: state.nameHalfByUid,
+    flashedBoardUid: state.flashedBoardUid,
     lastSkill: state.lastSkill,
     hotseat: state.hotseat,
     version: state.version,
@@ -441,8 +510,8 @@ export function toggleGuessWhoFlip(
   if (!agentById(agentId)) return null
   const seat = seatForUid(uid)
   if (seat === null) return null
-  // Don't flip your own secret face-down — keeps the board honest.
-  if (state.seats[seat].secretId === agentId) return null
+  // Board faces are candidates for *their* secret — your mystery card is
+  // separate (mystery stand). Same face as your pick is still fair game.
 
   const flipped = state.seats[seat].flipped
   const nextFlipped = flipped.includes(agentId)
@@ -459,7 +528,7 @@ export function toggleGuessWhoFlip(
   }
 }
 
-/** Flip every agent of a role (except your secret). QOL helper. */
+/** Flip every agent of a role. QOL helper (board = their candidates). */
 export function flipGuessWhoRole(
   state: GuessWhoState,
   uid: string,
@@ -470,13 +539,11 @@ export function flipGuessWhoRole(
   if (!isRoomUid(uid) && uid !== 'local') return null
   const seat = seatForUid(uid)
   if (seat === null) return null
-  const secretId = state.seats[seat].secretId
   const roleIds = VALORANT_AGENTS.filter((a) => a.role === role).map((a) => a.id)
   if (roleIds.length === 0) return null
 
   const flipped = new Set(state.seats[seat].flipped)
   for (const id of roleIds) {
-    if (id === secretId) continue
     if (faceDown) flipped.add(id)
     else flipped.delete(id)
   }
@@ -514,14 +581,14 @@ function agentNameHalf(name: string): 'early' | 'late' {
 }
 
 /**
- * Spend a once-per-game cheat skill. Raze needs `role`.
- * `random` is injectable for tests (Jett).
+ * Spend a once-per-game cheat skill. Tejo needs `row`.
+ * `random` is injectable for tests (Jett / Clove / Yoru).
  */
 export function useGuessWhoSkill(
   state: GuessWhoState,
   uid: string,
   skill: GuessWhoSkillId,
-  opts?: { role?: ValorantRole; random?: () => number },
+  opts?: { row?: number; random?: () => number },
 ): GuessWhoState | null {
   if (state.phase !== 'playing' || state.status !== 'playing') return null
   if (!isRoomUid(uid) && uid !== 'local') return null
@@ -570,9 +637,9 @@ export function useGuessWhoSkill(
   }
 
   if (skill === 'jett') {
-    const secretId = state.seats[seat].secretId
+    // Grief their board (candidates for *your* secret).
     const candidates = VALORANT_AGENTS.filter(
-      (a) => a.id !== secretId && !state.seats[seat].flipped.includes(a.id),
+      (a) => !state.seats[oppSeat].flipped.includes(a.id),
     )
     if (candidates.length === 0) return null
     const pool = [...candidates]
@@ -583,9 +650,9 @@ export function useGuessWhoSkill(
       if (taken) pick.push(taken.id)
     }
     const seats = cloneSeats(state.seats)
-    seats[seat] = {
-      ...seats[seat],
-      flipped: [...seats[seat].flipped, ...pick],
+    seats[oppSeat] = {
+      ...seats[oppSeat],
+      flipped: [...seats[oppSeat].flipped, ...pick],
     }
     return {
       ...state,
@@ -594,39 +661,74 @@ export function useGuessWhoSkill(
       lastSkill: {
         uid,
         skill,
-        note: `Jett dashed ${pick.length} faces down`,
+        note: `Jett dashed ${pick.length} faces on their board`,
       },
       updatedAt: Date.now(),
     }
   }
 
-  if (skill === 'raze') {
-    const role = opts?.role
-    if (!role || role === 'Unknown') return null
-    const next = flipGuessWhoRole(state, uid, role, true)
-    if (!next) return null
+  if (skill === 'clove') {
+    const blocks = guessWho2x2Blocks()
+    if (blocks.length === 0) return null
+    const block = blocks[Math.floor(random() * blocks.length)]!
+    const flipped = new Set(state.seats[oppSeat].flipped)
+    for (const id of block) flipped.add(id)
+    const seats = cloneSeats(state.seats)
+    seats[oppSeat] = { ...seats[oppSeat], flipped: [...flipped] }
     return {
-      ...next,
+      ...state,
+      seats,
       skillsUsedByUid: markSkillUsed(state, uid, skill),
       lastSkill: {
         uid,
         skill,
-        note: `Raze satchel'd every ${role}`,
+        note: `Clove smoked a 2×2 on their board`,
       },
       updatedAt: Date.now(),
     }
   }
 
-  if (skill === 'reyna') {
-    const next = restoreGuessWhoBoard(state, uid)
-    if (!next) return null
+  if (skill === 'tejo') {
+    const row = opts?.row
+    const rows = guessWhoRowCount()
+    if (row == null || !Number.isInteger(row) || row < 0 || row >= rows) {
+      return null
+    }
+    const inRow = agentsInGuessWhoRow(row)
+    if (inRow.length === 0) return null
+    const rowIds = inRow.map((a) => a.id)
+    const oppSecretId = state.seats[oppSeat].secretId
+    const hit = Boolean(oppSecretId && rowIds.includes(oppSecretId))
+    const flipped = new Set(state.seats[seat].flipped)
+    for (const id of rowIds) flipped.add(id)
+    const seats = cloneSeats(state.seats)
+    seats[seat] = { ...seats[seat], flipped: [...flipped] }
+    const rowLabel =
+      row === 0 ? 'front' : row === rows - 1 ? 'back' : `${row + 1}`
     return {
-      ...next,
+      ...state,
+      seats,
       skillsUsedByUid: markSkillUsed(state, uid, skill),
       lastSkill: {
         uid,
         skill,
-        note: 'Reyna dismissed the board — all faces up',
+        note: hit
+          ? `Tejo Armageddon ${rowLabel} row — DIRECT HIT (they're in there)`
+          : `Tejo Armageddon ${rowLabel} row — miss, clear sky`,
+      },
+      updatedAt: Date.now(),
+    }
+  }
+
+  if (skill === 'phoenix') {
+    return {
+      ...state,
+      skillsUsedByUid: markSkillUsed(state, uid, skill),
+      flashedBoardUid: oppUid,
+      lastSkill: {
+        uid,
+        skill,
+        note: 'Phoenix flash — their board is blinded until their turn ends',
       },
       updatedAt: Date.now(),
     }
@@ -644,6 +746,9 @@ export function passGuessWhoTurn(
   return {
     ...state,
     turnUid: nextTurnUid(uid),
+    // Flash lasts through the blinded player's turn (clears when they pass).
+    flashedBoardUid:
+      state.flashedBoardUid === uid ? null : state.flashedBoardUid,
     updatedAt: Date.now(),
   }
 }
@@ -672,6 +777,8 @@ export function guessGuessWhoAgent(
       status: 'won',
       winnerUid: uid,
       lastGuess: { uid, agentId, correct: true },
+      flashedBoardUid:
+        state.flashedBoardUid === uid ? null : state.flashedBoardUid,
       updatedAt: Date.now(),
     }
   }
@@ -681,6 +788,8 @@ export function guessGuessWhoAgent(
     status: 'won',
     winnerUid: nextTurnUid(uid),
     lastGuess: { uid, agentId, correct: false },
+    flashedBoardUid:
+      state.flashedBoardUid === uid ? null : state.flashedBoardUid,
     updatedAt: Date.now(),
   }
 }
@@ -696,6 +805,8 @@ export function surrenderGuessWho(
     phase: 'finished',
     status: 'won',
     winnerUid: nextTurnUid(loserUid),
+    flashedBoardUid:
+      state.flashedBoardUid === loserUid ? null : state.flashedBoardUid,
     updatedAt: Date.now(),
   }
 }
