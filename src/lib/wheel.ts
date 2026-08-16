@@ -1,6 +1,7 @@
 /** Shared room picker wheel — Firestore `rooms/{id}/wheel/current`. */
 import {
   VALORANT_AGENTS,
+  VALORANT_ROLE_META,
   type ValorantRole,
 } from './valorantAgents'
 
@@ -40,13 +41,20 @@ export interface WheelRoomState {
   version: number
   updatedAt: number
   /**
-   * Usual agent pools — entry ids (`agent-{uuid}`) that should be enabled.
-   * `null` = never saved yet.
+   * Usual agent pools — enabled options + weights for Joseph / Joha.
+   * `null` = never saved yet. Legacy string[] presets are upgraded on read.
    */
   agentPresets: {
-    joseph: string[] | null
-    joha: string[] | null
+    joseph: WheelAgentPresetEntry[] | null
+    joha: WheelAgentPresetEntry[] | null
   }
+}
+
+/** One enabled option inside a Joseph / Joha preset. */
+export interface WheelAgentPresetEntry {
+  id: string
+  label: string
+  weight: number
 }
 
 export type WheelAgentPresetWho = keyof WheelRoomState['agentPresets']
@@ -63,6 +71,33 @@ function emptyAgentPresets(): WheelRoomState['agentPresets'] {
   return { joseph: null, joha: null }
 }
 
+function normalizeAgentPresets(
+  raw: WheelRoomState['agentPresets'] | null | undefined,
+): WheelRoomState['agentPresets'] {
+  const joseph = raw?.joseph ?? null
+  const joha = raw?.joha ?? null
+  if (raw && raw.joseph === joseph && raw.joha === joha) return raw
+  return { joseph, joha }
+}
+
+function parsePresetEntry(raw: unknown): WheelAgentPresetEntry | null {
+  if (typeof raw === 'string') {
+    const key = raw.trim()
+    if (!key) return null
+    return { id: key, label: key, weight: 1 }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === 'string' ? o.id.trim() : ''
+  const label = typeof o.label === 'string' ? o.label.trim() : ''
+  if (!id && !label) return null
+  return {
+    id: id || label,
+    label: label || id,
+    weight: normalizeWeight(o.weight ?? 1),
+  }
+}
+
 function parseAgentPresets(raw: unknown): WheelRoomState['agentPresets'] {
   const out = emptyAgentPresets()
   if (!raw || typeof raw !== 'object') return out
@@ -70,10 +105,12 @@ function parseAgentPresets(raw: unknown): WheelRoomState['agentPresets'] {
   for (const who of ['joseph', 'joha'] as const) {
     const v = o[who]
     if (v == null) continue
-    if (!Array.isArray(v)) continue
-    out[who] = v
-      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-      .map((id) => id.trim())
+    const list = Array.isArray(v) ? v : listFromRemote(v)
+    if (!Array.isArray(v) && list.length === 0) continue
+    const entries = list
+      .map(parsePresetEntry)
+      .filter((e): e is WheelAgentPresetEntry => e !== null)
+    out[who] = entries
   }
   return out
 }
@@ -212,13 +249,23 @@ export function defaultWheelEntries(): WheelEntry[] {
 }
 
 export const WHEEL_VALORANT_TAB_ID = 'wt-agents'
-export const WHEEL_VALORANT_TAB_NAME = 'Agents'
+export const WHEEL_VALORANT_TAB_NAME = 'Valorant'
+
+/** Current + legacy display names for the pinned Valorant tab. */
+const WHEEL_VALORANT_TAB_ALIASES = new Set([
+  WHEEL_VALORANT_TAB_NAME.toLowerCase(),
+  'agents',
+])
+
+function isValorantTabName(name: string | undefined): boolean {
+  return WHEEL_VALORANT_TAB_ALIASES.has(name?.trim().toLowerCase() ?? '')
+}
 
 export function isPinnedWheelTab(
   tab: Pick<WheelTab, 'id'> & { name?: string },
 ): boolean {
   if (tab.id === WHEEL_VALORANT_TAB_ID) return true
-  return tab.name?.trim().toLowerCase() === WHEEL_VALORANT_TAB_NAME.toLowerCase()
+  return isValorantTabName(tab.name)
 }
 
 export function createValorantAgentsTab(): WheelTab {
@@ -229,17 +276,21 @@ export function createValorantAgentsTab(): WheelTab {
 }
 
 /**
- * Guarantee exactly one pinned Agents tab (stable id).
- * Promotes legacy “Agents” tabs that were created before pinning.
+ * Guarantee exactly one pinned Valorant tab (stable id).
+ * Promotes legacy “Agents” tabs that were created before the rename/pin.
  */
 export function ensureValorantAgentsTab(state: WheelRoomState): WheelRoomState {
-  const byId = state.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
-  const byName = state.tabs.find(
-    (t) =>
-      t.id !== WHEEL_VALORANT_TAB_ID &&
-      t.name.trim().toLowerCase() === WHEEL_VALORANT_TAB_NAME.toLowerCase(),
+  const agentPresets = normalizeAgentPresets(state.agentPresets)
+  const base: WheelRoomState =
+    state.agentPresets === agentPresets
+      ? state
+      : { ...state, agentPresets }
+
+  const byId = base.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
+  const byName = base.tabs.find(
+    (t) => t.id !== WHEEL_VALORANT_TAB_ID && isValorantTabName(t.name),
   )
-  const byContent = state.tabs.find(
+  const byContent = base.tabs.find(
     (t) =>
       t.id !== WHEEL_VALORANT_TAB_ID &&
       t.id !== byName?.id &&
@@ -249,18 +300,35 @@ export function ensureValorantAgentsTab(state: WheelRoomState): WheelRoomState {
 
   if (!legacy) {
     const agents = createValorantAgentsTab()
-    let tabs = [...state.tabs, agents]
+    let tabs = [...base.tabs, agents]
     if (tabs.length > WHEEL_TAB_MAX) {
       const dropIdx = tabs.findIndex(
         (t) =>
           t.id !== WHEEL_VALORANT_TAB_ID &&
-          t.id !== state.activeTabId &&
+          t.id !== base.activeTabId &&
           t.id !== tabs[0]?.id,
       )
       if (dropIdx >= 0) tabs = tabs.filter((_, i) => i !== dropIdx)
       else tabs = tabs.slice(0, WHEEL_TAB_MAX - 1).concat(agents)
     }
-    return { ...state, tabs }
+    return { ...base, tabs }
+  }
+
+  const hasDuplicate = base.tabs.some(
+    (t) =>
+      t.id !== legacy.id &&
+      (t.id === WHEEL_VALORANT_TAB_ID ||
+        isValorantTabName(t.name) ||
+        isValorantAgentWheel(t.entries)),
+  )
+  const needsPin =
+    legacy.id !== WHEEL_VALORANT_TAB_ID ||
+    legacy.name !== WHEEL_VALORANT_TAB_NAME
+  const activeOk = base.tabs.some((t) => t.id === base.activeTabId)
+
+  // Already correct — don't reshuffle tab order on every snapshot.
+  if (!hasDuplicate && !needsPin && activeOk) {
+    return base
   }
 
   const pinned: WheelTab = {
@@ -269,28 +337,27 @@ export function ensureValorantAgentsTab(state: WheelRoomState): WheelRoomState {
     name: WHEEL_VALORANT_TAB_NAME,
   }
 
-  const tabs = state.tabs
+  const tabs = base.tabs
     .filter((t) => {
       if (t.id === legacy.id) return false
       if (t.id === WHEEL_VALORANT_TAB_ID) return false
-      if (t.name.trim().toLowerCase() === WHEEL_VALORANT_TAB_NAME.toLowerCase())
-        return false
+      if (isValorantTabName(t.name)) return false
       if (t.id !== legacy.id && isValorantAgentWheel(t.entries)) return false
       return true
     })
     .concat(pinned)
 
   const nextActive =
-    state.activeTabId === legacy.id ||
-    state.activeTabId === WHEEL_VALORANT_TAB_ID ||
-    state.activeTabId === byName?.id
+    base.activeTabId === legacy.id ||
+    base.activeTabId === WHEEL_VALORANT_TAB_ID ||
+    base.activeTabId === byName?.id
       ? WHEEL_VALORANT_TAB_ID
-      : tabs.some((t) => t.id === state.activeTabId)
-        ? state.activeTabId
+      : tabs.some((t) => t.id === base.activeTabId)
+        ? base.activeTabId
         : (tabs[0]?.id ?? WHEEL_VALORANT_TAB_ID)
 
   return {
-    ...state,
+    ...base,
     tabs,
     activeTabId: nextActive,
   }
@@ -568,8 +635,8 @@ export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
     version: state.version,
     updatedAt: state.updatedAt,
     agentPresets: {
-      joseph: state.agentPresets.joseph,
-      joha: state.agentPresets.joha,
+      joseph: normalizeAgentPresets(state.agentPresets).joseph,
+      joha: normalizeAgentPresets(state.agentPresets).joha,
     },
   }
 }
@@ -680,13 +747,25 @@ export function createValorantAgentWheelEntries(): WheelEntry[] {
   return entries
 }
 
-/** Restore the pinned Agents tab to the full equal-weight roster. */
-export function resetValorantAgentsTab(
+/** Four equal slices — one per role — with official role icons. */
+export function createValorantRoleWheelEntries(): WheelEntry[] {
+  return WHEEL_AGENT_ROLE_ORDER.map((role, i) =>
+    createWheelEntry(role, {
+      id: `role-${role.toLowerCase()}`,
+      color: valorantAgentWheelColor(role, i, WHEEL_AGENT_ROLE_ORDER.length),
+      icon: VALORANT_ROLE_META[role].icon,
+      weight: 1,
+      enabled: true,
+    }),
+  )
+}
+
+function replacePinnedAgentsEntries(
   state: WheelRoomState,
+  entries: WheelEntry[],
 ): WheelRoomState | null {
   const ensured = ensureValorantAgentsTab(state)
   if (!ensured.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
-  const entries = createValorantAgentWheelEntries()
   return {
     ...ensured,
     tabs: ensured.tabs.map((tab) =>
@@ -704,51 +783,112 @@ export function resetValorantAgentsTab(
   }
 }
 
-/** Snapshot currently-enabled Agents onto a Joseph / Joha preset. */
+/** Restore the pinned Agents tab to the full equal-weight roster. */
+export function resetValorantAgentsTab(
+  state: WheelRoomState,
+): WheelRoomState | null {
+  return replacePinnedAgentsEntries(state, createValorantAgentWheelEntries())
+}
+
+/** Replace the Agents tab with a 4-slice role-type wheel. */
+export function loadValorantRolesWheel(
+  state: WheelRoomState,
+): WheelRoomState | null {
+  return replacePinnedAgentsEntries(state, createValorantRoleWheelEntries())
+}
+
+/** Snapshot currently-enabled options (+ weights) onto a Joseph / Joha preset. */
 export function saveWheelAgentPreset(
   state: WheelRoomState,
   who: WheelAgentPresetWho,
 ): WheelRoomState | null {
   const ensured = ensureValorantAgentsTab(state)
-  const tab = ensured.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
+  const tab =
+    ensured.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID) ??
+    ensured.tabs.find((t) => isPinnedWheelTab(t))
   if (!tab) return null
-  const enabledIds = tab.entries.filter((e) => e.enabled).map((e) => e.id)
+  const enabled: WheelAgentPresetEntry[] = tab.entries
+    .filter((e) => e.enabled)
+    .map((e) => ({
+      id: e.id,
+      label: e.label.trim(),
+      weight: normalizeWeight(e.weight),
+    }))
   return {
     ...ensured,
-    agentPresets: { ...ensured.agentPresets, [who]: enabledIds },
+    tabs: ensured.tabs.map((t) =>
+      t.id === tab.id
+        ? { ...t, id: WHEEL_VALORANT_TAB_ID, name: WHEEL_VALORANT_TAB_NAME }
+        : t,
+    ),
+    activeTabId:
+      ensured.activeTabId === tab.id
+        ? WHEEL_VALORANT_TAB_ID
+        : ensured.activeTabId,
+    agentPresets: {
+      ...normalizeAgentPresets(ensured.agentPresets),
+      [who]: enabled,
+    },
     updatedAt: Date.now(),
   }
 }
 
-/** Apply a saved preset: full roster, weight 1, only preset ids enabled. */
+function presetMatchWeight(
+  entry: WheelEntry,
+  preset: readonly WheelAgentPresetEntry[],
+): number | null {
+  const id = entry.id.trim().toLowerCase()
+  const label = entry.label.trim().toLowerCase()
+  for (const item of preset) {
+    if (
+      item.id.trim().toLowerCase() === id ||
+      item.label.trim().toLowerCase() === label ||
+      item.id.trim().toLowerCase() === label ||
+      item.label.trim().toLowerCase() === id
+    ) {
+      return normalizeWeight(item.weight)
+    }
+  }
+  return null
+}
+
+function isRolesPreset(preset: readonly WheelAgentPresetEntry[]): boolean {
+  if (preset.length === 0) return false
+  const roleKeys = new Set(
+    WHEEL_AGENT_ROLE_ORDER.flatMap((role) => [
+      role.toLowerCase(),
+      `role-${role.toLowerCase()}`,
+    ]),
+  )
+  return preset.every((item) => {
+    const id = item.id.trim().toLowerCase()
+    const label = item.label.trim().toLowerCase()
+    return roleKeys.has(id) || roleKeys.has(label)
+  })
+}
+
+/** Apply a saved preset: restore enabled options and their weights. */
 export function loadWheelAgentPreset(
   state: WheelRoomState,
   who: WheelAgentPresetWho,
 ): WheelRoomState | null {
-  const preset = state.agentPresets[who]
-  if (!preset) return null
-  const ensured = ensureValorantAgentsTab(state)
-  if (!ensured.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
-  const enabled = new Set(preset)
-  const entries = createValorantAgentWheelEntries().map((entry) => ({
-    ...entry,
-    enabled: enabled.has(entry.id),
-    weight: 1,
-  }))
+  const preset = normalizeAgentPresets(state.agentPresets)[who]
+  if (preset == null) return null
+  const base = isRolesPreset(preset)
+    ? createValorantRoleWheelEntries()
+    : createValorantAgentWheelEntries()
+  const entries = base.map((entry) => {
+    const weight = presetMatchWeight(entry, preset)
+    if (weight == null) {
+      return { ...entry, enabled: false, weight: 1 }
+    }
+    return { ...entry, enabled: true, weight }
+  })
+  const next = replacePinnedAgentsEntries(state, entries)
+  if (!next) return null
   return {
-    ...ensured,
-    tabs: ensured.tabs.map((tab) =>
-      tab.id === WHEEL_VALORANT_TAB_ID
-        ? {
-            ...tab,
-            name: WHEEL_VALORANT_TAB_NAME,
-            entries,
-            winnerId: null,
-            spinId: null,
-          }
-        : tab,
-    ),
-    updatedAt: Date.now(),
+    ...next,
+    agentPresets: normalizeAgentPresets(state.agentPresets),
   }
 }
 
@@ -756,7 +896,7 @@ export function wheelAgentPresetSaved(
   state: WheelRoomState,
   who: WheelAgentPresetWho,
 ): boolean {
-  return state.agentPresets[who] != null
+  return normalizeAgentPresets(state.agentPresets)[who] != null
 }
 
 /** True when this tab is mostly the Valorant agent roster. */
@@ -776,6 +916,9 @@ export function valorantRoleForWheelLabel(
   label: string,
 ): ValorantRole | null {
   const name = label.trim().toLowerCase()
+  for (const role of WHEEL_AGENT_ROLE_ORDER) {
+    if (role.toLowerCase() === name) return role
+  }
   const agent = VALORANT_AGENTS.find(
     (a) => a.name.trim().toLowerCase() === name,
   )
@@ -811,6 +954,20 @@ export function equalizeWheelEntryWeights(
   return entries.map((entry) =>
     entry.weight === 1 ? entry : { ...entry, weight: 1 },
   )
+}
+
+/** Fisher–Yates shuffle — new order for wheel slices / options list. */
+export function shuffleWheelEntries(
+  entries: readonly WheelEntry[],
+): WheelEntry[] {
+  const next = [...entries]
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const a = next[i]!
+    next[i] = next[j]!
+    next[j] = a
+  }
+  return next
 }
 
 export function valorantRoleFilterState(
@@ -939,6 +1096,8 @@ export function wheelLabelPose(
   radius: number,
   startDeg: number,
   endDeg: number,
+  /** Fraction of radius for label center (default mid-slice). */
+  radiusFactor = 0.62,
 ): { x: number; y: number; angle: number } {
   const span = endDeg - startDeg
   // One full-circle slice: sit the label upright toward the 3 o'clock pointer.
@@ -947,7 +1106,7 @@ export function wheelLabelPose(
   }
   const mid = (startDeg + endDeg) / 2
   const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180
-  const r = radius * 0.62
+  const r = radius * radiusFactor
   // Flip lower-half labels so they aren't upside-down.
   const angle = mid > 90 && mid < 270 ? mid + 180 : mid
   return {
@@ -971,7 +1130,7 @@ export function wheelIconPose(
   const span = endDeg - startDeg
   const mid = span >= 359.99 ? 90 : (startDeg + endDeg) / 2
   const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180
-  const r = radius * 0.86
+  const r = radius * 0.78
   return {
     x: cx + r * Math.cos(toRad(mid)),
     y: cy + r * Math.sin(toRad(mid)),

@@ -14,6 +14,7 @@ import {
   isPinnedWheelTab,
   isWheelOutcomeFresh,
   loadWheelAgentPreset,
+  loadValorantRolesWheel,
   newWheelSpinId,
   normalizeWeight,
   patchActiveWheelTab,
@@ -25,6 +26,7 @@ import {
   saveWheelAgentPreset,
   setActiveWheelTab,
   setValorantRoleEnabled,
+  shuffleWheelEntries,
   valorantRoleFilterState,
   wheelAgentPresetSaved,
   wheelIconPose,
@@ -67,11 +69,13 @@ function OptionColorButton({
   label,
   disabled,
   onChange,
+  icon,
 }: {
   color: string
   label: string
   disabled?: boolean
   onChange: (color: string) => void
+  icon?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -80,11 +84,23 @@ function OptionColorButton({
       type="button"
       disabled={disabled}
       onClick={() => inputRef.current?.click()}
-      className="relative size-3.5 shrink-0 rounded-full ring-1 ring-white/25 transition hover:ring-white/50 disabled:cursor-not-allowed disabled:opacity-40"
+      className={
+        icon
+          ? 'relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md ring-1 ring-white/20 transition hover:ring-white/45 disabled:cursor-not-allowed disabled:opacity-40'
+          : 'relative size-3.5 shrink-0 rounded-full ring-1 ring-white/25 transition hover:ring-white/50 disabled:cursor-not-allowed disabled:opacity-40'
+      }
       style={{ backgroundColor: color }}
       title="Change color"
       aria-label={`Color for ${label}`}
     >
+      {icon ? (
+        <img
+          src={icon}
+          alt=""
+          className="pointer-events-none size-6 object-contain"
+          draggable={false}
+        />
+      ) : null}
       <input
         ref={inputRef}
         type="color"
@@ -237,9 +253,13 @@ export function WheelPage() {
   const [announce, setAnnounce] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
   const [removeTabId, setRemoveTabId] = useState<string | null>(null)
+  const [presetFlash, setPresetFlash] = useState<WheelAgentPresetWho | null>(
+    null,
+  )
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const outcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const presetFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Wall-clock deadline for outcome clear — survives background-tab timer throttling. */
   const outcomeClearAtRef = useRef<number | null>(null)
   const outcomeSpinIdRef = useRef<string | null>(null)
@@ -254,6 +274,7 @@ export function WheelPage() {
       if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
       if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current)
       if (outcomeTimerRef.current) clearTimeout(outcomeTimerRef.current)
+      if (presetFlashTimerRef.current) clearTimeout(presetFlashTimerRef.current)
     }
   }, [])
 
@@ -483,9 +504,25 @@ export function WheelPage() {
     void commitWheel((prev) => resetValorantAgentsTab(prev) ?? prev)
   }
 
+  const loadRolesWheel = () => {
+    if (spinning || !agentsTab) return
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => loadValorantRolesWheel(prev) ?? prev)
+  }
+
   const saveAgentPreset = (who: WheelAgentPresetWho) => {
     if (spinning || !agentsTab) return
+    // Compute against latest wheel so we don't flash Saved on a no-op failure.
+    if (!saveWheelAgentPreset(wheel, who)) return
     void commitWheel((prev) => saveWheelAgentPreset(prev, who) ?? prev)
+    if (presetFlashTimerRef.current) clearTimeout(presetFlashTimerRef.current)
+    setPresetFlash(who)
+    presetFlashTimerRef.current = setTimeout(() => {
+      setPresetFlash(null)
+      presetFlashTimerRef.current = null
+    }, 1200)
   }
 
   const loadAgentPreset = (who: WheelAgentPresetWho) => {
@@ -729,13 +766,13 @@ export function WheelPage() {
                       />
                     ) : (
                       segments.map((seg) => {
-                        const labelPose = wheelLabelPose(
-                          CX,
-                          CY,
-                          RADIUS,
-                          seg.startDeg,
-                          seg.endDeg,
-                        )
+                        const span = seg.endDeg - seg.startDeg
+                        const hasIcon = Boolean(seg.entry.icon)
+                        const showIcon = hasIcon && span >= 6
+                        // Wide slices (e.g. roles wheel) keep icon + name; agent
+                        // slices stay icon-only so the rim doesn't get noisy.
+                        const showLabel =
+                          span >= 18 && (!hasIcon || span >= 55)
                         const iconPose = wheelIconPose(
                           CX,
                           CY,
@@ -743,10 +780,14 @@ export function WheelPage() {
                           seg.startDeg,
                           seg.endDeg,
                         )
-                        const span = seg.endDeg - seg.startDeg
-                        const hasIcon = Boolean(seg.entry.icon)
-                        const showIcon = hasIcon && span >= 6
-                        const showLabel = !hasIcon && span >= 18
+                        const labelPose = wheelLabelPose(
+                          CX,
+                          CY,
+                          RADIUS,
+                          seg.startDeg,
+                          seg.endDeg,
+                          showIcon && showLabel ? 0.52 : undefined,
+                        )
                         const iconSize =
                           span > 40 ? 30 : span > 20 ? 24 : span > 12 ? 20 : 16
                         const isWinner =
@@ -894,19 +935,33 @@ export function WheelPage() {
                 <h2 className="text-sm font-semibold text-white">
                   Options [{entries.length}]
                 </h2>
-                {!agentsTab ? (
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled={spinning || entries.length === 0}
+                    disabled={spinning || entries.length < 2}
                     onClick={() => {
                       clearOutcome()
-                      setEntries([])
+                      setEntries((prev) => shuffleWheelEntries(prev))
                     }}
                     className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Randomize option order on the wheel"
                   >
-                    Clear all
+                    Shuffle
                   </button>
-                ) : null}
+                  {!agentsTab ? (
+                    <button
+                      type="button"
+                      disabled={spinning || entries.length === 0}
+                      onClick={() => {
+                        clearOutcome()
+                        setEntries([])
+                      }}
+                      className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Clear all
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {spinning ? (
@@ -917,15 +972,26 @@ export function WheelPage() {
 
               {agentsTab ? (
                 <div className="mt-3 space-y-3">
-                  <button
-                    type="button"
-                    disabled={spinning}
-                    onClick={resetAgentsTab}
-                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    title="Full roster, all enabled, weight 1"
-                  >
-                    Restore default
-                  </button>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      disabled={spinning}
+                      onClick={resetAgentsTab}
+                      className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Full roster, all enabled, weight 1"
+                    >
+                      Restore default
+                    </button>
+                    <button
+                      type="button"
+                      disabled={spinning}
+                      onClick={loadRolesWheel}
+                      className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Four equal slices — Duelist, Initiator, Controller, Sentinel"
+                    >
+                      Roles wheel
+                    </button>
+                  </div>
 
                   <div className="space-y-1.5">
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -962,9 +1028,9 @@ export function WheelPage() {
                                 disabled={spinning}
                                 onClick={() => saveAgentPreset(who)}
                                 className="rounded-full border border-dashed border-border bg-surface/50 px-2.5 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                title={`Save currently enabled agents as ${label}'s preset`}
+                                title={`Save currently enabled options as ${label}'s preset`}
                               >
-                                Save
+                                {presetFlash === who ? 'Saved' : 'Save'}
                               </button>
                             </div>
                           </div>
@@ -1088,29 +1154,15 @@ export function WheelPage() {
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2">
-                      {entry.icon ? (
-                        <span
-                          className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md ring-1 ring-white/20"
-                          style={{ backgroundColor: entry.color }}
-                          title={entry.label}
-                        >
-                          <img
-                            src={entry.icon}
-                            alt=""
-                            className="size-6 object-contain"
-                            draggable={false}
-                          />
-                        </span>
-                      ) : (
-                        <OptionColorButton
-                          color={entry.color}
-                          label={entry.label}
-                          disabled={spinning}
-                          onChange={(next) =>
-                            updateEntry(entry.id, { color: next })
-                          }
-                        />
-                      )}
+                      <OptionColorButton
+                        color={entry.color}
+                        label={entry.label}
+                        icon={entry.icon}
+                        disabled={spinning}
+                        onChange={(next) =>
+                          updateEntry(entry.id, { color: next })
+                        }
+                      />
                       <OptionLabelInput
                         id={entry.id}
                         label={entry.label}

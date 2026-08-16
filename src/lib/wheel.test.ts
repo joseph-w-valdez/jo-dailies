@@ -8,6 +8,7 @@ import {
   getActiveWheelTab,
   isPinnedWheelTab,
   isValorantAgentWheel,
+  loadValorantRolesWheel,
   loadWheelAgentPreset,
   normalizeWheel,
   pickWheelColor,
@@ -18,6 +19,7 @@ import {
   rotationForWinner,
   saveWheelAgentPreset,
   setValorantRoleEnabled,
+  shuffleWheelEntries,
   valorantRoleFilterState,
   wheelAgentPresetSaved,
   wheelIconPose,
@@ -51,6 +53,18 @@ describe('wheel', () => {
       createWheelEntry('b', { weight: 1, enabled: false }),
     ]
     expect(buildWheelSegments(entries)).toHaveLength(1)
+  })
+
+  it('shuffles option order without dropping entries', () => {
+    const entries = [
+      createWheelEntry('a', { id: 'a' }),
+      createWheelEntry('b', { id: 'b' }),
+      createWheelEntry('c', { id: 'c' }),
+    ]
+    const shuffled = shuffleWheelEntries(entries)
+    expect(shuffled.map((e) => e.id).sort()).toEqual(['a', 'b', 'c'])
+    expect(shuffled).toHaveLength(3)
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b', 'c'])
   })
 
   it('picks by weight', () => {
@@ -163,7 +177,7 @@ describe('wheel', () => {
     expect(staleTab.entries).toHaveLength(1)
   })
 
-  it('adds and removes extra wheel tabs but keeps Agents pinned', () => {
+  it('adds and removes extra wheel tabs but keeps Valorant pinned', () => {
     let state = createInitialWheel()
     expect(state.tabs).toHaveLength(2)
     expect(isPinnedWheelTab({ id: WHEEL_VALORANT_TAB_ID })).toBe(true)
@@ -195,7 +209,7 @@ describe('wheel', () => {
     expect(addWheelTab(state)).toBeNull()
   })
 
-  it('ships a pinned Valorant Agents tab with colors and icons', () => {
+  it('ships a pinned Valorant tab with colors and icons', () => {
     const state = ensureValorantAgentsTab(createInitialWheel())
     const agents = state.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
     expect(agents.name).toBe(WHEEL_VALORANT_TAB_NAME)
@@ -219,7 +233,7 @@ describe('wheel', () => {
 
     const pose = wheelIconPose(0, 0, 100, 0, 90)
     expect(pose.angle).toBe(45)
-    expect(Math.hypot(pose.x, pose.y)).toBeCloseTo(86, 0)
+    expect(Math.hypot(pose.x, pose.y)).toBeCloseTo(78, 0)
 
     // Complementary role-grouped colors — neighbors within a role stay related
     // but the four role blocks sit in different hue families.
@@ -269,6 +283,22 @@ describe('wheel', () => {
     ).toBe(true)
   })
 
+  it('loads a four-slice roles wheel with role icons', () => {
+    const state = createInitialWheel()
+    const next = loadValorantRolesWheel(state)!
+    const tab = next.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
+    expect(tab.entries.map((e) => e.label)).toEqual([
+      'Duelist',
+      'Initiator',
+      'Controller',
+      'Sentinel',
+    ])
+    expect(tab.entries.every((e) => e.enabled && e.weight === 1 && e.icon)).toBe(
+      true,
+    )
+    expect(tab.entries.every((e) => e.id.startsWith('role-'))).toBe(true)
+  })
+
   it('saves and loads Joseph / Joha agent presets', () => {
     let state = createInitialWheel()
     expect(wheelAgentPresetSaved(state, 'joseph')).toBe(false)
@@ -294,21 +324,61 @@ describe('wheel', () => {
 
     const saved = saveWheelAgentPreset(state, 'joseph')!
     expect(wheelAgentPresetSaved(saved, 'joseph')).toBe(true)
-    expect(saved.agentPresets.joseph).toHaveLength(5)
+    expect(saved.agentPresets.joseph!).toHaveLength(5)
+    for (const id of keep) {
+      expect(saved.agentPresets.joseph!.some((e) => e.id === id)).toBe(true)
+    }
+    expect(
+      saved.agentPresets.joseph!.every((e) => e.weight === 3),
+    ).toBe(true)
 
     const loaded = loadWheelAgentPreset(saved, 'joseph')!
     const next = loaded.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
     expect(next.entries.filter((e) => e.enabled).map((e) => e.id).sort()).toEqual(
       [...keep].sort(),
     )
-    expect(next.entries.every((e) => e.weight === 1)).toBe(true)
+    expect(
+      next.entries.filter((e) => e.enabled).every((e) => e.weight === 3),
+    ).toBe(true)
+    expect(
+      next.entries.filter((e) => !e.enabled).every((e) => e.weight === 1),
+    ).toBe(true)
 
     const doc = wheelToDoc(saved)
-    const roundTrip = normalizeWheel(doc)
+    const roundTrip = normalizeWheel(JSON.parse(JSON.stringify(doc)))
     expect(roundTrip.agentPresets.joseph).toEqual(saved.agentPresets.joseph)
+
+    // Legacy string[] presets still load (weight defaults to 1).
+    const legacyPreset = normalizeWheel({
+      ...wheelToDoc(saved),
+      agentPresets: { joseph: [...keep], joha: null },
+    })
+    const legacyLoaded = loadWheelAgentPreset(legacyPreset, 'joseph')!
+    const legacyTab = legacyLoaded.tabs.find(
+      (t) => t.id === WHEEL_VALORANT_TAB_ID,
+    )!
+    expect(
+      legacyTab.entries.filter((e) => e.enabled).map((e) => e.id).sort(),
+    ).toEqual([...keep].sort())
+    expect(
+      legacyTab.entries.filter((e) => e.enabled).every((e) => e.weight === 1),
+    ).toBe(true)
+
+    // Roles-wheel presets round-trip as the four role slices.
+    const roles = loadValorantRolesWheel(saved)!
+    const rolesSaved = saveWheelAgentPreset(roles, 'joha')!
+    const rolesLoaded = loadWheelAgentPreset(rolesSaved, 'joha')!
+    const rolesTab = rolesLoaded.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!
+    expect(rolesTab.entries.map((e) => e.label)).toEqual([
+      'Duelist',
+      'Initiator',
+      'Controller',
+      'Sentinel',
+    ])
+    expect(rolesTab.entries.every((e) => e.enabled)).toBe(true)
   })
 
-  it('promotes a legacy Agents tab to the pinned id', () => {
+  it('promotes a legacy Agents tab to the pinned Valorant id', () => {
     const legacy = normalizeWheel({
       tabs: [
         {
@@ -328,8 +398,12 @@ describe('wheel', () => {
       version: 2,
       updatedAt: Date.now(),
     })
-    expect(legacy.tabs.filter((t) => t.name === 'Agents')).toHaveLength(1)
-    const agents = legacy.tabs.find((t) => t.name === 'Agents')!
+    expect(
+      legacy.tabs.filter((t) => t.name === WHEEL_VALORANT_TAB_NAME),
+    ).toHaveLength(1)
+    const agents = legacy.tabs.find(
+      (t) => t.name === WHEEL_VALORANT_TAB_NAME,
+    )!
     expect(agents.id).toBe(WHEEL_VALORANT_TAB_ID)
     expect(isPinnedWheelTab(agents)).toBe(true)
     expect(legacy.activeTabId).toBe(WHEEL_VALORANT_TAB_ID)
