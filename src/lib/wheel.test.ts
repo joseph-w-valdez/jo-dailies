@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addWheelTab,
   buildWheelSegments,
   createInitialWheel,
   createWheelEntry,
+  getActiveWheelTab,
   normalizeWheel,
   pickWheelColor,
   pickWeightedIndex,
+  removeWheelTab,
   rotationForWinner,
   wheelSlicePath,
   WHEEL_COLORS,
+  WHEEL_DEFAULT_TAB_NAME,
   WHEEL_OUTCOME_HOLD_MS,
+  WHEEL_TAB_MAX,
 } from './wheel'
 
 describe('wheel', () => {
@@ -59,7 +64,7 @@ describe('wheel', () => {
     expect(path).toContain('A 10 10')
   })
 
-  it('normalizes RTDB object-map entries', () => {
+  it('migrates legacy single-wheel docs into a Main tab', () => {
     const remote = normalizeWheel({
       entries: {
         0: {
@@ -81,17 +86,21 @@ describe('wheel', () => {
       version: 4,
       updatedAt: 1,
     })
-    expect(remote.entries.map((e) => e.label)).toEqual([
+    expect(remote.tabs).toHaveLength(1)
+    expect(remote.tabs[0]!.name).toBe(WHEEL_DEFAULT_TAB_NAME)
+    expect(remote.activeTabId).toBe(remote.tabs[0]!.id)
+    expect(getActiveWheelTab(remote).entries.map((e) => e.label)).toEqual([
       'watch anime',
       'play a game',
     ])
-    expect(remote.rotation).toBe(90)
+    expect(getActiveWheelTab(remote).rotation).toBe(90)
     expect(remote.version).toBe(4)
   })
 
   it('keeps an empty options list instead of inventing a default', () => {
-    expect(normalizeWheel({ entries: [], version: 2 }).entries).toEqual([])
-    expect(createInitialWheel().entries).toEqual([])
+    const empty = normalizeWheel({ entries: [], version: 2 })
+    expect(getActiveWheelTab(empty).entries).toEqual([])
+    expect(getActiveWheelTab(createInitialWheel()).entries).toEqual([])
   })
 
   it('keeps labels as typed', () => {
@@ -118,8 +127,9 @@ describe('wheel', () => {
       version: 3,
       updatedAt: Date.now(),
     })
-    expect(fresh.winnerId).toBe('a')
-    expect(fresh.spinId).toBe('ws-1')
+    const freshTab = getActiveWheelTab(fresh)
+    expect(freshTab.winnerId).toBe('a')
+    expect(freshTab.spinId).toBe('ws-1')
 
     const stale = normalizeWheel({
       entries: [{ id: 'a', label: 'Play Valorant', weight: 1, enabled: true }],
@@ -128,8 +138,60 @@ describe('wheel', () => {
       version: 3,
       updatedAt: Date.now() - WHEEL_OUTCOME_HOLD_MS - 1_000,
     })
-    expect(stale.winnerId).toBeNull()
-    expect(stale.spinId).toBeNull()
-    expect(stale.entries).toHaveLength(1)
+    const staleTab = getActiveWheelTab(stale)
+    expect(staleTab.winnerId).toBeNull()
+    expect(staleTab.spinId).toBeNull()
+    expect(staleTab.entries).toHaveLength(1)
+  })
+
+  it('adds and removes extra wheel tabs', () => {
+    let state = createInitialWheel()
+    expect(state.tabs).toHaveLength(1)
+
+    const withExtra = addWheelTab(state, 'Movies')
+    expect(withExtra).not.toBeNull()
+    state = withExtra!
+    expect(state.tabs).toHaveLength(2)
+    expect(state.tabs[1]!.name).toBe('Movies')
+    expect(state.activeTabId).toBe(state.tabs[1]!.id)
+
+    const removed = removeWheelTab(state, state.tabs[1]!.id)
+    expect(removed).not.toBeNull()
+    state = removed!
+    expect(state.tabs).toHaveLength(1)
+    expect(removeWheelTab(state, state.tabs[0]!.id)).toBeNull()
+
+    for (let i = 1; i < WHEEL_TAB_MAX; i += 1) {
+      const next = addWheelTab(state)
+      expect(next).not.toBeNull()
+      state = next!
+    }
+    expect(state.tabs).toHaveLength(WHEEL_TAB_MAX)
+    expect(addWheelTab(state)).toBeNull()
+  })
+
+  it('reads multi-tab docs without wrapping again', () => {
+    const remote = normalizeWheel({
+      tabs: [
+        {
+          id: 't1',
+          name: 'Main',
+          entries: [{ id: 'a', label: 'one', weight: 1, enabled: true }],
+          rotation: 0,
+        },
+        {
+          id: 't2',
+          name: 'Food',
+          entries: [{ id: 'b', label: 'pizza', weight: 2, enabled: true }],
+          rotation: 45,
+        },
+      ],
+      activeTabId: 't2',
+      version: 5,
+      updatedAt: Date.now(),
+    })
+    expect(remote.tabs).toHaveLength(2)
+    expect(remote.activeTabId).toBe('t2')
+    expect(getActiveWheelTab(remote).entries[0]!.label).toBe('pizza')
   })
 })

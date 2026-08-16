@@ -14,17 +14,28 @@ export interface WheelSegment {
   endDeg: number
 }
 
-/** Durable shared wheel document. */
-export interface WheelRoomState {
+/** One named wheel inside the shared room doc. */
+export interface WheelTab {
+  id: string
+  name: string
   entries: WheelEntry[]
   /** Absolute CSS rotation after the last completed spin. */
   rotation: number
   winnerId: string | null
   /** Unique id per completed spin — peers use this to celebrate. */
   spinId: string | null
+}
+
+/** Durable shared wheel document (multi-tab). */
+export interface WheelRoomState {
+  tabs: WheelTab[]
+  activeTabId: string
   version: number
   updatedAt: number
 }
+
+export const WHEEL_TAB_MAX = 8
+export const WHEEL_DEFAULT_TAB_NAME = 'Main'
 
 /** Slice colors that read well on dark UI — spaced hues so neighbors don't clash. */
 export const WHEEL_COLORS = [
@@ -107,8 +118,8 @@ export function pickWheelColor(existingColors: readonly string[]): string {
   return best
 }
 
-function newId(): string {
-  return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+function newId(prefix = 'w'): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function createWheelEntry(
@@ -116,11 +127,30 @@ export function createWheelEntry(
   opts?: { weight?: number; color?: string; enabled?: boolean },
 ): WheelEntry {
   return {
-    id: newId(),
+    id: newId('w'),
     label: label.trim() || 'Untitled',
     weight: normalizeWeight(opts?.weight ?? 1),
     enabled: opts?.enabled !== false,
     color: opts?.color ?? WHEEL_COLORS[0]!,
+  }
+}
+
+export function createWheelTab(
+  name: string,
+  opts?: {
+    entries?: WheelEntry[]
+    rotation?: number
+    winnerId?: string | null
+    spinId?: string | null
+  },
+): WheelTab {
+  return {
+    id: newId('wt'),
+    name: name.trim() || 'Wheel',
+    entries: opts?.entries ?? [],
+    rotation: opts?.rotation ?? 0,
+    winnerId: opts?.winnerId ?? null,
+    spinId: opts?.spinId ?? null,
   }
 }
 
@@ -129,12 +159,85 @@ export function defaultWheelEntries(): WheelEntry[] {
 }
 
 export function createInitialWheel(): WheelRoomState {
+  const tab = createWheelTab(WHEEL_DEFAULT_TAB_NAME)
   return {
-    entries: defaultWheelEntries(),
-    rotation: 0,
-    winnerId: null,
-    spinId: null,
+    tabs: [tab],
+    activeTabId: tab.id,
     version: 1,
+    updatedAt: Date.now(),
+  }
+}
+
+export function getActiveWheelTab(state: WheelRoomState): WheelTab {
+  return (
+    state.tabs.find((t) => t.id === state.activeTabId) ??
+    state.tabs[0] ??
+    createWheelTab(WHEEL_DEFAULT_TAB_NAME)
+  )
+}
+
+/** Patch the active tab; keeps `activeTabId` valid. */
+export function patchActiveWheelTab(
+  state: WheelRoomState,
+  patch: Partial<Omit<WheelTab, 'id'>>,
+): WheelRoomState {
+  const active = getActiveWheelTab(state)
+  const tabs = state.tabs.map((tab) =>
+    tab.id === active.id ? { ...tab, ...patch } : tab,
+  )
+  return {
+    ...state,
+    tabs,
+    activeTabId: active.id,
+    updatedAt: Date.now(),
+  }
+}
+
+export function setActiveWheelTab(
+  state: WheelRoomState,
+  tabId: string,
+): WheelRoomState | null {
+  if (!state.tabs.some((t) => t.id === tabId)) return null
+  if (state.activeTabId === tabId) return state
+  return { ...state, activeTabId: tabId, updatedAt: Date.now() }
+}
+
+export function addWheelTab(
+  state: WheelRoomState,
+  name?: string,
+): WheelRoomState | null {
+  if (state.tabs.length >= WHEEL_TAB_MAX) return null
+  const n = state.tabs.length + 1
+  const tab = createWheelTab(name?.trim() || `Wheel ${n}`)
+  return {
+    ...state,
+    tabs: [...state.tabs, tab],
+    activeTabId: tab.id,
+    updatedAt: Date.now(),
+  }
+}
+
+export function removeWheelTab(
+  state: WheelRoomState,
+  tabId: string,
+): WheelRoomState | null {
+  if (state.tabs.length <= 1) return null
+  if (!state.tabs.some((t) => t.id === tabId)) return null
+  const tabs = state.tabs.filter((t) => t.id !== tabId)
+  const activeTabId =
+    state.activeTabId === tabId ? tabs[0]!.id : state.activeTabId
+  return { ...state, tabs, activeTabId, updatedAt: Date.now() }
+}
+
+export function renameWheelTab(
+  state: WheelRoomState,
+  tabId: string,
+  name: string,
+): WheelRoomState | null {
+  if (!state.tabs.some((t) => t.id === tabId)) return null
+  return {
+    ...state,
+    tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, name } : t)),
     updatedAt: Date.now(),
   }
 }
@@ -143,7 +246,8 @@ export function createInitialWheel(): WheelRoomState {
 export const WHEEL_OUTCOME_HOLD_MS = 15_000
 
 export function wheelOutcomeExpiresAt(state: WheelRoomState): number | null {
-  if (!state.winnerId && !state.spinId) return null
+  const tab = getActiveWheelTab(state)
+  if (!tab.winnerId && !tab.spinId) return null
   return state.updatedAt + WHEEL_OUTCOME_HOLD_MS
 }
 
@@ -155,14 +259,31 @@ export function isWheelOutcomeFresh(
   return expiresAt != null && now < expiresAt
 }
 
+function wheelHasOutcome(state: WheelRoomState): boolean {
+  return state.tabs.some((tab) => Boolean(tab.winnerId || tab.spinId))
+}
+
 /** Drop winner/spin once the hold window has passed (safe for first paint). */
 export function expireStaleWheelOutcome(
   state: WheelRoomState,
   now = Date.now(),
 ): WheelRoomState {
-  if (!state.winnerId && !state.spinId) return state
-  if (isWheelOutcomeFresh(state, now)) return state
-  return { ...state, winnerId: null, spinId: null }
+  if (!wheelHasOutcome(state)) return state
+  if (now < state.updatedAt + WHEEL_OUTCOME_HOLD_MS) return state
+  let changed = false
+  const tabs = state.tabs.map((tab) => {
+    if (!tab.winnerId && !tab.spinId) return tab
+    changed = true
+    return { ...tab, winnerId: null, spinId: null }
+  })
+  return changed ? { ...state, tabs } : state
+}
+
+export function wheelNeedsOutcomeSweep(
+  parsed: WheelRoomState,
+  expired: WheelRoomState,
+): boolean {
+  return wheelHasOutcome(parsed) && !wheelHasOutcome(expired)
 }
 
 export function newWheelSpinId(): string {
@@ -194,7 +315,7 @@ function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
   const label = typeof o.label === 'string' ? o.label.trim() : ''
   if (!label) return null
   return {
-    id: typeof o.id === 'string' && o.id ? o.id : newId(),
+    id: typeof o.id === 'string' && o.id ? o.id : newId('w'),
     label,
     weight: normalizeWeight(o.weight),
     enabled: o.enabled !== false,
@@ -202,6 +323,28 @@ function parseWheelEntry(raw: unknown, colorIndex: number): WheelEntry | null {
       typeof o.color === 'string' && o.color
         ? o.color
         : WHEEL_COLORS[colorIndex % WHEEL_COLORS.length]!,
+  }
+}
+
+function parseWheelTab(raw: unknown, index: number): WheelTab | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const name =
+    typeof o.name === 'string' && o.name.trim()
+      ? o.name.trim()
+      : index === 0
+        ? WHEEL_DEFAULT_TAB_NAME
+        : `Wheel ${index + 1}`
+  const entries = listFromRemote(o.entries)
+    .map((item, i) => parseWheelEntry(item, i))
+    .filter((e): e is WheelEntry => e !== null)
+  return {
+    id: typeof o.id === 'string' && o.id ? o.id : newId('wt'),
+    name,
+    entries,
+    rotation: clampNum(o.rotation, 0),
+    winnerId: typeof o.winnerId === 'string' && o.winnerId ? o.winnerId : null,
+    spinId: typeof o.spinId === 'string' && o.spinId ? o.spinId : null,
   }
 }
 
@@ -213,32 +356,59 @@ export function normalizeWheel(raw: unknown): WheelRoomState {
 export function parseWheelState(raw: unknown): WheelRoomState {
   if (!raw || typeof raw !== 'object') return createInitialWheel()
   const s = raw as Record<string, unknown>
+  const version = Math.max(1, Math.floor(clampNum(s.version, 1)))
+  const updatedAt = Math.floor(clampNum(s.updatedAt, Date.now()))
+
+  const parsedTabs = listFromRemote(s.tabs)
+    .map((item, i) => parseWheelTab(item, i))
+    .filter((t): t is WheelTab => t !== null)
+
+  if (parsedTabs.length > 0) {
+    const tabs = parsedTabs.slice(0, WHEEL_TAB_MAX)
+    const activeTabId =
+      typeof s.activeTabId === 'string' &&
+      tabs.some((t) => t.id === s.activeTabId)
+        ? s.activeTabId
+        : tabs[0]!.id
+    return { tabs, activeTabId, version, updatedAt }
+  }
+
+  // Legacy single-wheel docs: wrap `entries` (+ spin fields) into Main.
   const entries = listFromRemote(s.entries)
     .map((item, i) => parseWheelEntry(item, i))
     .filter((e): e is WheelEntry => e !== null)
-  return {
-    entries: entries.length > 0 ? entries : defaultWheelEntries(),
+  const tab = createWheelTab(WHEEL_DEFAULT_TAB_NAME, {
+    entries,
     rotation: clampNum(s.rotation, 0),
     winnerId: typeof s.winnerId === 'string' && s.winnerId ? s.winnerId : null,
     spinId: typeof s.spinId === 'string' && s.spinId ? s.spinId : null,
-    version: Math.max(1, Math.floor(clampNum(s.version, 1))),
-    updatedAt: Math.floor(clampNum(s.updatedAt, Date.now())),
+  })
+  return {
+    tabs: [tab],
+    activeTabId: tab.id,
+    version,
+    updatedAt,
   }
 }
 
 /** Payload for Firestore. */
 export function wheelToDoc(state: WheelRoomState): Record<string, unknown> {
   return {
-    entries: state.entries.map((e) => ({
-      id: e.id,
-      label: e.label,
-      weight: e.weight,
-      enabled: e.enabled,
-      color: e.color,
+    tabs: state.tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      entries: tab.entries.map((e) => ({
+        id: e.id,
+        label: e.label,
+        weight: e.weight,
+        enabled: e.enabled,
+        color: e.color,
+      })),
+      rotation: tab.rotation,
+      winnerId: tab.winnerId || null,
+      spinId: tab.spinId || null,
     })),
-    rotation: state.rotation,
-    winnerId: state.winnerId || null,
-    spinId: state.spinId || null,
+    activeTabId: state.activeTabId,
     version: state.version,
     updatedAt: state.updatedAt,
   }

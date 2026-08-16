@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArcadeStatus } from '../components/ArcadeStage'
 import { CatWallpaper } from '../components/CatWallpaper'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { GoldenConfetti } from '../components/GoldenConfetti'
 import { useSharedWheel } from '../hooks/useSharedWheel'
 import {
   activeWheelEntries,
+  addWheelTab,
   buildWheelSegments,
   createWheelEntry,
   formatWeight,
+  getActiveWheelTab,
   isWheelOutcomeFresh,
   newWheelSpinId,
   normalizeWeight,
+  patchActiveWheelTab,
   pickWeightedIndex,
+  removeWheelTab,
+  renameWheelTab,
   rotationForWinner,
+  setActiveWheelTab,
   wheelLabelPose,
   wheelOutcomeExpiresAt,
   wheelSlicePath,
   pickWheelColor,
   WHEEL_OUTCOME_HOLD_MS,
   WHEEL_QUICK_ADDS,
+  WHEEL_TAB_MAX,
   WHEEL_WEIGHT_MAX,
   WHEEL_WEIGHT_MIN,
   WHEEL_WEIGHT_SLIDER_MAX,
@@ -199,12 +207,14 @@ function WeightControl({
 
 export function WheelPage() {
   const { wheel, ready, commitWheel } = useSharedWheel()
-  const entries = wheel.entries
+  const activeTab = getActiveWheelTab(wheel)
+  const entries = activeTab.entries
   const [draft, setDraft] = useState('')
   const [rotation, setRotation] = useState(0)
   const [spinning, setSpinning] = useState(false)
   const [announce, setAnnounce] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
+  const [removeTabId, setRemoveTabId] = useState<string | null>(null)
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const outcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -227,8 +237,8 @@ export function WheelPage() {
 
   useEffect(() => {
     if (!ready || spinning) return
-    setRotation(wheel.rotation)
-  }, [ready, wheel.rotation, spinning])
+    setRotation(activeTab.rotation)
+  }, [ready, activeTab.rotation, spinning, activeTab.id])
 
   useEffect(() => {
     if (!ready) return
@@ -242,28 +252,28 @@ export function WheelPage() {
       }, CONFETTI_MS)
     }
 
-    if (!wheel.spinId) {
+    if (!activeTab.spinId) {
       seenSpinIdRef.current = null
       if (!spinning) setAnnounce(false)
       hydratedRef.current = true
       return
     }
 
-    if (wheel.spinId === seenSpinIdRef.current) return
-    seenSpinIdRef.current = wheel.spinId
+    if (activeTab.spinId === seenSpinIdRef.current) return
+    seenSpinIdRef.current = activeTab.spinId
 
     // First snapshot after load: show winner quietly only if still in hold
     // window — stale finishes are already stripped in normalizeWheel.
     if (!hydratedRef.current) {
       hydratedRef.current = true
-      setAnnounce(Boolean(wheel.winnerId) && isWheelOutcomeFresh(wheel))
-      setRotation(wheel.rotation)
+      setAnnounce(Boolean(activeTab.winnerId) && isWheelOutcomeFresh(wheel))
+      setRotation(activeTab.rotation)
       return
     }
 
     // We authored this spin — local timer already handles celebrate.
-    if (localSpinIdRef.current === wheel.spinId) {
-      setAnnounce(Boolean(wheel.winnerId))
+    if (localSpinIdRef.current === activeTab.spinId) {
+      setAnnounce(Boolean(activeTab.winnerId))
       return
     }
 
@@ -271,25 +281,40 @@ export function WheelPage() {
     setAnnounce(false)
     setCelebrating(false)
     setSpinning(true)
-    setRotation(wheel.rotation)
+    setRotation(activeTab.rotation)
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
     spinTimerRef.current = setTimeout(() => {
       setSpinning(false)
-      setAnnounce(Boolean(wheel.winnerId))
+      setAnnounce(Boolean(activeTab.winnerId))
       playCelebrate()
       spinTimerRef.current = null
     }, SPIN_MS)
-  }, [ready, wheel.spinId, wheel.winnerId, wheel.rotation, spinning])
+  }, [
+    ready,
+    activeTab.id,
+    activeTab.spinId,
+    activeTab.winnerId,
+    activeTab.rotation,
+    spinning,
+    wheel,
+  ])
 
   // After a finish, drop the winner highlight and shared outcome so the wheel
   // returns to Ready. Uses a wall-clock deadline + visibility/focus checks so
   // background-tab timer throttling cannot leave the finish state stuck.
   useEffect(() => {
-    if (!ready || spinning || !announce || !wheel.winnerId || !wheel.spinId) {
+    if (
+      !ready ||
+      spinning ||
+      !announce ||
+      !activeTab.winnerId ||
+      !activeTab.spinId
+    ) {
       return
     }
 
-    const spinIdAtSchedule = wheel.spinId
+    const spinIdAtSchedule = activeTab.spinId
+    const tabIdAtSchedule = activeTab.id
     outcomeSpinIdRef.current = spinIdAtSchedule
     // Deadline is anchored to the spin's updatedAt so remounts / tab-away
     // don't restart the full 15s hold.
@@ -319,8 +344,9 @@ export function WheelPage() {
         confettiTimerRef.current = null
       }
       void commitWheel((prev) => {
-        if (prev.spinId !== spinId) return prev
-        return { ...prev, winnerId: null, spinId: null }
+        const tab = getActiveWheelTab(prev)
+        if (tab.id !== tabIdAtSchedule || tab.spinId !== spinId) return prev
+        return patchActiveWheelTab(prev, { winnerId: null, spinId: null })
       })
     }
 
@@ -352,11 +378,25 @@ export function WheelPage() {
       document.removeEventListener('visibilitychange', onResume)
       window.removeEventListener('focus', onResume)
     }
-  }, [ready, spinning, announce, wheel.winnerId, wheel.spinId, commitWheel])
+  }, [
+    ready,
+    spinning,
+    announce,
+    activeTab.id,
+    activeTab.winnerId,
+    activeTab.spinId,
+    wheel,
+    commitWheel,
+  ])
 
   const segments = useMemo(() => buildWheelSegments(entries), [entries])
   const canSpin = ready && segments.length > 0 && !spinning
-  const winnerId = announce ? wheel.winnerId : null
+  const winnerId = announce ? activeTab.winnerId : null
+  const canAddTab = ready && !spinning && wheel.tabs.length < WHEEL_TAB_MAX
+  const canRemoveTab = ready && !spinning && wheel.tabs.length > 1
+  const removeTarget = removeTabId
+    ? (wheel.tabs.find((t) => t.id === removeTabId) ?? null)
+    : null
 
   const clearOutcome = () => {
     setAnnounce(false)
@@ -379,17 +419,43 @@ export function WheelPage() {
     }
   }
 
+  const selectTab = (tabId: string) => {
+    if (spinning || tabId === wheel.activeTabId) return
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => setActiveWheelTab(prev, tabId) ?? prev)
+  }
+
+  const handleAddTab = () => {
+    if (!canAddTab) return
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => addWheelTab(prev) ?? prev)
+  }
+
+  const confirmRemoveTab = () => {
+    if (!removeTabId) return
+    const id = removeTabId
+    setRemoveTabId(null)
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => removeWheelTab(prev, id) ?? prev)
+  }
+
   const setEntries = (
     next: WheelEntry[] | ((prev: WheelEntry[]) => WheelEntry[]),
   ) => {
     void commitWheel((prev) => {
-      const entriesNext = typeof next === 'function' ? next(prev.entries) : next
-      return {
-        ...prev,
+      const tab = getActiveWheelTab(prev)
+      const entriesNext = typeof next === 'function' ? next(tab.entries) : next
+      return patchActiveWheelTab(prev, {
         entries: entriesNext,
         winnerId: null,
         spinId: null,
-      }
+      })
     })
     seenSpinIdRef.current = null
   }
@@ -436,12 +502,13 @@ export function WheelPage() {
     setCelebrating(false)
     setSpinning(true)
     setRotation(nextRotation)
-    void commitWheel((prev) => ({
-      ...prev,
-      rotation: nextRotation,
-      winnerId: winner.id,
-      spinId,
-    }))
+    void commitWheel((prev) =>
+      patchActiveWheelTab(prev, {
+        rotation: nextRotation,
+        winnerId: winner.id,
+        spinId,
+      }),
+    )
     if (spinTimerRef.current) clearTimeout(spinTimerRef.current)
     spinTimerRef.current = setTimeout(() => {
       setSpinning(false)
@@ -483,6 +550,19 @@ export function WheelPage() {
           }
         />
       ) : null}
+      <ConfirmDialog
+        open={removeTarget != null}
+        title={`Remove “${removeTarget?.name ?? 'wheel'}”?`}
+        body={
+          removeTarget && removeTarget.entries.length > 0
+            ? `This deletes ${removeTarget.entries.length} option${removeTarget.entries.length === 1 ? '' : 's'} on this wheel.`
+            : 'This wheel will be removed for both of you.'
+        }
+        confirmLabel="Remove"
+        danger
+        onConfirm={confirmRemoveTab}
+        onClose={() => setRemoveTabId(null)}
+      />
       <div className="relative z-10 mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <div className="rounded-2xl border border-border bg-surface-raised p-4 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)] sm:p-5">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -490,6 +570,78 @@ export function WheelPage() {
             <ArcadeStatus tone={winnerLabel ? 'win' : 'ready'}>
               {statusLabel}
             </ArcadeStatus>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {wheel.tabs.map((tab) => {
+              const active = tab.id === wheel.activeTabId
+              return (
+                <div
+                  key={tab.id}
+                  className={[
+                    'flex max-w-full items-center gap-0.5 rounded-full border px-1 py-0.5',
+                    active
+                      ? 'border-muted bg-surface'
+                      : 'border-border bg-surface/40',
+                  ].join(' ')}
+                >
+                  {active ? (
+                    <input
+                      value={tab.name}
+                      disabled={spinning}
+                      onChange={(event) => {
+                        const name = event.target.value
+                        void commitWheel(
+                          (prev) => renameWheelTab(prev, tab.id, name) ?? prev,
+                        )
+                      }}
+                      onBlur={(event) => {
+                        const name = event.target.value.trim() || 'Wheel'
+                        void commitWheel(
+                          (prev) => renameWheelTab(prev, tab.id, name) ?? prev,
+                        )
+                      }}
+                      className="min-w-[4.5rem] max-w-[9rem] bg-transparent px-2 py-1 text-xs font-medium text-white focus:outline-none disabled:cursor-not-allowed"
+                      aria-label="Wheel name"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={spinning}
+                      onClick={() => selectTab(tab.id)}
+                      className="truncate px-2.5 py-1 text-xs font-medium text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {tab.name}
+                    </button>
+                  )}
+                  {canRemoveTab ? (
+                    <button
+                      type="button"
+                      disabled={spinning}
+                      onClick={() => setRemoveTabId(tab.id)}
+                      className="mr-0.5 rounded-full px-1.5 py-0.5 text-[10px] text-muted hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={`Remove ${tab.name}`}
+                      title="Remove wheel"
+                    >
+                      ✕
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
+            <button
+              type="button"
+              disabled={!canAddTab}
+              onClick={handleAddTab}
+              className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted hover:border-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              title={
+                wheel.tabs.length >= WHEEL_TAB_MAX
+                  ? `Max ${WHEEL_TAB_MAX} wheels`
+                  : 'Add another wheel'
+              }
+            >
+              + Add
+            </button>
           </div>
 
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
