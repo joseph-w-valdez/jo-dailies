@@ -50,17 +50,26 @@ const GW_INFO_STRIP_PX = 62
 const GW_PORTRAIT_TOP_PX = 11
 const GW_PORTRAIT_MIN_PX = 48
 const GW_PORTRAIT_RATIO = 5 / 4
-/** Prefer three centered rows at max card size when the board allows it. */
-const GW_TARGET_ROWS = 3
 
 function idealGuessWhoPortraitH(sizePx: number): number {
   return Math.max(0, sizePx - GW_CARD_BORDER_PX) * GW_PORTRAIT_RATIO
 }
 
+/** How many max-width cards fit in availW with space-evenly side margins. */
+function colsForWidth(
+  availW: number,
+  sizePx: number,
+  count: number,
+  gap: number,
+): number {
+  // n * size + (n + 1) * gap <= availW  →  n <= (availW - gap) / (size + gap)
+  const fit = Math.floor((availW - gap) / (sizePx + gap))
+  return Math.max(1, Math.min(count, fit))
+}
+
 /**
- * Width from horizontal room only (up to 140).
- * Portrait height shrinks separately if 3 rows are vertically tight —
- * previously height was coupling and crushing width down to ~112px.
+ * Pack as many cards as fit across the width (up to 140px), then wrap rows.
+ * availH is an optional ceiling — portraits only shrink if content would overflow it.
  */
 function fitGuessWhoLayout(
   availW: number,
@@ -68,7 +77,7 @@ function fitGuessWhoLayout(
   count: number,
   gap = GW_CARD_GAP_PX,
 ): { sizePx: number; cols: number; gapX: number; portraitH: number } {
-  if (count <= 0 || availW <= 0 || availH <= 0) {
+  if (count <= 0 || availW <= 0) {
     return {
       sizePx: GW_CARD_MAX_PX,
       cols: 1,
@@ -77,23 +86,43 @@ function fitGuessWhoLayout(
     }
   }
 
-  // 29 agents → 10 cols → 10 / 10 / 9
-  const cols = Math.max(1, Math.ceil(count / GW_TARGET_ROWS))
-  const rows = Math.ceil(count / cols)
-  const maxFromW = (availW - gap * (cols + 1)) / cols
-  const sizePx = Math.floor(
-    Math.max(GW_CARD_MIN_PX, Math.min(GW_CARD_MAX_PX, maxFromW)),
+  // Start at max card width; how many fit in one row?
+  let sizePx = Math.min(
+    GW_CARD_MAX_PX,
+    Math.max(GW_CARD_MIN_PX, availW - 2 * gap),
   )
+  let cols = colsForWidth(availW, sizePx, count, gap)
 
-  const maxCardH = (availH - gap * (rows + 1)) / rows
-  const portraitBudget =
-    maxCardH - GW_CARD_BORDER_PX - GW_PORTRAIT_TOP_PX - GW_INFO_STRIP_PX
-  const portraitH = Math.floor(
+  // Grow toward max width within that column count (fill leftover).
+  sizePx = Math.floor(
     Math.max(
-      GW_PORTRAIT_MIN_PX,
-      Math.min(idealGuessWhoPortraitH(sizePx), portraitBudget),
+      GW_CARD_MIN_PX,
+      Math.min(GW_CARD_MAX_PX, (availW - gap * (cols + 1)) / cols),
     ),
   )
+  // Smaller size might allow one more column — take it when possible.
+  cols = colsForWidth(availW, sizePx, count, gap)
+  sizePx = Math.floor(
+    Math.max(
+      GW_CARD_MIN_PX,
+      Math.min(GW_CARD_MAX_PX, (availW - gap * (cols + 1)) / cols),
+    ),
+  )
+
+  const rows = Math.ceil(count / cols)
+  let portraitH = idealGuessWhoPortraitH(sizePx)
+  if (availH > 0 && rows > 0) {
+    // availH is a max ceiling (shelf), not a forced board height.
+    const maxCardH =
+      (availH - gap * Math.max(0, rows - 1)) / rows
+    const portraitBudget =
+      maxCardH - GW_CARD_BORDER_PX - GW_PORTRAIT_TOP_PX - GW_INFO_STRIP_PX
+    if (portraitBudget < portraitH) {
+      portraitH = Math.floor(
+        Math.max(GW_PORTRAIT_MIN_PX, portraitBudget),
+      )
+    }
+  }
 
   const gapX = Math.max(gap, (availW - cols * sizePx) / (cols + 1))
   return { sizePx, cols, gapX, portraitH }
@@ -252,44 +281,42 @@ function FitAgentGrid({
     portraitH: number
   }) => ReactNode[]
 }) {
+  const shelfRef = useRef<HTMLDivElement>(null)
   const boardRef = useRef<HTMLDivElement>(null)
-  const preferCols = Math.max(1, Math.ceil(Math.max(count, 1) / GW_TARGET_ROWS))
   const [layout, setLayout] = useState({
     sizePx: GW_CARD_MAX_PX,
-    cols: preferCols,
+    cols: Math.max(1, count),
     gapX: GW_CARD_GAP_PX,
     portraitH: idealGuessWhoPortraitH(GW_CARD_MAX_PX),
   })
 
   useLayoutEffect(() => {
-    if (!immersive) {
-      setLayout({
-        sizePx: GW_CARD_MAX_PX,
-        cols: preferCols,
-        gapX: GW_CARD_GAP_PX,
-        portraitH: idealGuessWhoPortraitH(GW_CARD_MAX_PX),
-      })
-      return
-    }
-    const el = boardRef.current
-    if (!el) return
+    const board = boardRef.current
+    const shelf = shelfRef.current
+    if (!board) return
 
     const measure = () => {
-      const style = getComputedStyle(el)
+      const style = getComputedStyle(board)
       const padX =
         parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
       const padY =
         parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
-      const availW = el.clientWidth - padX
-      const availH = el.clientHeight - padY
+      const availW = board.clientWidth - padX
+      // Ceiling from the shelf (remaining theater space), not the board itself —
+      // so the board can hug content and only shrink portraits when it would overflow.
+      const availH =
+        immersive && shelf
+          ? Math.max(0, shelf.clientHeight - padY)
+          : 0
       setLayout(fitGuessWhoLayout(availW, availH, count))
     }
 
     measure()
     const ro = new ResizeObserver(measure)
-    ro.observe(el)
+    ro.observe(board)
+    if (shelf) ro.observe(shelf)
     return () => ro.disconnect()
-  }, [immersive, count, preferCols])
+  }, [immersive, count])
 
   const rows = chunkRows(
     children({ sizePx: layout.sizePx, portraitH: layout.portraitH }),
@@ -298,28 +325,32 @@ function FitAgentGrid({
 
   return (
     <div
-      ref={boardRef}
-      className={[
-        'mt-2 rounded-2xl border-2 border-[#2a5a8f]/80 bg-[#1e4d7b]/35 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:p-2.5',
-        immersive ? 'min-h-0 flex-1 overflow-hidden' : '',
-      ].join(' ')}
+      ref={shelfRef}
+      className={
+        immersive ? 'mt-2 flex min-h-0 flex-1 flex-col' : 'mt-2'
+      }
     >
       <div
-        className={
-          immersive
-            ? 'flex h-full w-full flex-col justify-evenly'
-            : 'flex w-full flex-col gap-1.5'
-        }
+        ref={boardRef}
+        className={[
+          'rounded-2xl border-2 border-[#2a5a8f]/80 bg-[#1e4d7b]/35 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:p-2.5',
+          immersive ? 'max-h-full overflow-y-auto' : '',
+        ].join(' ')}
       >
-        {rows.map((row, rowIdx) => (
-          <div
-            key={rowIdx}
-            className="flex w-full justify-center"
-            style={{ gap: layout.gapX }}
-          >
-            {row}
-          </div>
-        ))}
+        <div
+          className="flex w-full flex-col"
+          style={{ gap: GW_CARD_GAP_PX }}
+        >
+          {rows.map((row, rowIdx) => (
+            <div
+              key={rowIdx}
+              className="flex w-full justify-center"
+              style={{ gap: layout.gapX }}
+            >
+              {row}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
