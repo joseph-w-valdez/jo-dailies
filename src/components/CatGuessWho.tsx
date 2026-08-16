@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSharedGuessWho } from '../hooks/useSharedGuessWho'
+import { isGuessWhoDebugEnabled } from '../lib/debugFlags'
 import {
-  flipGuessWhoRole,
   GUESS_WHO_SKILLS,
   guessGuessWhoAgent,
   hasUsedGuessWhoSkill,
@@ -28,6 +28,7 @@ import {
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { ConfirmDialog } from './ConfirmDialog'
 import { GameSeatPicker } from './GameSeatPicker'
+import { GuessWhoBoard3D } from './GuessWhoBoard3D'
 import { NewGameConfirm } from './NewGameConfirm'
 import { SurrenderButton } from './SurrenderButton'
 
@@ -378,8 +379,17 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
   const [pendingGuessId, setPendingGuessId] = useState<string | null>(null)
   const [roleFilter, setRoleFilter] = useState<ValorantRole | 'All'>('All')
   const [query, setQuery] = useState('')
-  const [hideFlipped, setHideFlipped] = useState(false)
   const [razeArmed, setRazeArmed] = useState(false)
+  const debugSolo = isGuessWhoDebugEnabled()
+  const debugSeededRef = useRef(false)
+
+  // TEMP: overwrite room doc into a solo playable board once per mount.
+  useEffect(() => {
+    if (!debugSolo || !ready || debugSeededRef.current) return
+    debugSeededRef.current = true
+    if (game.hotseat && game.phase === 'playing' && bothPicked) return
+    void resetGame({ hotseat: true })
+  }, [debugSolo, ready, game.hotseat, game.phase, bothPicked, resetGame])
 
   const boardSeat: 0 | 1 | null = (() => {
     if (game.hotseat) {
@@ -424,16 +434,9 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
       ) {
         return false
       }
-      if (
-        hideFlipped &&
-        game.phase !== 'picking' &&
-        board.flipped.includes(a.id)
-      ) {
-        return false
-      }
       return true
     })
-  }, [roleFilter, query, hideFlipped, board.flipped, game.phase])
+  }, [roleFilter, query])
 
   const turnSeat = seatForUid(game.turnUid)
   const winnerSeat =
@@ -587,114 +590,12 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Score / secret strip */}
-          <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {([0, 1] as const).map((seat) => {
-                const isTurn =
-                  game.phase === 'playing' && turnSeat === seat
-                const picked = Boolean(game.seats[seat].secretId)
-                const label = game.hotseat
-                  ? seat === 0
-                    ? 'P1'
-                    : 'P2'
-                  : JENGA_PLAYER_UIDS[seat] === uid
-                    ? 'You'
-                    : householdName(JENGA_PLAYER_UIDS[seat]!)
-                const left = remainingAgentCount(game.seats[seat])
-                return (
-                  <div
-                    key={seat}
-                    className={[
-                      'min-w-[5.5rem] rounded-2xl border px-2.5 py-1.5',
-                      isTurn
-                        ? 'border-golden/45 bg-golden/10'
-                        : 'border-white/10 bg-white/[0.04]',
-                    ].join(' ')}
-                  >
-                    <div className="text-[10px] font-medium text-muted">
-                      {label}
-                    </div>
-                    <div className="text-xs font-semibold text-white">
-                      {game.phase === 'picking'
-                        ? picked
-                          ? 'Locked'
-                          : 'Picking…'
-                        : `${left} up`}
-                    </div>
-                  </div>
-                )
-              })}
-              {shownSecret ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5">
-                  <img
-                    src={shownSecret.icon}
-                    alt=""
-                    className="size-7 rounded-lg object-cover ring-1 ring-white/15"
-                    draggable={false}
-                  />
-                  <div>
-                    <div className="text-[10px] text-emerald-200/80">
-                      Your agent
-                    </div>
-                    <div className="text-xs font-semibold text-emerald-50">
-                      {shownSecret.name}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-              {game.hotseat ? (
-                <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-100">
-                  Hotseat
-                </span>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setNewGameOpen(true)}
-                className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white hover:border-white/25"
-              >
-                New game
-              </button>
-              <SurrenderButton
-                disabled={!uid || game.phase !== 'playing'}
-                className="rounded-lg border px-2.5 py-1 text-xs font-medium disabled:opacity-40"
-                style={{
-                  backgroundColor: '#4c0519',
-                  borderColor: '#fb7185',
-                  color: '#ffffff',
-                }}
-                onSurrender={() =>
-                  void commitGame(
-                    (prev) => surrenderGuessWho(prev, actorUid) ?? prev,
-                  )
-                }
-              />
-            </div>
-          </div>
-
-          {/* Intel + skill toast */}
-          {game.phase === 'playing' || game.lastSkill ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {intelRole ? (
-                <span className="rounded-full border border-sky-400/35 bg-sky-500/15 px-2.5 py-1 text-[11px] text-sky-100">
-                  Intel · role {intelRole}
-                </span>
-              ) : null}
-              {intelHalf ? (
-                <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2.5 py-1 text-[11px] text-amber-100">
-                  Intel · name {intelHalf === 'early' ? 'A–M' : 'N–Z'}
-                </span>
-              ) : null}
-              {game.lastSkill ? (
-                <span className="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] text-muted">
-                  {game.lastSkill.uid === uid
-                    ? 'You'
-                    : householdName(game.lastSkill.uid)}
-                  : {game.lastSkill.note}
-                </span>
-              ) : null}
+          {debugSolo ? (
+            <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-[11px] text-amber-100">
+              DEBUG Guess Who solo — hotseat board auto-seeded. Flip{' '}
+              <code className="text-amber-50">appConfig.debugGuessWho</code> (and{' '}
+              <code className="text-amber-50">debug</code>) off in{' '}
+              <code className="text-amber-50">src/config.ts</code> before shipping.
             </div>
           ) : null}
 
@@ -743,241 +644,281 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <>
-              {/* Toolbar */}
-              <div className="mt-2 shrink-0 space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2.5">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search agents…"
-                    className="min-w-[8rem] flex-1 rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs text-white placeholder:text-muted focus:border-white/25 focus:outline-none"
-                  />
-                  {game.phase === 'playing' ? (
-                    <button
-                      type="button"
-                      onClick={() => setHideFlipped((v) => !v)}
-                      className={[
-                        'rounded-xl border px-2.5 py-1.5 text-[11px] font-medium',
-                        hideFlipped
-                          ? 'border-muted bg-surface text-white'
-                          : 'border-white/10 text-muted hover:text-white',
-                      ].join(' ')}
-                    >
-                      {hideFlipped ? 'Show flipped' : 'Hide flipped'}
-                    </button>
-                  ) : null}
-                  {game.phase === 'playing' ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={!canGuess}
-                        onClick={() => {
-                          setRazeArmed(false)
-                          setGuessMode((v) => !v)
-                        }}
-                        className={[
-                          'rounded-xl border px-2.5 py-1.5 text-xs font-semibold',
-                          guessMode
-                            ? 'border-rose-400/55 bg-rose-500/25 text-rose-50'
-                            : 'border-white/10 bg-white/[0.04] text-white hover:border-white/25',
-                          !canGuess ? 'opacity-40' : '',
-                        ].join(' ')}
-                      >
-                        {guessMode ? 'Cancel guess' : 'Guess'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canPass}
-                        onClick={() => {
-                          setGuessMode(false)
-                          setRazeArmed(false)
-                          void commitGame(
-                            (prev) =>
-                              passGuessWhoTurn(prev, actorUid) ?? prev,
-                          )
-                        }}
-                        className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-white hover:border-white/25 disabled:opacity-40"
-                      >
-                        Pass
-                      </button>
-                    </>
-                  ) : null}
-                  {canPick ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={pickRandomSecret}
-                        className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-muted hover:text-white"
-                      >
-                        Random
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!draftSecret}
-                        onClick={lockSecret}
-                        className="rounded-xl border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40"
-                        style={{
-                          backgroundColor: '#064e3b',
-                          borderColor: '#34d399',
-                          color: '#ffffff',
-                        }}
-                      >
-                        Lock in
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {ROLES.map((role) => {
-                    const meta =
-                      role === 'All' ? null : VALORANT_ROLE_META[role]
-                    const active = roleFilter === role
-                    const razeTarget = razeArmed && role !== 'All'
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => {
-                          if (razeArmed && role !== 'All') {
-                            fireSkill('raze', role)
-                            return
-                          }
-                          setRoleFilter(role)
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
-                        style={
-                          razeTarget
-                            ? {
-                                backgroundColor: '#7c2d12',
-                                borderColor: '#fb923c',
-                                color: '#ffffff',
-                              }
-                            : meta
-                              ? {
-                                  backgroundColor: active
-                                    ? meta.bar
-                                    : meta.barDark,
-                                  borderColor: meta.border,
-                                  color: '#ffffff',
-                                }
-                              : {
-                                  backgroundColor: active
-                                    ? '#1a3d6d'
-                                    : '#0f3d72',
-                                  borderColor: active ? '#5ba3e0' : '#3d7ab8',
-                                  color: '#ffffff',
-                                }
-                        }
-                      >
-                        {meta ? (
-                          <img
-                            src={meta.icon}
-                            alt=""
-                            className="size-3.5 object-contain"
-                            draggable={false}
-                          />
-                        ) : null}
-                        {razeTarget ? `Nuke ${role}` : role}
-                      </button>
-                    )
-                  })}
-                  {razeArmed ? (
-                    <button
-                      type="button"
-                      onClick={() => setRazeArmed(false)}
-                      className="rounded-full border px-2.5 py-1 text-[11px]"
-                      style={{
-                        backgroundColor: '#0b1220',
-                        borderColor: '#475569',
-                        color: '#ffffff',
-                      }}
-                    >
-                      Cancel Raze
-                    </button>
-                  ) : null}
-                  {game.phase === 'playing' && canFlip && roleFilter !== 'All' ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void commitGame(
-                          (prev) =>
-                            flipGuessWhoRole(
-                              prev,
-                              flipUid,
-                              roleFilter,
-                              true,
-                            ) ?? prev,
-                        )
-                      }
-                      className="ml-auto inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
-                      style={{
-                        backgroundColor: VALORANT_ROLE_META[roleFilter].bar,
-                        borderColor: VALORANT_ROLE_META[roleFilter].border,
-                        color: '#ffffff',
-                      }}
-                      title="Flip all of this role on your board"
-                    >
-                      <img
-                        src={VALORANT_ROLE_META[roleFilter].icon}
-                        alt=""
-                        className="size-3.5 object-contain"
-                        draggable={false}
-                      />
-                      Flip {roleFilter}s
-                    </button>
-                  ) : null}
-                </div>
-
-                {game.phase === 'playing' ? (
-                  <div className="flex flex-wrap gap-1.5 border-t border-white/5 pt-2">
-                    {GUESS_WHO_SKILLS.map((skill) => {
-                      const used = hasUsedGuessWhoSkill(
-                        game,
-                        skillActorUid,
-                        skill.id,
-                      )
-                      const disabled =
-                        used ||
-                        game.phase !== 'playing' ||
-                        (!game.hotseat && uid !== skillActorUid)
+              {/* Status + controls in one compact bar */}
+              <div className="mt-2 shrink-0 space-y-1.5 rounded-2xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {([0, 1] as const).map((seat) => {
+                      const isTurn =
+                        game.phase === 'playing' && turnSeat === seat
+                      const picked = Boolean(game.seats[seat].secretId)
+                      const label = game.hotseat
+                        ? seat === 0
+                          ? 'P1'
+                          : 'P2'
+                        : JENGA_PLAYER_UIDS[seat] === uid
+                          ? 'You'
+                          : householdName(JENGA_PLAYER_UIDS[seat]!)
+                      const left = remainingAgentCount(game.seats[seat])
+                      const status =
+                        game.phase === 'picking'
+                          ? picked
+                            ? 'Locked'
+                            : 'Picking…'
+                          : `${left} up`
                       return (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          disabled={disabled}
-                          title={skill.blurb}
-                          onClick={() => fireSkill(skill.id)}
+                        <span
+                          key={seat}
                           className={[
-                            'rounded-full border px-2.5 py-1 text-[11px] font-medium transition',
-                            used
-                              ? 'border-white/5 bg-transparent text-muted/50 line-through'
-                              : skill.cls,
-                            disabled && !used ? 'opacity-40' : '',
+                            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
+                            isTurn
+                              ? 'border-golden/45 bg-golden/10 text-golden'
+                              : 'border-white/10 bg-white/[0.04] text-white',
                           ].join(' ')}
                         >
-                          {skill.label}
-                        </button>
+                          <span className="font-semibold">{label}</span>
+                          <span className="text-muted">{status}</span>
+                        </span>
                       )
                     })}
+                    {shownSecret ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-50">
+                        <img
+                          src={shownSecret.icon}
+                          alt=""
+                          className="size-4 rounded object-cover"
+                          draggable={false}
+                        />
+                        <span className="font-semibold">{shownSecret.name}</span>
+                      </span>
+                    ) : null}
+                    {game.hotseat ? (
+                      <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-100">
+                        Hotseat
+                      </span>
+                    ) : null}
+                    {intelRole ? (
+                      <span className="rounded-full border border-sky-400/35 bg-sky-500/15 px-2 py-0.5 text-[10px] text-sky-100">
+                        Role {intelRole}
+                      </span>
+                    ) : null}
+                    {intelHalf ? (
+                      <span className="rounded-full border border-amber-400/35 bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-100">
+                        Name {intelHalf === 'early' ? 'A–M' : 'N–Z'}
+                      </span>
+                    ) : null}
+                    {game.lastSkill ? (
+                      <span className="rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[10px] text-muted">
+                        {game.lastSkill.uid === uid
+                          ? 'You'
+                          : householdName(game.lastSkill.uid)}
+                        : {game.lastSkill.note}
+                      </span>
+                    ) : null}
                   </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setNewGameOpen(true)}
+                      className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white hover:border-white/25"
+                    >
+                      New game
+                    </button>
+                    <SurrenderButton
+                      disabled={!uid || game.phase !== 'playing'}
+                      className="rounded-lg border px-2 py-1 text-[11px] font-medium disabled:opacity-40"
+                      style={{
+                        backgroundColor: '#4c0519',
+                        borderColor: '#fb7185',
+                        color: '#ffffff',
+                      }}
+                      onSurrender={() =>
+                        void commitGame(
+                          (prev) =>
+                            surrenderGuessWho(prev, actorUid) ?? prev,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
+                {game.phase === 'picking' ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search agents…"
+                        className="min-w-[8rem] flex-1 rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs text-white placeholder:text-muted focus:border-white/25 focus:outline-none"
+                      />
+                      {canPick ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={pickRandomSecret}
+                            className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-muted hover:text-white"
+                          >
+                            Random
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!draftSecret}
+                            onClick={lockSecret}
+                            className="rounded-xl border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40"
+                            style={{
+                              backgroundColor: '#064e3b',
+                              borderColor: '#34d399',
+                              color: '#ffffff',
+                            }}
+                          >
+                            Lock in
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {ROLES.map((role) => {
+                        const meta =
+                          role === 'All' ? null : VALORANT_ROLE_META[role]
+                        const active = roleFilter === role
+                        return (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => setRoleFilter(role)}
+                            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
+                            style={
+                              meta
+                                ? {
+                                    backgroundColor: active
+                                      ? meta.bar
+                                      : meta.barDark,
+                                    borderColor: meta.border,
+                                    color: '#ffffff',
+                                  }
+                                : {
+                                    backgroundColor: active
+                                      ? '#1a3d6d'
+                                      : '#0f3d72',
+                                    borderColor: active
+                                      ? '#5ba3e0'
+                                      : '#3d7ab8',
+                                    color: '#ffffff',
+                                  }
+                            }
+                          >
+                            {meta ? (
+                              <img
+                                src={meta.icon}
+                                alt=""
+                                className="size-3.5 object-contain"
+                                draggable={false}
+                              />
+                            ) : null}
+                            {role}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
                 ) : null}
 
                 {game.phase === 'playing' ? (
-                  <div className="pt-0.5">
-                    <div className="mb-1 flex items-center justify-between text-[10px] text-muted">
-                      <span>Board pressure</span>
-                      <span>
-                        {remaining}/{VALORANT_AGENTS.length} up
-                      </span>
+                  <>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex min-w-[7rem] max-w-[14rem] flex-1 items-center gap-2">
+                        <span className="shrink-0 text-[10px] text-muted">
+                          {remaining}/{VALORANT_AGENTS.length}
+                        </span>
+                        <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-400/80 to-golden/80 transition-[width] duration-300"
+                            style={{ width: `${remainingPct}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="h-1 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-400/80 to-golden/80 transition-[width] duration-300"
-                        style={{ width: `${remainingPct}%` }}
-                      />
+
+                    {razeArmed ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {(
+                          [
+                            'Duelist',
+                            'Initiator',
+                            'Controller',
+                            'Sentinel',
+                          ] as const
+                        ).map((role) => {
+                          const meta = VALORANT_ROLE_META[role]
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              onClick={() => fireSkill('raze', role)}
+                              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                              style={{
+                                backgroundColor: '#7c2d12',
+                                borderColor: '#fb923c',
+                                color: '#ffffff',
+                              }}
+                            >
+                              <img
+                                src={meta.icon}
+                                alt=""
+                                className="size-3.5 object-contain"
+                                draggable={false}
+                              />
+                              Nuke {role}
+                            </button>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setRazeArmed(false)}
+                          className="rounded-full border px-2.5 py-1 text-[11px]"
+                          style={{
+                            backgroundColor: '#0b1220',
+                            borderColor: '#475569',
+                            color: '#ffffff',
+                          }}
+                        >
+                          Cancel Raze
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-1">
+                      {GUESS_WHO_SKILLS.map((skill) => {
+                        const used = hasUsedGuessWhoSkill(
+                          game,
+                          skillActorUid,
+                          skill.id,
+                        )
+                        const skillDisabled =
+                          used ||
+                          game.phase !== 'playing' ||
+                          (!game.hotseat && uid !== skillActorUid)
+                        return (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            disabled={skillDisabled}
+                            title={skill.blurb}
+                            onClick={() => fireSkill(skill.id)}
+                            className={[
+                              'rounded-full border px-2 py-0.5 text-[11px] font-medium transition',
+                              used
+                                ? 'border-white/5 bg-transparent text-muted/50 line-through'
+                                : skill.cls,
+                              skillDisabled && !used ? 'opacity-40' : '',
+                            ].join(' ')}
+                          >
+                            {skill.label}
+                          </button>
+                        )
+                      })}
                     </div>
-                  </div>
+                  </>
                 ) : null}
               </div>
 
@@ -1027,47 +968,75 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                 </div>
               ) : null}
 
-              <FitAgentGrid
-                immersive={immersive}
-                count={filteredAgents.length}
-              >
-                {({ sizePx, portraitH }) =>
-                  filteredAgents.map((agent) => {
-                    const flipped = board.flipped.includes(agent.id)
-                    const isSecret = board.secretId === agent.id
-                    const isDraft = draftSecret === agent.id
-                    return (
-                      <AgentCard
-                        key={agent.id}
-                        agent={agent}
-                        sizePx={sizePx}
-                        portraitH={portraitH}
-                        flipped={game.phase !== 'picking' && flipped}
-                        selected={isDraft}
-                        secret={
-                          game.phase !== 'picking' &&
-                          isSecret &&
-                          (game.hotseat || mySeat === boardSeat)
-                        }
-                        guessArmed={guessMode && canGuess && !flipped}
-                        disabled={
-                          game.phase === 'finished' ||
-                          (game.phase === 'picking' && !canPick) ||
-                          (game.phase === 'playing' &&
-                            !canFlip &&
-                            !(guessMode && canGuess))
-                        }
-                        onClick={() => onAgentClick(agent.id)}
-                      />
+              {game.phase === 'picking' ? (
+                <>
+                  <FitAgentGrid
+                    immersive={immersive}
+                    count={filteredAgents.length}
+                  >
+                    {({ sizePx, portraitH }) =>
+                      filteredAgents.map((agent) => {
+                        const isDraft = draftSecret === agent.id
+                        return (
+                          <AgentCard
+                            key={agent.id}
+                            agent={agent}
+                            sizePx={sizePx}
+                            portraitH={portraitH}
+                            selected={isDraft}
+                            disabled={!canPick}
+                            onClick={() => onAgentClick(agent.id)}
+                          />
+                        )
+                      })
+                    }
+                  </FitAgentGrid>
+                  {filteredAgents.length === 0 ? (
+                    <p className="mt-4 text-center text-xs text-muted">
+                      No agents match — clear search or role filter.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <GuessWhoBoard3D
+                  immersive={immersive}
+                  agents={VALORANT_AGENTS}
+                  flippedIds={board.flipped}
+                  secretId={
+                    game.hotseat || mySeat === boardSeat
+                      ? board.secretId
+                      : null
+                  }
+                  selectedId={null}
+                  guessArmed={guessMode && canGuess}
+                  canGuess={canGuess}
+                  canPass={canPass}
+                  canToggleFlip={canFlip}
+                  disabled={
+                    game.phase === 'finished' ||
+                    (!canFlip && !(guessMode && canGuess))
+                  }
+                  onAgentClick={onAgentClick}
+                  onToggleGuess={() => {
+                    setRazeArmed(false)
+                    setGuessMode((v) => !v)
+                  }}
+                  onPass={() => {
+                    setGuessMode(false)
+                    setRazeArmed(false)
+                    void commitGame(
+                      (prev) => passGuessWhoTurn(prev, actorUid) ?? prev,
                     )
-                  })
-                }
-              </FitAgentGrid>
-              {filteredAgents.length === 0 ? (
-                <p className="mt-4 text-center text-xs text-muted">
-                  No agents match — clear search or show flipped.
-                </p>
-              ) : null}
+                  }}
+                  onToggleFlip={(agentId) => {
+                    if (!canFlip) return
+                    void commitGame(
+                      (prev) =>
+                        toggleGuessWhoFlip(prev, flipUid, agentId) ?? prev,
+                    )
+                  }}
+                />
+              )}
             </>
           )}
         </div>

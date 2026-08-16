@@ -1,20 +1,30 @@
 import {
+  createDebugPlayingGuessWho,
   createInitialGuessWho,
   guessWhoToDoc,
   normalizeGuessWho,
   type GuessWhoState,
 } from '../lib/guessWho'
+import { isGuessWhoDebugEnabled } from '../lib/debugFlags'
 import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { useSharedGameDoc } from './useSharedGameDoc'
 
 export function useSharedGuessWho() {
+  const debugSolo = isGuessWhoDebugEnabled()
   const shared = useSharedGameDoc<GuessWhoState>({
     collectionId: 'guesswho',
-    createInitial: (uid) => createInitialGuessWho(uid),
+    createInitial: (uid) =>
+      debugSolo
+        ? createDebugPlayingGuessWho(uid)
+        : createInitialGuessWho(uid),
     normalize: (raw, uid) => normalizeGuessWho(raw, uid),
     toDoc: (state) => guessWhoToDoc(state),
     buildReset: (_prev, uid, opts) =>
-      createInitialGuessWho(uid, { hotseat: Boolean(opts?.hotseat) }),
+      debugSolo
+        ? createDebugPlayingGuessWho(uid)
+        : createInitialGuessWho(uid, {
+            hotseat: Boolean(opts?.hotseat),
+          }),
   })
 
   const { game, uid, signedIn } = shared

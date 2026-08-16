@@ -168,6 +168,26 @@ export function createInitialGuessWho(
   }
 }
 
+/** Solo debug: both secrets locked, already in playing (hotseat). */
+export function createDebugPlayingGuessWho(turnUid: string): GuessWhoState {
+  const uid = turnUid || JENGA_PLAYER_UIDS[0]!
+  const a = VALORANT_AGENTS[0]?.id ?? null
+  const b = VALORANT_AGENTS[1]?.id ?? null
+  const base = createInitialGuessWho(uid, { hotseat: true })
+  return {
+    ...base,
+    seats: [
+      { secretId: a, flipped: [] },
+      { secretId: b, flipped: [] },
+    ],
+    phase: 'playing',
+    status: 'playing',
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
+  }
+}
+
 function bothSecretsLocked(seats: [GuessWhoSeat, GuessWhoSeat]): boolean {
   return Boolean(seats[0].secretId && seats[1].secretId)
 }

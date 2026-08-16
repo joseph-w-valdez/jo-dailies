@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { CatWallpaper, useGuestWallpaperSetting } from './CatWallpaper'
 
 const THEATER_KEY = 'jo-dailies:arcade-theater:v1'
 
@@ -89,6 +90,7 @@ export function ArcadeStage({
   const [fullscreen, setFullscreen] = useState(false)
   const frameRef = useRef<HTMLElement>(null)
   const immersive = theater || fullscreen
+  const { wallpaperEnabled } = useGuestWallpaperSetting()
 
   const setTheaterPref = (on: boolean) => {
     setTheater(on)
@@ -142,53 +144,64 @@ export function ArcadeStage({
     <section
       ref={frameRef}
       className={[
-        'border border-border bg-surface-raised shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]',
         theater
-          ? // Above AppHeader (z-50). Portaled to body so page `z-10` cannot trap it.
-            'fixed inset-0 z-[70] flex flex-col rounded-none p-3 sm:p-4'
-          : 'rounded-2xl p-4',
-        fullscreen ? 'flex h-screen flex-col rounded-none p-4' : '',
+          ? // Transparent shell so ArcadePage / portal wallpaper shows in the gutters.
+            // Above AppHeader (z-50). Portaled to body so page `z-10` cannot trap it.
+            'fixed inset-0 z-[70] flex flex-col rounded-none border-0 bg-transparent p-3 shadow-none sm:p-4'
+          : 'rounded-2xl border border-border bg-surface-raised p-4 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)]',
+        fullscreen
+          ? 'flex h-screen flex-col rounded-none border-0 bg-transparent p-4 shadow-none'
+          : '',
       ].join(' ')}
       aria-label={ariaLabel ?? title}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white"
-          >
-            Back
-          </button>
-          <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
-          {meta ? <div className="min-w-0 shrink">{meta}</div> : null}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setTheaterPref(!theater)}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
-            aria-pressed={theater}
-          >
-            {theater ? 'Exit theater' : 'Theater'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void toggleFullscreen()}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
-            aria-pressed={fullscreen}
-          >
-            {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
-        </div>
-      </div>
-
       <div
-        className={
-          immersive ? 'mt-3 flex min-h-0 flex-1 flex-col' : undefined
-        }
+        className={[
+          'flex min-h-0 flex-1 flex-col',
+          immersive
+            ? 'rounded-2xl border border-border bg-surface-raised/95 p-3 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)] backdrop-blur-sm sm:p-4'
+            : '',
+        ].join(' ')}
       >
-        {children({ immersive, theater, fullscreen })}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white"
+            >
+              Back
+            </button>
+            <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
+            {meta ? <div className="min-w-0 shrink">{meta}</div> : null}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setTheaterPref(!theater)}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
+              aria-pressed={theater}
+            >
+              {theater ? 'Exit theater' : 'Theater'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted"
+              aria-pressed={fullscreen}
+            >
+              {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            </button>
+          </div>
+        </div>
+
+        <div
+          className={
+            immersive ? 'mt-3 flex min-h-0 flex-1 flex-col' : undefined
+          }
+        >
+          {children({ immersive, theater, fullscreen })}
+        </div>
       </div>
     </section>
   )
@@ -196,7 +209,13 @@ export function ArcadeStage({
   // Escape ArcadePage's `relative z-10` stacking context so the sticky nav
   // cannot paint over theater chrome / skills / board.
   if (theater && typeof document !== 'undefined') {
-    return createPortal(stage, document.body)
+    return createPortal(
+      <>
+        {wallpaperEnabled ? <CatWallpaper /> : null}
+        {stage}
+      </>,
+      document.body,
+    )
   }
   return stage
 }
