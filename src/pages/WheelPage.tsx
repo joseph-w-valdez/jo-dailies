@@ -11,6 +11,7 @@ import {
   createWheelEntry,
   formatWeight,
   getActiveWheelTab,
+  isPinnedWheelTab,
   isWheelOutcomeFresh,
   newWheelSpinId,
   normalizeWeight,
@@ -18,8 +19,14 @@ import {
   pickWeightedIndex,
   removeWheelTab,
   renameWheelTab,
+  resetValorantAgentsTab,
   rotationForWinner,
   setActiveWheelTab,
+  setAllWheelEntriesEnabled,
+  setValorantRoleEnabled,
+  equalizeWheelEntryWeights,
+  valorantRoleFilterState,
+  wheelIconPose,
   wheelLabelPose,
   wheelOutcomeExpiresAt,
   wheelSlicePath,
@@ -33,12 +40,21 @@ import {
   WHEEL_WEIGHT_STEP,
   type WheelEntry,
 } from '../lib/wheel'
+import {
+  roleMeta,
+  VALORANT_ROLE_META,
+  type ValorantRole,
+} from '../lib/valorantAgents'
 
 const SPIN_MS = 4800
 const CONFETTI_MS = 4500
 const CX = 160
 const CY = 160
 const RADIUS = 148
+const AGENT_ROLES = Object.keys(VALORANT_ROLE_META) as Exclude<
+  ValorantRole,
+  'Unknown'
+>[]
 
 function OptionColorButton({
   color,
@@ -390,10 +406,12 @@ export function WheelPage() {
   ])
 
   const segments = useMemo(() => buildWheelSegments(entries), [entries])
+  const agentsTab = isPinnedWheelTab(activeTab)
   const canSpin = ready && segments.length > 0 && !spinning
   const winnerId = announce ? activeTab.winnerId : null
   const canAddTab = ready && !spinning && wheel.tabs.length < WHEEL_TAB_MAX
-  const canRemoveTab = ready && !spinning && wheel.tabs.length > 1
+  const canRemoveTab = (tab: { id: string; name: string }) =>
+    ready && !spinning && wheel.tabs.length > 1 && !isPinnedWheelTab(tab)
   const removeTarget = removeTabId
     ? (wheel.tabs.find((t) => t.id === removeTabId) ?? null)
     : null
@@ -436,13 +454,27 @@ export function WheelPage() {
   }
 
   const confirmRemoveTab = () => {
-    if (!removeTabId) return
+    const target = removeTabId
+      ? wheel.tabs.find((t) => t.id === removeTabId)
+      : null
+    if (!removeTabId || !target || isPinnedWheelTab(target)) {
+      setRemoveTabId(null)
+      return
+    }
     const id = removeTabId
     setRemoveTabId(null)
     clearOutcome()
     seenSpinIdRef.current = null
     hydratedRef.current = true
     void commitWheel((prev) => removeWheelTab(prev, id) ?? prev)
+  }
+
+  const resetAgentsTab = () => {
+    if (spinning || !agentsTab) return
+    clearOutcome()
+    seenSpinIdRef.current = null
+    hydratedRef.current = true
+    void commitWheel((prev) => resetValorantAgentsTab(prev) ?? prev)
   }
 
   const setEntries = (
@@ -575,6 +607,7 @@ export function WheelPage() {
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {wheel.tabs.map((tab) => {
               const active = tab.id === wheel.activeTabId
+              const pinned = isPinnedWheelTab(tab)
               return (
                 <div
                   key={tab.id}
@@ -585,7 +618,7 @@ export function WheelPage() {
                       : 'border-border bg-surface/40',
                   ].join(' ')}
                 >
-                  {active ? (
+                  {active && !pinned ? (
                     <input
                       value={tab.name}
                       disabled={spinning}
@@ -607,14 +640,19 @@ export function WheelPage() {
                   ) : (
                     <button
                       type="button"
-                      disabled={spinning}
+                      disabled={spinning || active}
                       onClick={() => selectTab(tab.id)}
-                      className="truncate px-2.5 py-1 text-xs font-medium text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className={[
+                        'truncate px-2.5 py-1 text-xs font-medium disabled:cursor-default',
+                        active
+                          ? 'text-white'
+                          : 'text-muted hover:text-white disabled:opacity-40',
+                      ].join(' ')}
                     >
                       {tab.name}
                     </button>
                   )}
-                  {canRemoveTab ? (
+                  {canRemoveTab(tab) ? (
                     <button
                       type="button"
                       disabled={spinning}
@@ -671,7 +709,14 @@ export function WheelPage() {
                       />
                     ) : (
                       segments.map((seg) => {
-                        const pose = wheelLabelPose(
+                        const labelPose = wheelLabelPose(
+                          CX,
+                          CY,
+                          RADIUS,
+                          seg.startDeg,
+                          seg.endDeg,
+                        )
+                        const iconPose = wheelIconPose(
                           CX,
                           CY,
                           RADIUS,
@@ -679,7 +724,11 @@ export function WheelPage() {
                           seg.endDeg,
                         )
                         const span = seg.endDeg - seg.startDeg
-                        const showLabel = span >= 18
+                        const hasIcon = Boolean(seg.entry.icon)
+                        const showIcon = hasIcon && span >= 6
+                        const showLabel = !hasIcon && span >= 18
+                        const iconSize =
+                          span > 40 ? 30 : span > 20 ? 24 : span > 12 ? 20 : 16
                         const isWinner =
                           Boolean(winnerId) &&
                           announce &&
@@ -709,10 +758,21 @@ export function WheelPage() {
                               }
                               strokeWidth={isWinner ? 3 : 1}
                             />
+                            {showIcon && seg.entry.icon ? (
+                              <image
+                                href={seg.entry.icon}
+                                x={iconPose.x - iconSize / 2}
+                                y={iconPose.y - iconSize / 2}
+                                width={iconSize}
+                                height={iconSize}
+                                preserveAspectRatio="xMidYMid meet"
+                                transform={`rotate(${iconPose.angle}, ${iconPose.x}, ${iconPose.y})`}
+                              />
+                            ) : null}
                             {showLabel ? (
                               <text
-                                x={pose.x}
-                                y={pose.y}
+                                x={labelPose.x}
+                                y={labelPose.y}
                                 fill="white"
                                 fontSize={
                                   isWinner
@@ -726,7 +786,7 @@ export function WheelPage() {
                                 fontWeight={700}
                                 textAnchor="middle"
                                 dominantBaseline="middle"
-                                transform={`rotate(${pose.angle}, ${pose.x}, ${pose.y})`}
+                                transform={`rotate(${labelPose.angle}, ${labelPose.x}, ${labelPose.y})`}
                                 style={{
                                   paintOrder: 'stroke',
                                   stroke: isWinner
@@ -814,17 +874,19 @@ export function WheelPage() {
                 <h2 className="text-sm font-semibold text-white">
                   Options [{entries.length}]
                 </h2>
-                <button
-                  type="button"
-                  disabled={spinning || entries.length === 0}
-                  onClick={() => {
-                    clearOutcome()
-                    setEntries([])
-                  }}
-                  className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Clear all
-                </button>
+                {!agentsTab ? (
+                  <button
+                    type="button"
+                    disabled={spinning || entries.length === 0}
+                    onClick={() => {
+                      clearOutcome()
+                      setEntries([])
+                    }}
+                    className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Clear all
+                  </button>
+                ) : null}
               </div>
 
               {spinning ? (
@@ -833,43 +895,141 @@ export function WheelPage() {
                 </p>
               ) : null}
 
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {WHEEL_QUICK_ADDS.map((label) => (
+              {agentsTab ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   <button
-                    key={label}
                     type="button"
                     disabled={spinning}
-                    onClick={() => addEntry(label)}
+                    onClick={resetAgentsTab}
+                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Restore every agent, equal weights, default colors"
+                  >
+                    Reset defaults
+                  </button>
+                  <button
+                    type="button"
+                    disabled={spinning || entries.length === 0}
+                    onClick={() => {
+                      clearOutcome()
+                      setEntries((prev) => setAllWheelEntriesEnabled(prev, true))
+                    }}
                     className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    + {label}
+                    Enable all
                   </button>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    disabled={spinning || entries.length === 0}
+                    onClick={() => {
+                      clearOutcome()
+                      setEntries((prev) =>
+                        setAllWheelEntriesEnabled(prev, false),
+                      )
+                    }}
+                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Disable all
+                  </button>
+                  <button
+                    type="button"
+                    disabled={spinning || entries.length === 0}
+                    onClick={() => {
+                      clearOutcome()
+                      setEntries((prev) => equalizeWheelEntryWeights(prev))
+                    }}
+                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Set every agent weight to 1"
+                  >
+                    Equal weights
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {WHEEL_QUICK_ADDS.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={spinning}
+                      onClick={() => addEntry(label)}
+                      className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      + {label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={draft}
-                  disabled={spinning}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      addEntry()
-                    }
-                  }}
-                  placeholder="Add an option…"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-white placeholder:text-muted focus:border-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-                />
-                <button
-                  type="button"
-                  onClick={() => addEntry()}
-                  disabled={spinning || !draft.trim()}
-                  className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm font-medium text-white hover:border-muted disabled:opacity-40"
-                >
-                  Add
-                </button>
-              </div>
+              {agentsTab ? (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    Roles
+                  </span>
+                  {AGENT_ROLES.map((role) => {
+                    const meta = roleMeta(role)
+                    const state = valorantRoleFilterState(entries, role)
+                    const active = state !== 'none'
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        disabled={spinning}
+                        onClick={() => {
+                          clearOutcome()
+                          setEntries((prev) =>
+                            setValorantRoleEnabled(prev, role, state === 'none'),
+                          )
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40"
+                        style={{
+                          backgroundColor: active ? meta.bar : meta.barDark,
+                          borderColor: meta.border,
+                          color: '#ffffff',
+                          opacity: state === 'some' ? 0.75 : 1,
+                        }}
+                        title={
+                          active
+                            ? `Turn off all ${role}s`
+                            : `Turn on all ${role}s`
+                        }
+                      >
+                        <img
+                          src={meta.icon}
+                          alt=""
+                          className="size-3 object-contain"
+                          draggable={false}
+                        />
+                        {role}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {!agentsTab ? (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={draft}
+                    disabled={spinning}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        addEntry()
+                      }
+                    }}
+                    placeholder="Add an option…"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-white placeholder:text-muted focus:border-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addEntry()}
+                    disabled={spinning || !draft.trim()}
+                    className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm font-medium text-white hover:border-muted disabled:opacity-40"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : null}
 
               <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-0.5">
                 {entries.map((entry) => (
@@ -881,14 +1041,29 @@ export function WheelPage() {
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2">
-                      <OptionColorButton
-                        color={entry.color}
-                        label={entry.label}
-                        disabled={spinning}
-                        onChange={(next) =>
-                          updateEntry(entry.id, { color: next })
-                        }
-                      />
+                      {entry.icon ? (
+                        <span
+                          className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md ring-1 ring-white/20"
+                          style={{ backgroundColor: entry.color }}
+                          title={entry.label}
+                        >
+                          <img
+                            src={entry.icon}
+                            alt=""
+                            className="size-6 object-contain"
+                            draggable={false}
+                          />
+                        </span>
+                      ) : (
+                        <OptionColorButton
+                          color={entry.color}
+                          label={entry.label}
+                          disabled={spinning}
+                          onChange={(next) =>
+                            updateEntry(entry.id, { color: next })
+                          }
+                        />
+                      )}
                       <OptionLabelInput
                         id={entry.id}
                         label={entry.label}

@@ -42,7 +42,7 @@ import { GuessWhoBoard3D } from './GuessWhoBoard3D'
 import { NewGameConfirm } from './NewGameConfirm'
 import { SurrenderButton } from './SurrenderButton'
 
-const ROLES: readonly (ValorantRole | 'All')[] = [
+const ROLES: readonly ('All' | Exclude<ValorantRole, 'Unknown'>)[] = [
   'All',
   'Duelist',
   'Initiator',
