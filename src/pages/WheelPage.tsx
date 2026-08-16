@@ -916,105 +916,124 @@ export function WheelPage() {
               ) : null}
 
               {agentsTab ? (
-                <div className="mt-3 space-y-2.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      disabled={spinning}
-                      onClick={resetAgentsTab}
-                      className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Full roster, all enabled, weight 1"
-                    >
-                      Restore default
-                    </button>
-                    {AGENT_PRESET_WHO.map((who) => {
-                      const label = WHEEL_AGENT_PRESET_LABELS[who]
-                      const saved = wheelAgentPresetSaved(wheel, who)
-                      return (
-                        <span key={who} className="inline-flex gap-1">
-                          <button
-                            type="button"
-                            disabled={spinning || !saved}
-                            onClick={() => loadAgentPreset(who)}
-                            className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
-                            title={
-                              saved
-                                ? `Load ${label}'s saved agents`
-                                : `No ${label} preset saved yet`
-                            }
+                <div className="mt-3 space-y-3">
+                  <button
+                    type="button"
+                    disabled={spinning}
+                    onClick={resetAgentsTab}
+                    className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Full roster, all enabled, weight 1"
+                  >
+                    Restore default
+                  </button>
+
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      Presets
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {AGENT_PRESET_WHO.map((who) => {
+                        const label = WHEEL_AGENT_PRESET_LABELS[who]
+                        const saved = wheelAgentPresetSaved(wheel, who)
+                        return (
+                          <div
+                            key={who}
+                            className="rounded-xl border border-border/70 bg-surface/50 p-2"
                           >
-                            Load {label}
-                          </button>
+                            <div className="mb-1.5 text-[11px] font-semibold text-white">
+                              {label}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              <button
+                                type="button"
+                                disabled={spinning || !saved}
+                                onClick={() => loadAgentPreset(who)}
+                                className="rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-medium text-white hover:border-muted disabled:cursor-not-allowed disabled:opacity-40"
+                                title={
+                                  saved
+                                    ? `Load ${label}'s saved agents`
+                                    : `No ${label} preset saved yet`
+                                }
+                              >
+                                Load
+                              </button>
+                              <button
+                                type="button"
+                                disabled={spinning}
+                                onClick={() => saveAgentPreset(who)}
+                                className="rounded-full border border-dashed border-border bg-surface/50 px-2.5 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                title={`Save currently enabled agents as ${label}'s preset`}
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      Roles
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {AGENT_ROLES.map((role) => {
+                        const meta = roleMeta(role)
+                        const state = valorantRoleFilterState(entries, role)
+                        const active = state !== 'none'
+                        return (
                           <button
+                            key={role}
                             type="button"
                             disabled={spinning}
-                            onClick={() => saveAgentPreset(who)}
-                            className="rounded-full border border-dashed border-border bg-surface/50 px-2.5 py-1 text-[11px] font-medium text-muted hover:border-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                            title={`Save currently enabled agents as ${label}'s preset`}
-                          >
-                            Save {label}
-                          </button>
-                        </span>
-                      )
-                    })}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      Roles
-                    </span>
-                    {AGENT_ROLES.map((role) => {
-                      const meta = roleMeta(role)
-                      const state = valorantRoleFilterState(entries, role)
-                      const active = state !== 'none'
-                      return (
-                        <button
-                          key={role}
-                          type="button"
-                          disabled={spinning}
-                          onClick={() => {
-                            clearOutcome()
-                            setEntries((prev) =>
-                              setValorantRoleEnabled(
-                                prev,
-                                role,
-                                state === 'none',
-                              ),
-                            )
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40"
-                          style={{
-                            backgroundColor: active ? meta.bar : meta.barDark,
-                            borderColor: meta.border,
-                            color: '#ffffff',
-                            opacity: state === 'some' ? 0.75 : 1,
-                          }}
-                          title={
-                            active
-                              ? `Turn off all ${role}s`
-                              : `Turn on all ${role}s`
-                          }
-                        >
-                          <input
-                            type="checkbox"
-                            readOnly
-                            tabIndex={-1}
-                            checked={state === 'all'}
-                            ref={(el) => {
-                              if (el) el.indeterminate = state === 'some'
+                            onClick={() => {
+                              clearOutcome()
+                              setEntries((prev) =>
+                                setValorantRoleEnabled(
+                                  prev,
+                                  role,
+                                  state === 'none',
+                                ),
+                              )
                             }}
-                            className="pointer-events-none size-3 shrink-0 rounded border-white/30 bg-black/25"
-                            aria-hidden
-                          />
-                          <img
-                            src={meta.icon}
-                            alt=""
-                            className="size-3 object-contain"
-                            draggable={false}
-                          />
-                          {role}
-                        </button>
-                      )
-                    })}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{
+                              backgroundColor: active
+                                ? meta.bar
+                                : meta.barDark,
+                              borderColor: meta.border,
+                              color: '#ffffff',
+                              opacity: state === 'some' ? 0.75 : 1,
+                            }}
+                            title={
+                              active
+                                ? `Turn off all ${role}s`
+                                : `Turn on all ${role}s`
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              readOnly
+                              tabIndex={-1}
+                              checked={state === 'all'}
+                              ref={(el) => {
+                                if (el) el.indeterminate = state === 'some'
+                              }}
+                              className="pointer-events-none size-3 shrink-0 rounded border-white/30 bg-black/25"
+                              aria-hidden
+                            />
+                            <img
+                              src={meta.icon}
+                              alt=""
+                              className="size-3 shrink-0 object-contain"
+                              draggable={false}
+                            />
+                            {role}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
               ) : (

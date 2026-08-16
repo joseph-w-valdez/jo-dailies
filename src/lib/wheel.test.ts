@@ -235,9 +235,38 @@ describe('wheel', () => {
       ),
     }
     const restored = resetValorantAgentsTab(gutted)!
+    const restoredEntries = restored.tabs.find(
+      (t) => t.id === WHEEL_VALORANT_TAB_ID,
+    )!.entries
+    expect(restoredEntries).toHaveLength(entries.length)
+    expect(restoredEntries.every((e) => e.enabled && e.weight === 1)).toBe(true)
+
+    // Restore still works when Agents only matches by name (pre-pin id).
+    const legacyAgents = {
+      ...gutted,
+      tabs: gutted.tabs.map((t) =>
+        t.id === WHEEL_VALORANT_TAB_ID
+          ? {
+              ...t,
+              id: 'old-agents',
+              entries: t.entries.map((e) => ({
+                ...e,
+                enabled: false,
+                weight: 5,
+              })),
+            }
+          : t,
+      ),
+      activeTabId: 'old-agents',
+    }
+    const fromLegacy = resetValorantAgentsTab(legacyAgents)!
+    const restoredLegacy = fromLegacy.tabs.find(
+      (t) => t.id === WHEEL_VALORANT_TAB_ID,
+    )!
+    expect(restoredLegacy.entries).toHaveLength(entries.length)
     expect(
-      restored.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)!.entries,
-    ).toHaveLength(entries.length)
+      restoredLegacy.entries.every((e) => e.enabled && e.weight === 1),
+    ).toBe(true)
   })
 
   it('saves and loads Joseph / Joha agent presets', () => {

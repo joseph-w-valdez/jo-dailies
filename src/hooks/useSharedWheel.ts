@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import {
   createInitialWheel,
+  ensureValorantAgentsTab,
   expireStaleWheelOutcome,
   parseWheelState,
   wheelNeedsOutcomeSweep,
@@ -18,12 +19,13 @@ export function useSharedWheel() {
     createInitial: () => createInitialWheel(),
     normalize: (raw) => {
       const parsed = parseWheelState(raw)
-      const next = expireStaleWheelOutcome(parsed)
-      if (wheelNeedsOutcomeSweep(parsed, next)) {
+      const expired = expireStaleWheelOutcome(parsed)
+      if (wheelNeedsOutcomeSweep(parsed, expired)) {
         // Doc still has a finish past the hold window — queue a durable clear.
         sweepOutcomeRef.current = true
       }
-      return next
+      // Pin/promote Agents so restore + presets always find `wt-agents`.
+      return ensureValorantAgentsTab(expired)
     },
     toDoc: (state) => wheelToDoc(state),
   })

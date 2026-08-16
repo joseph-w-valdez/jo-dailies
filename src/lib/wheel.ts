@@ -591,15 +591,15 @@ const WHEEL_AGENT_ROLE_ORDER: readonly Exclude<ValorantRole, 'Unknown'>[] = [
   'Sentinel',
 ]
 
-/** Role hue centers — warm → cool around the wheel when sorted by role. */
+/** Role hue centers — soft midtones; warm → cool around the wheel by role. */
 const WHEEL_AGENT_ROLE_HUE: Record<
   Exclude<ValorantRole, 'Unknown'>,
   { h: number; s: number; l: number }
 > = {
-  Duelist: { h: 8, s: 64, l: 44 },
-  Initiator: { h: 40, s: 70, l: 46 },
-  Controller: { h: 272, s: 52, l: 48 },
-  Sentinel: { h: 198, s: 55, l: 42 },
+  Duelist: { h: 350, s: 56, l: 62 }, // rose
+  Initiator: { h: 36, s: 60, l: 64 }, // peach / amber
+  Controller: { h: 268, s: 50, l: 64 }, // lilac
+  Sentinel: { h: 198, s: 52, l: 62 }, // sky
 }
 
 function clampChannel(n: number): number {
@@ -636,12 +636,20 @@ export function valorantAgentWheelColor(
   indexInRole: number,
   roleCount: number,
 ): string {
-  if (role === 'Unknown') return '#4a5568'
+  if (role === 'Unknown') return '#8b95a5'
   const base = WHEEL_AGENT_ROLE_HUE[role]
   const t = roleCount <= 1 ? 0.5 : indexInRole / (roleCount - 1)
-  const h = base.h + (t - 0.5) * 32
-  const s = base.s + (indexInRole % 3) * 5 - 4
-  const l = base.l + (indexInRole % 2 === 0 ? -4 : 5) + (t - 0.5) * 6
+  // Wider hue spread so neighbors in a role don't look identical.
+  const h = base.h + (t - 0.5) * 48 + (indexInRole % 3) * 5 - 5
+  const s = Math.min(
+    72,
+    Math.max(34, base.s + (indexInRole % 4) * 7 - 8 + (t - 0.5) * 10),
+  )
+  // Mostly mid soft tones; sprinkle a few deeper + a few lighter.
+  const band = indexInRole % 4
+  const lOffset =
+    band === 0 ? -10 : band === 1 ? 6 : band === 2 ? -4 : 10
+  const l = Math.min(78, Math.max(48, base.l + lOffset + (t - 0.5) * 8))
   return hslToHex(h, s, l)
 }
 
@@ -676,15 +684,17 @@ export function createValorantAgentWheelEntries(): WheelEntry[] {
 export function resetValorantAgentsTab(
   state: WheelRoomState,
 ): WheelRoomState | null {
-  if (!state.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
+  const ensured = ensureValorantAgentsTab(state)
+  if (!ensured.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
+  const entries = createValorantAgentWheelEntries()
   return {
-    ...state,
-    tabs: state.tabs.map((tab) =>
+    ...ensured,
+    tabs: ensured.tabs.map((tab) =>
       tab.id === WHEEL_VALORANT_TAB_ID
         ? {
             ...tab,
             name: WHEEL_VALORANT_TAB_NAME,
-            entries: createValorantAgentWheelEntries(),
+            entries,
             winnerId: null,
             spinId: null,
           }
@@ -699,12 +709,13 @@ export function saveWheelAgentPreset(
   state: WheelRoomState,
   who: WheelAgentPresetWho,
 ): WheelRoomState | null {
-  const tab = state.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
+  const ensured = ensureValorantAgentsTab(state)
+  const tab = ensured.tabs.find((t) => t.id === WHEEL_VALORANT_TAB_ID)
   if (!tab) return null
   const enabledIds = tab.entries.filter((e) => e.enabled).map((e) => e.id)
   return {
-    ...state,
-    agentPresets: { ...state.agentPresets, [who]: enabledIds },
+    ...ensured,
+    agentPresets: { ...ensured.agentPresets, [who]: enabledIds },
     updatedAt: Date.now(),
   }
 }
@@ -716,7 +727,8 @@ export function loadWheelAgentPreset(
 ): WheelRoomState | null {
   const preset = state.agentPresets[who]
   if (!preset) return null
-  if (!state.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
+  const ensured = ensureValorantAgentsTab(state)
+  if (!ensured.tabs.some((t) => t.id === WHEEL_VALORANT_TAB_ID)) return null
   const enabled = new Set(preset)
   const entries = createValorantAgentWheelEntries().map((entry) => ({
     ...entry,
@@ -724,8 +736,8 @@ export function loadWheelAgentPreset(
     weight: 1,
   }))
   return {
-    ...state,
-    tabs: state.tabs.map((tab) =>
+    ...ensured,
+    tabs: ensured.tabs.map((tab) =>
       tab.id === WHEEL_VALORANT_TAB_ID
         ? {
             ...tab,
