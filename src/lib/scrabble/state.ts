@@ -713,6 +713,32 @@ export function shuffleRack(
   }
 }
 
+/**
+ * Drag-reorder a seat's rack. `orderedIds` may be a subset (tiles currently
+ * on the rack UI); other tiles (e.g. local draft) keep their slots.
+ */
+export function reorderRack(
+  state: ScrabbleState,
+  uid: string,
+  orderedIds: readonly string[],
+): ScrabbleState | null {
+  if (state.status !== 'playing') return null
+  const rack = state.racks[uid] ?? []
+  if (rack.length < 2 || orderedIds.length < 2) return null
+  const byId = new Map(rack.map((t) => [t.id, t]))
+  if (new Set(orderedIds).size !== orderedIds.length) return null
+  if (orderedIds.some((id) => !byId.has(id))) return null
+  const visSet = new Set(orderedIds)
+  const queue = orderedIds.map((id) => byId.get(id)!)
+  const next = rack.map((t) => (visSet.has(t.id) ? queue.shift()! : t))
+  if (next.every((t, i) => t.id === rack[i]!.id)) return null
+  return {
+    ...state,
+    racks: { ...state.racks, [uid]: next },
+    updatedAt: Date.now(),
+  }
+}
+
 /** Steal a random vowel from the opponent. */
 export function applyCatBurglar(
   state: ScrabbleState,

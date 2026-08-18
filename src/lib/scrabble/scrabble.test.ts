@@ -24,6 +24,7 @@ import {
   selectScrabbleClockMode,
   selectScrabbleFirst,
   shuffleRack,
+  reorderRack,
   startNewScrabble,
   type ScrabbleState,
   type ScrabbleTile,
@@ -300,6 +301,22 @@ describe('scrabble skills', () => {
     expect(next).not.toBeNull()
     expect(next!.turnUid).toBe(b)
     expect(next!.racks[a]!.map((t) => t.id)).toEqual(['2', '3', '1'])
+  })
+
+  it('reorderRack moves tiles and keeps omitted (draft) slots', () => {
+    let state = createInitialScrabble(a)
+    const ordered = [
+      tile('1', 'A'),
+      tile('2', 'B'),
+      tile('3', 'C'),
+      tile('4', 'D'),
+    ]
+    state = withRacks(state, { [a]: ordered })
+    const next = reorderRack(state, a, ['4', '1', '3'])
+    expect(next).not.toBeNull()
+    expect(next!.racks[a]!.map((t) => t.id)).toEqual(['4', '2', '1', '3'])
+    expect(reorderRack(state, a, ['1', '2', '3', '4'])).toBeNull()
+    expect(reorderRack(state, a, ['1', 'missing'])).toBeNull()
   })
 
   it('Cat Burglar steals a vowel and spends a charge', () => {
