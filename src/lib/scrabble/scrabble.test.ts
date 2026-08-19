@@ -22,6 +22,7 @@ import {
   normalizeScrabble,
   SCRABBLE_SKILL_MAX,
   selectScrabbleClockMode,
+  selectScrabbleCheats,
   selectScrabbleFirst,
   shuffleRack,
   reorderRack,
@@ -197,6 +198,7 @@ describe('scrabble turns', () => {
     expect(next.moveLog).toEqual([])
     expect(next.clockMode).toBeNull()
     expect(next.firstUid).toBeNull()
+    expect(next.cheatsEnabled).toBeNull()
   })
 
   it('timed mode flags the player to move', () => {
@@ -206,10 +208,39 @@ describe('scrabble turns', () => {
     expect(applyPass(state, a)).toBeNull()
     state = selectScrabbleFirst(state, a)!
     state = selectScrabbleClockMode(state, 'timed', 1_000)!
+    expect(state.clockTurnStartedAt).toBeNull()
+    expect(applyPass(state, a)).toBeNull()
+    state = selectScrabbleCheats(state, true, 1_000)!
     expect(state.clockMs[a]).toBe(SCRABBLE_CLOCK_MS)
+    expect(state.clockTurnStartedAt).toBe(1_000)
     const flagged = flagScrabbleOnTime(state, 1_000 + SCRABBLE_CLOCK_MS + 1)!
     expect(flagged.status).toBe('finished')
     expect(flagged.winnerUid).toBe(b)
+  })
+
+  it('picks cheats after the clock and can disable skills', () => {
+    const a = JENGA_PLAYER_UIDS[0]!
+    let state = startNewScrabble(createInitialScrabble(a), a)
+    state = selectScrabbleFirst(state, a)!
+    state = selectScrabbleClockMode(state, 'off')!
+    expect(state.cheatsEnabled).toBeNull()
+    expect(selectScrabbleCheats(state, false)!.cheatsEnabled).toBe(false)
+    const clean = selectScrabbleCheats(state, false)!
+    expect(clean.skills[a]?.catBurglar).toBe(0)
+    expect(applyCatBurglar(clean, a)).toBeNull()
+    const spicy = selectScrabbleCheats(state, true)!
+    expect(spicy.cheatsEnabled).toBe(true)
+    expect(spicy.skills[a]?.catBurglar).toBe(SCRABBLE_SKILL_MAX)
+  })
+
+  it('legacy docs without cheatsEnabled keep skills on', () => {
+    const uid = JENGA_PLAYER_UIDS[0]!
+    const raw = JSON.parse(
+      JSON.stringify(createInitialScrabble(uid)),
+    ) as Record<string, unknown>
+    delete raw.cheatsEnabled
+    const normalized = normalizeScrabble(raw, uid)
+    expect(normalized.cheatsEnabled).toBe(true)
   })
 })
 

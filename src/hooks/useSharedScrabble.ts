@@ -30,6 +30,7 @@ export function useSharedScrabble() {
       signedIn &&
       game.clockMode != null &&
       game.firstUid != null &&
+      game.cheatsEnabled != null &&
       game.status === 'playing' &&
       (game.hotseat || game.turnUid === user?.uid),
     commitGame: shared.commitGame,

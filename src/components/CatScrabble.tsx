@@ -29,6 +29,7 @@ import {
   previewPlayWords,
   flagScrabbleOnTime,
   selectScrabbleClockMode,
+  selectScrabbleCheats,
   selectScrabbleFirst,
   surrenderScrabble,
   SCRABBLE_SIZE,
@@ -733,7 +734,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
   }, [game.peek]);
 
   const clockRunning =
-    game.clockMode === "timed" && game.status === "playing";
+    game.clockMode === "timed" &&
+    game.cheatsEnabled != null &&
+    game.status === "playing";
   const clockNow = useClockNow(clockRunning);
 
   useEffect(() => {
@@ -768,6 +771,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     if (!ready) return "Syncing…";
     if (game.firstUid == null) return "Who goes first?";
     if (game.clockMode == null) return "Sweaty or grass?";
+    if (game.cheatsEnabled == null) return "Cheats?";
     if (busy) return "Checking words…";
     if (message) return message;
     if (game.peek) {
@@ -798,6 +802,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     game.status === "playing" &&
     game.clockMode != null &&
     game.firstUid != null &&
+    game.cheatsEnabled != null &&
     !busy &&
     !exchangeMode &&
     !blankStareMode &&
@@ -1206,7 +1211,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
     >
       {({ immersive }) => (
         <div className={immersive ? "flex min-h-0 flex-1 flex-col" : undefined}>
-          {immersive ? null : (
+          {immersive || game.cheatsEnabled !== true ? null : (
             <div className="mt-2 hidden rounded-xl border border-border bg-surface/60 px-3.5 py-3 sm:block">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -1252,7 +1257,11 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
           >
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted sm:gap-3 sm:text-[11px]">
               {!immersive ? (
-                <span className="sm:hidden">
+                <span
+                  className={
+                    game.cheatsEnabled === true ? "sm:hidden" : undefined
+                  }
+                >
                   <TurnPushToggle />
                 </span>
               ) : null}
@@ -1275,7 +1284,9 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             {/* One row — scroll horizontally on narrow theater instead of wrapping. */}
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-                {SKILL_BUTTONS.map((btn) => {
+                {game.cheatsEnabled !== true
+                  ? null
+                  : SKILL_BUTTONS.map((btn) => {
                   const left = mySkills[btn.id] ?? 0;
                   return (
                     <button
@@ -1317,7 +1328,8 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                     !uid ||
                     game.status !== "playing" ||
                     game.firstUid == null ||
-                    game.clockMode == null
+                    game.clockMode == null ||
+                    game.cheatsEnabled == null
                   }
                   onSurrender={() =>
                     void commitGame(
@@ -1365,6 +1377,49 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
                   )
                 }
               />
+            </div>
+          ) : game.cheatsEnabled == null ? (
+            <div className="mt-6">
+              <div className="space-y-3">
+                <p className="text-center text-xs text-muted">
+                  Enable cheats this game?
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void commitGame(
+                        (prev) => selectScrabbleCheats(prev, true) ?? prev,
+                      )
+                    }
+                    className="rounded-xl border border-border bg-surface/80 px-4 py-8 text-left hover:border-muted"
+                  >
+                    <span className="block font-semibold text-white">
+                      Cheats on
+                    </span>
+                    <span className="mt-1 block text-xs text-muted">
+                      Skills — Cat Burglar, Blank Stare, Shelf Check, Peek-a-Paw,
+                      Meowtiply. Two uses each.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void commitGame(
+                        (prev) => selectScrabbleCheats(prev, false) ?? prev,
+                      )
+                    }
+                    className="rounded-xl border border-border bg-surface/80 px-4 py-8 text-left hover:border-muted"
+                  >
+                    <span className="block font-semibold text-white">
+                      No cheats
+                    </span>
+                    <span className="mt-1 block text-xs text-muted">
+                      Straight Scrabble — no skills this round.
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
           <TheaterPlayRow immersive={immersive} stacked={stacked}>
@@ -2179,7 +2234,7 @@ export function CatScrabble({ onClose }: { onClose: () => void }) {
             open={newGameOpen}
             onClose={() => setNewGameOpen(false)}
             onConfirm={(opts) => void resetGame(opts)}
-            blurb="Clears the board, racks, and scores. You’ll pick Normal or Timed next."
+            blurb="Clears the board, racks, and scores. You’ll pick who goes first, the timer, then cheats."
           />
         </div>
       )}

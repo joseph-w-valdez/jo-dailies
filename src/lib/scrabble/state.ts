@@ -78,10 +78,30 @@ export function emptySkillCharges(): ScrabbleSkillCharges {
   }
 }
 
-function skillsForPlayers(): Record<string, ScrabbleSkillCharges> {
+function skillsForPlayers(enabled = true): Record<string, ScrabbleSkillCharges> {
   const out: Record<string, ScrabbleSkillCharges> = {}
-  for (const uid of JENGA_PLAYER_UIDS) out[uid] = emptySkillCharges()
+  for (const uid of JENGA_PLAYER_UIDS) {
+    out[uid] = enabled ? emptySkillCharges() : zeroSkillCharges()
+  }
   return out
+}
+
+export function zeroSkillCharges(): ScrabbleSkillCharges {
+  return {
+    catBurglar: 0,
+    blankStare: 0,
+    shelfCheck: 0,
+    peekAPaw: 0,
+    meowtiply: 0,
+  }
+}
+
+export function isScrabbleSetupComplete(state: ScrabbleState): boolean {
+  return (
+    state.firstUid != null &&
+    state.clockMode != null &&
+    state.cheatsEnabled != null
+  )
 }
 
 /** One turn in the shared move history panel. */
@@ -137,11 +157,26 @@ export interface ScrabbleState {
   clockIncrementMs: number
   /** null = who-goes-first picker. */
   firstUid: string | null
+  /** null = cheats picker after the clock. Skills are off when false. */
+  cheatsEnabled: boolean | null
   /** Debug: one human plays both seats. */
   hotseat: boolean
   version: number
   roundId: string
   updatedAt: number
+}
+
+function parseCheatsEnabled(
+  raw: unknown,
+  present: boolean,
+  clockMode: ClockMode | null,
+): boolean | null {
+  if (raw === true) return true
+  if (raw === false) return false
+  if (raw === null) return null
+  // Legacy games never stored this — already past setup means skills were on.
+  if (!present) return clockMode == null ? null : true
+  return clockMode == null ? null : true
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -265,12 +300,20 @@ export function createInitialScrabble(
     hotseat?: boolean
     clockMode?: ClockMode | null
     firstUid?: string | null
+    cheatsEnabled?: boolean | null
   },
 ): ScrabbleState {
   const full = createFullBag()
   const { racks, bag } = dealOpening(full)
   const scores: Record<string, number> = {}
   for (const uid of JENGA_PLAYER_UIDS) scores[uid] = 0
+  const clockMode = opts?.clockMode === undefined ? 'off' : opts.clockMode
+  const cheatsEnabled =
+    opts && 'cheatsEnabled' in opts
+      ? opts.cheatsEnabled ?? null
+      : clockMode == null
+        ? null
+        : true
   return {
     board: emptyBoard(),
     bag,
@@ -284,11 +327,11 @@ export function createInitialScrabble(
     lastPlayWords: [],
     lastPlayCells: [],
     moveLog: [],
-    skills: skillsForPlayers(),
+    skills: skillsForPlayers(cheatsEnabled !== false),
     meowtiplyFor: null,
     peek: null,
     cats: pickTwoJengaCats(),
-    clockMode: opts?.clockMode === undefined ? 'off' : opts.clockMode,
+    clockMode,
     clockMs: emptyClockMs(),
     clockTurnStartedAt: null,
     clockIncrementMs: 0,
@@ -296,6 +339,7 @@ export function createInitialScrabble(
       opts && 'firstUid' in opts
         ? opts.firstUid ?? null
         : turnUid || JENGA_PLAYER_UIDS[0]!,
+    cheatsEnabled,
     hotseat: Boolean(opts?.hotseat),
     version: 1,
     roundId: newRoundId(),
@@ -313,6 +357,7 @@ export function startNewScrabble(
     hotseat: Boolean(opts?.hotseat),
     clockMode: null,
     firstUid: null,
+    cheatsEnabled: null,
   })
 }
 
@@ -347,8 +392,27 @@ export function selectScrabbleClockMode(
   return {
     ...state,
     ...clock,
+    // Clock starts after the cheats picker so nobody burns time on the prompt.
+    clockTurnStartedAt: null,
+    cheatsEnabled: null,
     status: 'playing',
     winnerUid: null,
+    updatedAt: now,
+  }
+}
+
+export function selectScrabbleCheats(
+  state: ScrabbleState,
+  enabled: boolean,
+  now = Date.now(),
+): ScrabbleState | null {
+  if (state.cheatsEnabled !== null) return null
+  if (state.firstUid === null || state.clockMode === null) return null
+  return {
+    ...state,
+    cheatsEnabled: enabled,
+    skills: skillsForPlayers(enabled),
+    clockTurnStartedAt: state.clockMode === 'timed' ? now : null,
     updatedAt: now,
   }
 }
@@ -383,7 +447,7 @@ export function surrenderScrabble(
   now = Date.now(),
 ): ScrabbleState | null {
   if (state.status !== 'playing') return null
-  if (state.firstUid == null || state.clockMode == null) return null
+  if (!isScrabbleSetupComplete(state)) return null
   if (!isRoomUid(loserUid)) return null
   return {
     ...state,
@@ -460,7 +524,7 @@ export function applyPass(
   state: ScrabbleState,
   uid: string,
 ): ScrabbleState | null {
-  if (state.clockMode == null) return null
+  if (!isScrabbleSetupComplete(state)) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
   const flagged = flagScrabbleOnTime(state)
@@ -499,7 +563,7 @@ export function applyExchange(
   uid: string,
   tileIds: string[],
 ): ScrabbleState | null {
-  if (state.clockMode == null) return null
+  if (!isScrabbleSetupComplete(state)) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
   const flagged = flagScrabbleOnTime(state)
@@ -564,7 +628,7 @@ export function applyPlay(
   placements: Placement[],
   opts?: { definitions?: { word: string; definition: string }[] },
 ): ScrabbleState | null {
-  if (state.clockMode == null) return null
+  if (!isScrabbleSetupComplete(state)) return null
   if (state.status !== 'playing') return null
   if (state.turnUid !== uid) return null
   const flagged = flagScrabbleOnTime(state)
@@ -684,7 +748,8 @@ function skillLog(
 
 function canUseSkill(state: ScrabbleState, uid: string): boolean {
   return (
-    state.clockMode != null &&
+    isScrabbleSetupComplete(state) &&
+    state.cheatsEnabled === true &&
     state.status === 'playing' &&
     state.turnUid === uid &&
     state.peek === null
@@ -1144,6 +1209,11 @@ export function normalizeScrabble(
       typeof s.turnUid === 'string' && s.turnUid
         ? s.turnUid
         : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
+    ),
+    cheatsEnabled: parseCheatsEnabled(
+      s.cheatsEnabled,
+      'cheatsEnabled' in s,
+      parseClockMode(s.clockMode),
     ),
     hotseat: Boolean(s.hotseat),
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
