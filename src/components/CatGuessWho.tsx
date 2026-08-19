@@ -938,7 +938,7 @@ export function CatGuessWho({ onClose }: { onClose: () => void }) {
                   guessArmed={guessMode && canGuess}
                   canGuess={canGuess}
                   canPass={canPass}
-                  canToggleFlip={canFlip}
+                  canToggleFlip={canFlip && !facesBlinded}
                   disabled={
                     game.phase === 'finished' ||
                     (!canFlip && !(guessMode && canGuess))

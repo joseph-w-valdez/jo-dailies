@@ -17,7 +17,7 @@ import {
   update,
 } from 'firebase/database'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { db, rtdb, syncRoomId } from '../lib/firebase'
+import { db, rtdb, syncRoomId, toFirestoreData } from '../lib/firebase'
 import { updateSyncSource } from '../lib/syncStatus'
 import {
   capWhiteboardStrokes,
@@ -116,7 +116,19 @@ export function useWhiteboard() {
           return
         }
 
+        const localById = new Map(
+          strokesRef.current.map((stroke) => [stroke.id, stroke]),
+        )
         for (const stroke of remote) {
+          const local = localById.get(stroke.id)
+          // Keep in-flight local edits (group moves) until Firestore matches.
+          if (
+            pendingIdsRef.current.has(stroke.id) &&
+            local &&
+            !whiteboardStrokesContentEqual([local], [stroke])
+          ) {
+            continue
+          }
           pendingIdsRef.current.delete(stroke.id)
         }
 
@@ -162,10 +174,13 @@ export function useWhiteboard() {
           if (toUpload.length > 0) {
             const batch = writeBatch(db)
             for (const stroke of toUpload) {
-              batch.set(doc(col, stroke.id), {
-                ...stroke,
-                createdAt: stroke.createdAt || Date.now(),
-              })
+              batch.set(
+                doc(col, stroke.id),
+                toFirestoreData({
+                  ...stroke,
+                  createdAt: stroke.createdAt || Date.now(),
+                }),
+              )
             }
             await batch.commit()
           }
@@ -283,11 +298,12 @@ export function useWhiteboard() {
       })
       clearLiveStroke()
 
-      void setDoc(doc(strokesCollection(), withMeta.id), withMeta).catch(
-        (error: unknown) => {
-          console.error('Could not save whiteboard stroke', error)
-        },
-      )
+      void setDoc(
+        doc(strokesCollection(), withMeta.id),
+        toFirestoreData(withMeta),
+      ).catch((error: unknown) => {
+        console.error('Could not save whiteboard stroke', error)
+      })
     },
     [clearLiveStroke],
   )
@@ -319,11 +335,47 @@ export function useWhiteboard() {
       strokesRef.current = next
       return next
     })
-    void setDoc(doc(strokesCollection(), withMeta.id), withMeta).catch(
-      (error: unknown) => {
-        console.error('Could not update whiteboard stroke', error)
-      },
-    )
+    void setDoc(
+      doc(strokesCollection(), withMeta.id),
+      toFirestoreData(withMeta),
+    ).catch((error: unknown) => {
+      console.error('Could not update whiteboard stroke', error)
+    })
+  }, [])
+
+  const updateStrokes = useCallback((nextStrokes: WhiteboardStroke[]) => {
+    if (nextStrokes.length === 0) return
+    const byId = new Map<string, WhiteboardStroke>()
+    for (const stroke of nextStrokes) {
+      const withMeta: WhiteboardStroke = {
+        ...stroke,
+        createdAt: stroke.createdAt || Date.now(),
+      }
+      pendingIdsRef.current.add(withMeta.id)
+      byId.set(withMeta.id, withMeta)
+    }
+    setStrokes((prev) => {
+      const next = prev.map((existing) => byId.get(existing.id) ?? existing)
+      strokesRef.current = next
+      return next
+    })
+    void (async () => {
+      try {
+        const list = [...byId.values()]
+        for (let i = 0; i < list.length; i += 400) {
+          const batch = writeBatch(db)
+          for (const stroke of list.slice(i, i + 400)) {
+            batch.set(
+              doc(strokesCollection(), stroke.id),
+              toFirestoreData(stroke),
+            )
+          }
+          await batch.commit()
+        }
+      } catch (error: unknown) {
+        console.error('Could not update whiteboard strokes', error)
+      }
+    })()
   }, [])
 
   /** Optimistic local edit while dragging — does not write until updateStroke. */
@@ -398,6 +450,7 @@ export function useWhiteboard() {
     canRedo,
     appendStroke,
     updateStroke,
+    updateStrokes,
     patchStrokeLocal,
     removeStroke,
     undo,

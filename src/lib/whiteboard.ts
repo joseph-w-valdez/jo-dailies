@@ -8,6 +8,15 @@ export type WhiteboardTool =
   | "fill"
   | "text";
 
+/** Canvas UI tools — never persisted on a stroke. */
+export type WhiteboardUiTool = WhiteboardTool | "select" | "lasso";
+
+export function isWhiteboardSelectionTool(
+  tool: WhiteboardUiTool,
+): tool is "select" | "lasso" {
+  return tool === "select" || tool === "lasso";
+}
+
 export interface WhiteboardPoint {
   x: number;
   y: number;
@@ -248,6 +257,240 @@ export function sortWhiteboardStrokes(
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
     return a.id.localeCompare(b.id);
   });
+}
+
+export interface WhiteboardRect {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export function normalizeBoardRect(
+  a: WhiteboardPoint,
+  b: WhiteboardPoint,
+): WhiteboardRect {
+  return {
+    minX: Math.min(a.x, b.x),
+    minY: Math.min(a.y, b.y),
+    maxX: Math.max(a.x, b.x),
+    maxY: Math.max(a.y, b.y),
+  };
+}
+
+export function rectsOverlap(a: WhiteboardRect, b: WhiteboardRect): boolean {
+  return (
+    a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY
+  );
+}
+
+export function rectContainsPoint(
+  rect: WhiteboardRect,
+  point: WhiteboardPoint,
+  pad = 0,
+): boolean {
+  return (
+    point.x >= rect.minX - pad &&
+    point.x <= rect.maxX + pad &&
+    point.y >= rect.minY - pad &&
+    point.y <= rect.maxY + pad
+  );
+}
+
+export function unionRects(
+  rects: readonly WhiteboardRect[],
+): WhiteboardRect | null {
+  if (rects.length === 0) return null;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const r of rects) {
+    minX = Math.min(minX, r.minX);
+    minY = Math.min(minY, r.minY);
+    maxX = Math.max(maxX, r.maxX);
+    maxY = Math.max(maxY, r.maxY);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Axis-aligned bounds in 0–1 board space. Fill stamps are not movable. */
+export function strokeBounds(
+  stroke: WhiteboardStroke,
+  cssWidth: number,
+  cssHeight: number,
+): WhiteboardRect | null {
+  if (stroke.tool === "fill") return null;
+  if (stroke.points.length === 0) return null;
+
+  if (stroke.tool === "text") {
+    const layout = measureTextStrokeLayout(stroke, cssWidth, cssHeight);
+    const p = stroke.points[0]!;
+    if (!layout) {
+      return { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y };
+    }
+    const cx = layout.left + layout.width / 2;
+    const cy = layout.top + layout.height / 2;
+    const rad = (layout.rotation * Math.PI) / 180;
+    const hw = (layout.width * layout.scale) / 2;
+    const hh = (layout.height * layout.scale) / 2;
+    const corners: [number, number][] = [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [dx, dy] of corners) {
+      const x = (cx + dx * Math.cos(rad) - dy * Math.sin(rad)) / cssWidth;
+      const y = (cy + dx * Math.sin(rad) + dy * Math.cos(rad)) / cssHeight;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const point of stroke.points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  const padX = stroke.width / 2 / Math.max(1, cssWidth);
+  const padY = stroke.width / 2 / Math.max(1, cssHeight);
+  return {
+    minX: minX - padX,
+    minY: minY - padY,
+    maxX: maxX + padX,
+    maxY: maxY + padY,
+  };
+}
+
+export function strokesIntersectingRect(
+  strokes: readonly WhiteboardStroke[],
+  rect: WhiteboardRect,
+  cssWidth: number,
+  cssHeight: number,
+): WhiteboardStroke[] {
+  return strokes.filter((stroke) => {
+    const bounds = strokeBounds(stroke, cssWidth, cssHeight);
+    return bounds != null && rectsOverlap(bounds, rect);
+  });
+}
+
+/** Even-odd ray cast. Polygon need not be closed. */
+export function pointInPolygon(
+  point: WhiteboardPoint,
+  polygon: readonly WhiteboardPoint[],
+): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i]!;
+    const b = polygon[j]!;
+    const crosses =
+      a.y > point.y !== b.y > point.y &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+export function boardPathIsTiny(
+  points: readonly WhiteboardPoint[],
+  min = 0.008,
+): boolean {
+  if (points.length < 3) return true;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return maxX - minX < min && maxY - minY < min;
+}
+
+export function strokesIntersectingLasso(
+  strokes: readonly WhiteboardStroke[],
+  polygon: readonly WhiteboardPoint[],
+  cssWidth: number,
+  cssHeight: number,
+): WhiteboardStroke[] {
+  if (polygon.length < 3) return [];
+  return strokes.filter((stroke) => {
+    const bounds = strokeBounds(stroke, cssWidth, cssHeight);
+    if (!bounds) return false;
+    if (stroke.points.some((point) => pointInPolygon(point, polygon))) {
+      return true;
+    }
+    const center = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    };
+    if (pointInPolygon(center, polygon)) return true;
+    const corners: WhiteboardPoint[] = [
+      { x: bounds.minX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.minY },
+      { x: bounds.maxX, y: bounds.maxY },
+      { x: bounds.minX, y: bounds.maxY },
+    ];
+    return corners.every((corner) => pointInPolygon(corner, polygon));
+  });
+}
+
+export function strokeAtPoint(
+  strokes: readonly WhiteboardStroke[],
+  point: WhiteboardPoint,
+  cssWidth: number,
+  cssHeight: number,
+): WhiteboardStroke | null {
+  const pad = 8 / Math.max(1, cssWidth);
+  for (let i = strokes.length - 1; i >= 0; i -= 1) {
+    const stroke = strokes[i]!;
+    const bounds = strokeBounds(stroke, cssWidth, cssHeight);
+    if (bounds && rectContainsPoint(bounds, point, pad)) return stroke;
+  }
+  return null;
+}
+
+export function clampGroupDelta(
+  bounds: WhiteboardRect,
+  dx: number,
+  dy: number,
+): WhiteboardPoint {
+  const w = Math.max(0, bounds.maxX - bounds.minX);
+  const h = Math.max(0, bounds.maxY - bounds.minY);
+  const nextX = Math.min(1 - Math.min(1, w), Math.max(0, bounds.minX + dx));
+  const nextY = Math.min(1 - Math.min(1, h), Math.max(0, bounds.minY + dy));
+  return { x: nextX - bounds.minX, y: nextY - bounds.minY };
+}
+
+export function translateStroke(
+  stroke: WhiteboardStroke,
+  dx: number,
+  dy: number,
+): WhiteboardStroke {
+  if (dx === 0 && dy === 0) return stroke;
+  return {
+    ...stroke,
+    points: stroke.points.map((point) => ({
+      x: clamp01(point.x + dx),
+      y: clamp01(point.y + dy),
+    })),
+  };
 }
 
 export function capWhiteboardStrokes(

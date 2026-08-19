@@ -929,83 +929,69 @@ export function GuessWhoBoard3D({
           " ",
         )}
       >
-        {/* Left — flip checklist (hidden while Phoenix flash blinds this board) */}
+        {/* Left — flip checklist (gone while Phoenix flash blinds this board) */}
         <aside
           className={[
             "flex w-[11.5rem] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface/40",
             immersive ? "min-h-0" : "h-[32rem] sm:h-[38rem]",
+            facesBlinded ? "hidden" : "",
           ].join(" ")}
+          aria-hidden={facesBlinded}
         >
-          {facesBlinded ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-3 text-center">
-              <span className="flex size-10 items-center justify-center rounded-full bg-orange-400/90 text-xl font-black text-white">
-                ?
-              </span>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-orange-200/90">
-                Phoenix flash
-              </div>
-              <p className="text-[11px] leading-snug text-muted">
-                Flip list hidden until this turn ends.
-              </p>
+          <div className="shrink-0 border-b border-border/60 px-2.5 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Flip list
             </div>
-          ) : (
-            <>
-              <div className="shrink-0 border-b border-border/60 px-2.5 py-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  Flip list
-                </div>
-                <div className="text-[10px] text-muted/80">
-                  Check = flipped down
-                </div>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
-                {agents.map((agent) => {
-                  const isFlipped = flippedSet.has(agent.id);
-                  return (
-                    <label
-                      key={agent.id}
-                      className={[
-                        "flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-[11px] transition hover:bg-white/[0.06]",
-                        isFlipped ? "text-muted" : "text-white",
-                        !canToggleFlip ? "cursor-not-allowed opacity-50" : "",
-                      ].join(" ")}
-                      onMouseEnter={() => setHoveredId(agent.id)}
-                      onMouseLeave={() => setHoveredId(null)}
-                    >
-                      <input
-                        type="checkbox"
-                        className="size-3.5 shrink-0 rounded border-white/20 bg-black/30"
-                        checked={isFlipped}
-                        disabled={!canToggleFlip}
-                        onChange={() => {
-                          if (canToggleFlip) onToggleFlip?.(agent.id);
-                        }}
-                      />
-                      <img
-                        src={agent.icon}
-                        alt=""
-                        className={[
-                          "size-5 shrink-0 rounded object-cover",
-                          isFlipped ? "opacity-45" : "",
-                        ].join(" ")}
-                        draggable={false}
-                      />
-                      <span
-                        className={[
-                          "min-w-0 truncate font-medium",
-                          isFlipped
-                            ? "line-through decoration-2 decoration-muted"
-                            : "",
-                        ].join(" ")}
-                      >
-                        {agent.name}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </>
-          )}
+            <div className="text-[10px] text-muted/80">
+              Check = flipped down
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
+            {agents.map((agent) => {
+              const isFlipped = flippedSet.has(agent.id);
+              return (
+                <label
+                  key={agent.id}
+                  className={[
+                    "flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-[11px] transition hover:bg-white/[0.06]",
+                    isFlipped ? "text-muted" : "text-white",
+                    !canToggleFlip ? "cursor-not-allowed opacity-50" : "",
+                  ].join(" ")}
+                  onMouseEnter={() => setHoveredId(agent.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  <input
+                    type="checkbox"
+                    className="size-3.5 shrink-0 rounded border-white/20 bg-black/30"
+                    checked={isFlipped}
+                    disabled={!canToggleFlip || facesBlinded}
+                    onChange={() => {
+                      if (canToggleFlip && !facesBlinded) onToggleFlip?.(agent.id);
+                    }}
+                  />
+                  <img
+                    src={agent.icon}
+                    alt=""
+                    className={[
+                      "size-5 shrink-0 rounded object-cover",
+                      isFlipped ? "opacity-45" : "",
+                    ].join(" ")}
+                    draggable={false}
+                  />
+                  <span
+                    className={[
+                      "min-w-0 truncate font-medium",
+                      isFlipped
+                        ? "line-through decoration-2 decoration-muted"
+                        : "",
+                    ].join(" ")}
+                  >
+                    {agent.name}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </aside>
 
         {/* Center — 3D board */}

@@ -7,23 +7,34 @@ import {
 } from "react";
 import { useWhiteboard } from "../hooks/useWhiteboard";
 import {
+  clampGroupDelta,
   FREEHAND_TOOLS,
   MAX_TEXT_SCALE,
   MAX_WHITEBOARD_STROKES,
   MIN_TEXT_SCALE,
   measureTextStrokeLayout,
+  boardPathIsTiny,
+  isWhiteboardSelectionTool,
   newWhiteboardStrokeId,
+  normalizeBoardRect,
   normalizeRotation,
   paintWhiteboardStroke,
+  rectContainsPoint,
   redrawWhiteboard,
   SHAPE_TOOLS,
+  strokeAtPoint,
+  strokeBounds,
+  strokesIntersectingLasso,
+  strokesIntersectingRect,
+  translateStroke,
+  unionRects,
   WHITEBOARD_COLORS,
   WHITEBOARD_FONT_SIZES,
   WHITEBOARD_SIZES,
   WHITEBOARD_TEXT_FONT,
   type WhiteboardPoint,
   type WhiteboardStroke,
-  type WhiteboardTool,
+  type WhiteboardUiTool,
 } from "../lib/whiteboard";
 import { useNavigate } from "react-router-dom";
 import { toBlob } from "html-to-image";
@@ -74,7 +85,14 @@ function markerCursor(ink: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${tipX} 84, crosshair`;
 }
 
-function canvasCursor(tool: WhiteboardTool, color: string): string {
+function canvasCursor(
+  tool: WhiteboardUiTool,
+  color: string,
+  selectMove = false,
+): string {
+  if (isWhiteboardSelectionTool(tool)) {
+    return selectMove ? "move" : "crosshair";
+  }
   if (tool === "erase") return ERASER_CURSOR;
   if (tool === "fill") return BUCKET_CURSOR;
   if (tool === "text") return "text";
@@ -218,6 +236,7 @@ function DraggableTextBox({
   boardWidth,
   boardHeight,
   selected,
+  inert,
   onSelect,
   onPreview,
   onCommit,
@@ -228,6 +247,7 @@ function DraggableTextBox({
   boardWidth: number;
   boardHeight: number;
   selected: boolean;
+  inert?: boolean;
   onSelect: () => void;
   onPreview: (next: WhiteboardStroke) => void;
   onCommit: (next: WhiteboardStroke) => void;
@@ -314,6 +334,7 @@ function DraggableTextBox({
       tabIndex={0}
       aria-label={`Text${selected ? " (selected)" : ""}: ${stroke.text ?? ""}`}
       onPointerDown={(event) => {
+        if (inert) return;
         if (event.button !== 0) return;
         if (confirmDelete) return;
         event.preventDefault();
@@ -368,6 +389,7 @@ function DraggableTextBox({
       }}
       className={[
         "absolute touch-none select-none",
+        inert ? "pointer-events-none" : "",
         showControls
           ? "z-20 ring-2 ring-sky-400/80 ring-offset-1 ring-offset-transparent"
           : "z-10",
@@ -585,6 +607,7 @@ export function Whiteboard() {
     canRedo,
     appendStroke,
     updateStroke,
+    updateStrokes,
     patchStrokeLocal,
     removeStroke,
     undo,
@@ -596,7 +619,7 @@ export function Whiteboard() {
   const [panelCollapsed, setPanelCollapsed] = useState(() =>
     loadPanelCollapsed(),
   );
-  const [tool, setTool] = useState<WhiteboardTool>("pen");
+  const [tool, setTool] = useState<WhiteboardUiTool>("pen");
   const [color, setColor] = useState<string>(WHITEBOARD_COLORS[0]);
   const [sizeWidth, setSizeWidth] = useState<number>(WHITEBOARD_SIZES[1].width);
   const [fontSize, setFontSize] = useState<number>(
@@ -607,6 +630,8 @@ export function Whiteboard() {
   const [bgColor, setBgColor] = useState<string>("#fef3c7");
   const [confirmClear, setConfirmClear] = useState(false);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectMoveCursor, setSelectMoveCursor] = useState(false);
   const [boardSize, setBoardSize] = useState({ cssW: 0, cssH: 0 });
   const [textDraft, setTextDraft] = useState<{
     id: string;
@@ -632,6 +657,31 @@ export function Whiteboard() {
   const bgColorRef = useRef(bgColor);
   const textDraftRef = useRef(textDraft);
   const ignoreTextBlurRef = useRef(false);
+  const selectedIdsRef = useRef<string[]>([]);
+  const marqueeRef = useRef<{ a: WhiteboardPoint; b: WhiteboardPoint } | null>(
+    null,
+  );
+  const lassoRef = useRef<WhiteboardPoint[] | null>(null);
+  const selectSessionRef = useRef<
+    | {
+        kind: "marquee";
+        pointerId: number;
+        additive: boolean;
+      }
+    | {
+        kind: "lasso";
+        pointerId: number;
+        additive: boolean;
+      }
+    | {
+        kind: "move";
+        pointerId: number;
+        start: WhiteboardPoint;
+        snapshot: WhiteboardStroke[];
+        lastDelta: WhiteboardPoint;
+      }
+    | null
+  >(null);
 
   strokesRef.current = strokes;
   livePeersRef.current = livePeers;
@@ -643,6 +693,7 @@ export function Whiteboard() {
   textBackgroundRef.current = textBackground;
   bgColorRef.current = bgColor;
   textDraftRef.current = textDraft;
+  selectedIdsRef.current = selectedIds;
 
   const navigate = useNavigate();
 
@@ -662,6 +713,15 @@ export function Whiteboard() {
         return;
       }
       const mod = event.metaKey || event.ctrlKey;
+      if (event.key === "Escape") {
+        setSelectedIds([]);
+        setSelectedTextId(null);
+        marqueeRef.current = null;
+        lassoRef.current = null;
+        selectSessionRef.current = null;
+        paintAll();
+        return;
+      }
       if (!mod) return;
       if (event.key === "z" && !event.shiftKey) {
         event.preventDefault();
@@ -674,6 +734,15 @@ export function Whiteboard() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [undo, redo]);
+
+  useEffect(() => {
+    if (isWhiteboardSelectionTool(tool)) return;
+    setSelectedIds([]);
+    marqueeRef.current = null;
+    lassoRef.current = null;
+    selectSessionRef.current = null;
+    setSelectMoveCursor(false);
+  }, [tool]);
 
   const paintAll = () => {
     const canvas = canvasRef.current;
@@ -700,6 +769,62 @@ export function Whiteboard() {
       ctx.beginPath();
       ctx.arc(peer.cursor.x * cssW, peer.cursor.y * cssH, 5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const { cssW: w, cssH: h } = sizeRef.current;
+    const selected = selectedIdsRef.current
+      .map((id) => strokesRef.current.find((stroke) => stroke.id === id))
+      .filter((stroke): stroke is WhiteboardStroke => stroke != null);
+    const selectedBounds = unionRects(
+      selected
+        .map((stroke) => strokeBounds(stroke, w, h))
+        .filter((rect): rect is NonNullable<typeof rect> => rect != null),
+    );
+    if (selectedBounds) {
+      ctx.save();
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(
+        selectedBounds.minX * w,
+        selectedBounds.minY * h,
+        (selectedBounds.maxX - selectedBounds.minX) * w,
+        (selectedBounds.maxY - selectedBounds.minY) * h,
+      );
+      ctx.restore();
+    }
+    const marquee = marqueeRef.current;
+    if (marquee) {
+      const box = normalizeBoardRect(marquee.a, marquee.b);
+      ctx.save();
+      ctx.fillStyle = "rgba(37, 99, 235, 0.12)";
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      const x = box.minX * w;
+      const y = box.minY * h;
+      const rw = (box.maxX - box.minX) * w;
+      const rh = (box.maxY - box.minY) * h;
+      ctx.fillRect(x, y, rw, rh);
+      ctx.strokeRect(x, y, rw, rh);
+      ctx.restore();
+    }
+    const lasso = lassoRef.current;
+    if (lasso && lasso.length > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lasso[0]!.x * w, lasso[0]!.y * h);
+      for (let i = 1; i < lasso.length; i += 1) {
+        ctx.lineTo(lasso[i]!.x * w, lasso[i]!.y * h);
+      }
+      if (lasso.length > 2) ctx.closePath();
+      ctx.fillStyle = "rgba(37, 99, 235, 0.12)";
+      if (lasso.length > 2) ctx.fill();
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
       ctx.stroke();
       ctx.restore();
     }
@@ -734,7 +859,7 @@ export function Whiteboard() {
   useEffect(() => {
     if (panelCollapsed) return;
     paintAll();
-  }, [strokes, livePeers, panelCollapsed]);
+  }, [strokes, livePeers, panelCollapsed, selectedIds]);
 
   useEffect(() => {
     if (!textDraft) return;
@@ -793,6 +918,20 @@ export function Whiteboard() {
     } satisfies WhiteboardPoint;
   };
 
+  const selectionBounds = (
+    ids: readonly string[],
+    list: WhiteboardStroke[] = strokesRef.current,
+  ) => {
+    const { cssW, cssH } = sizeRef.current;
+    return unionRects(
+      ids
+        .map((id) => list.find((stroke) => stroke.id === id))
+        .filter((stroke): stroke is WhiteboardStroke => stroke != null)
+        .map((stroke) => strokeBounds(stroke, cssW, cssH))
+        .filter((rect): rect is NonNullable<typeof rect> => rect != null),
+    );
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0) return;
     const point = pointFromEvent(event);
@@ -805,6 +944,75 @@ export function Whiteboard() {
       commitTextDraft();
       return;
     }
+
+    if (isWhiteboardSelectionTool(activeTool)) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const { cssW, cssH } = sizeRef.current;
+      const bounds = selectionBounds(selectedIdsRef.current);
+      const hittingSelection =
+        bounds != null && rectContainsPoint(bounds, point, 0.01);
+      if (hittingSelection && selectedIdsRef.current.length > 0) {
+        const snapshot = selectedIdsRef.current
+          .map((id) => strokesRef.current.find((stroke) => stroke.id === id))
+          .filter((stroke): stroke is WhiteboardStroke => stroke != null)
+          .map((stroke) => ({
+            ...stroke,
+            points: stroke.points.map((p) => ({ ...p })),
+          }));
+        selectSessionRef.current = {
+          kind: "move",
+          pointerId: event.pointerId,
+          start: point,
+          snapshot,
+          lastDelta: { x: 0, y: 0 },
+        };
+        setSelectMoveCursor(true);
+      } else if (activeTool === "lasso") {
+        selectSessionRef.current = {
+          kind: "lasso",
+          pointerId: event.pointerId,
+          additive: event.shiftKey,
+        };
+        lassoRef.current = [point];
+        if (!event.shiftKey) {
+          selectedIdsRef.current = [];
+          setSelectedIds([]);
+        }
+        const hit = strokeAtPoint(strokesRef.current, point, cssW, cssH);
+        if (hit) {
+          selectedIdsRef.current = event.shiftKey
+            ? [...new Set([...selectedIdsRef.current, hit.id])]
+            : [hit.id];
+          setSelectedIds(selectedIdsRef.current);
+        }
+        paintAll();
+      } else {
+        selectSessionRef.current = {
+          kind: "marquee",
+          pointerId: event.pointerId,
+          additive: event.shiftKey,
+        };
+        marqueeRef.current = { a: point, b: point };
+        if (!event.shiftKey) {
+          selectedIdsRef.current = [];
+          setSelectedIds([]);
+        }
+        const hit = strokeAtPoint(strokesRef.current, point, cssW, cssH);
+        if (hit) {
+          selectedIdsRef.current = event.shiftKey
+            ? [...new Set([...selectedIdsRef.current, hit.id])]
+            : [hit.id];
+          setSelectedIds(selectedIdsRef.current);
+        }
+        paintAll();
+      }
+      publishLive({ cursor: point });
+      return;
+    }
+
+    setSelectedIds([]);
+    selectedIdsRef.current = [];
 
     if (activeTool === "text") {
       event.preventDefault();
@@ -853,6 +1061,88 @@ export function Whiteboard() {
     const point = pointFromEvent(event);
     if (!point) return;
 
+    const select = selectSessionRef.current;
+    if (select && select.pointerId === event.pointerId) {
+      if (select.kind === "marquee") {
+        marqueeRef.current = {
+          a: marqueeRef.current?.a ?? point,
+          b: point,
+        };
+        const { cssW, cssH } = sizeRef.current;
+        const box = normalizeBoardRect(
+          marqueeRef.current.a,
+          marqueeRef.current.b,
+        );
+        if (box.maxX - box.minX < 0.008 && box.maxY - box.minY < 0.008) {
+          paintAll();
+          publishLive({ cursor: point });
+          return;
+        }
+        const hits = strokesIntersectingRect(
+          strokesRef.current,
+          box,
+          cssW,
+          cssH,
+        ).map((stroke) => stroke.id);
+        const next = select.additive
+          ? [...new Set([...selectedIdsRef.current, ...hits])]
+          : hits;
+        selectedIdsRef.current = next;
+        setSelectedIds(next);
+        paintAll();
+      } else if (select.kind === "lasso") {
+        const path = lassoRef.current ?? [point];
+        const last = path[path.length - 1];
+        if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 0.004) {
+          path.push(point);
+        } else {
+          path[path.length - 1] = point;
+        }
+        lassoRef.current = path;
+        const { cssW, cssH } = sizeRef.current;
+        if (!boardPathIsTiny(path)) {
+          const hits = strokesIntersectingLasso(
+            strokesRef.current,
+            path,
+            cssW,
+            cssH,
+          ).map((stroke) => stroke.id);
+          const next = select.additive
+            ? [...new Set([...selectedIdsRef.current, ...hits])]
+            : hits;
+          selectedIdsRef.current = next;
+          setSelectedIds(next);
+        }
+        paintAll();
+      } else {
+        const { cssW, cssH } = sizeRef.current;
+        const startBounds = unionRects(
+          select.snapshot
+            .map((stroke) => strokeBounds(stroke, cssW, cssH))
+            .filter((rect): rect is NonNullable<typeof rect> => rect != null),
+        );
+        const rawDx = point.x - select.start.x;
+        const rawDy = point.y - select.start.y;
+        const delta = startBounds
+          ? clampGroupDelta(startBounds, rawDx, rawDy)
+          : { x: rawDx, y: rawDy };
+        select.lastDelta = delta;
+        for (const original of select.snapshot) {
+          patchStrokeLocal(translateStroke(original, delta.x, delta.y));
+        }
+        paintAll();
+      }
+      publishLive({ cursor: point });
+      return;
+    }
+
+    if (isWhiteboardSelectionTool(toolRef.current) && !select) {
+      const bounds = selectionBounds(selectedIdsRef.current);
+      setSelectMoveCursor(
+        bounds != null && rectContainsPoint(bounds, point, 0.01),
+      );
+    }
+
     if (!drawingRef.current || !draftRef.current) {
       publishLive({ cursor: point });
       return;
@@ -874,6 +1164,88 @@ export function Whiteboard() {
   };
 
   const endStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const select = selectSessionRef.current;
+    if (select && select.pointerId === event.pointerId) {
+      selectSessionRef.current = null;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* already released */
+      }
+      if (select.kind === "marquee") {
+        const marquee = marqueeRef.current;
+        marqueeRef.current = null;
+        const { cssW, cssH } = sizeRef.current;
+        if (marquee) {
+          const box = normalizeBoardRect(marquee.a, marquee.b);
+          const tiny =
+            box.maxX - box.minX < 0.008 && box.maxY - box.minY < 0.008;
+          if (tiny) {
+            const hit = strokeAtPoint(
+              strokesRef.current,
+              marquee.b,
+              cssW,
+              cssH,
+            );
+            const next = hit
+              ? select.additive
+                ? [...new Set([...selectedIdsRef.current, hit.id])]
+                : [hit.id]
+              : select.additive
+                ? selectedIdsRef.current
+                : [];
+            selectedIdsRef.current = next;
+            setSelectedIds(next);
+          }
+        }
+        paintAll();
+      } else if (select.kind === "lasso") {
+        const path = lassoRef.current;
+        lassoRef.current = null;
+        const { cssW, cssH } = sizeRef.current;
+        if (path && path.length > 0) {
+          if (boardPathIsTiny(path)) {
+            const hit = strokeAtPoint(
+              strokesRef.current,
+              path[path.length - 1]!,
+              cssW,
+              cssH,
+            );
+            const next = hit
+              ? select.additive
+                ? [...new Set([...selectedIdsRef.current, hit.id])]
+                : [hit.id]
+              : select.additive
+                ? selectedIdsRef.current
+                : [];
+            selectedIdsRef.current = next;
+            setSelectedIds(next);
+          } else {
+            const hits = strokesIntersectingLasso(
+              strokesRef.current,
+              path,
+              cssW,
+              cssH,
+            ).map((stroke) => stroke.id);
+            const next = select.additive
+              ? [...new Set([...selectedIdsRef.current, ...hits])]
+              : hits;
+            selectedIdsRef.current = next;
+            setSelectedIds(next);
+          }
+        }
+        paintAll();
+      } else {
+        const { x: dx, y: dy } = select.lastDelta;
+        if (dx !== 0 || dy !== 0) {
+          updateStrokes(
+            select.snapshot.map((stroke) => translateStroke(stroke, dx, dy)),
+          );
+        }
+      }
+      return;
+    }
+
     if (!drawingRef.current) return;
     drawingRef.current = false;
     try {
@@ -897,13 +1269,16 @@ export function Whiteboard() {
 
   const showColors =
     tool !== "erase" &&
+    !isWhiteboardSelectionTool(tool) &&
     (FREEHAND_TOOLS.includes(tool) ||
       SHAPE_TOOLS.includes(tool) ||
       tool === "fill" ||
       tool === "text");
 
   const brushSizes =
-    tool === "text" ? null : tool === "fill" ? null : WHITEBOARD_SIZES;
+    tool === "text" || isWhiteboardSelectionTool(tool) || tool === "fill"
+      ? null
+      : WHITEBOARD_SIZES;
 
   const [savingSnapshot, setSavingSnapshot] = useState(false);
 
@@ -1041,7 +1416,9 @@ export function Whiteboard() {
             {liveEnabled
               ? "Doodle together — ink streams live while you draw. Tap a text box to move, flip, rotate, resize, or delete it."
               : "Doodle together — strokes sync when you lift the pen. Tap a text box to move, flip, rotate, resize, or delete it."}{" "}
-            Oldest marks drop off when you hit {MAX_WHITEBOARD_STROKES}.
+            Select: drag a box, or Lasso around marks, then drag to move them
+            (Shift adds). Esc clears. Oldest marks drop off when you hit{" "}
+            {MAX_WHITEBOARD_STROKES}.
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1093,6 +1470,18 @@ export function Whiteboard() {
                 onClick={() => setTool("text")}
               >
                 Text
+              </ToolButton>
+              <ToolButton
+                active={tool === "select"}
+                onClick={() => setTool("select")}
+              >
+                Select
+              </ToolButton>
+              <ToolButton
+                active={tool === "lasso"}
+                onClick={() => setTool("lasso")}
+              >
+                Lasso
               </ToolButton>
             </div>
 
@@ -1295,7 +1684,7 @@ export function Whiteboard() {
             <canvas
               ref={canvasRef}
               className="block size-full touch-none"
-              style={{ cursor: canvasCursor(tool, color) }}
+              style={{ cursor: canvasCursor(tool, color, selectMoveCursor) }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={endStroke}
@@ -1310,6 +1699,7 @@ export function Whiteboard() {
                   boardWidth={boardSize.cssW}
                   boardHeight={boardSize.cssH}
                   selected={selectedTextId === stroke.id}
+                  inert={isWhiteboardSelectionTool(tool)}
                   onSelect={() => setSelectedTextId(stroke.id)}
                   onPreview={patchStrokeLocal}
                   onCommit={updateStroke}
