@@ -11,7 +11,10 @@ import { householdName } from './household'
 import { JENGA_PLAYER_UIDS } from './jenga'
 import { agentById } from './valorantAgents'
 
-export type MatchHistoryGameId = Exclude<ArcadeGameId, 'suika'>
+export type MatchHistoryGameId = Exclude<
+  ArcadeGameId,
+  'suika' | 'globle' | 'notes'
+>
 
 export type ArcadeMatchResult = 'win' | 'draw' | 'loss' | 'collapsed'
 
