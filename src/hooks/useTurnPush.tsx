@@ -11,8 +11,14 @@ import {
   subscribeTurnPushEnabled,
   unregisterPushToken,
 } from '../lib/push'
-import { scrabbleTurnNotifyUid, type TurnSnapshot } from '../lib/turnNotify'
+import {
+  arcadeTurnNotifyUid,
+  type TurnNotifyGame,
+  type TurnSnapshot,
+} from '../lib/turnNotify'
 import { useFirebaseAuth } from './firebaseAuthContext'
+
+const TURN_NOTIFY_GAMES: readonly TurnNotifyGame[] = ['scrabble', 'wordle']
 
 function useTurnPushOptIn() {
   const [enabled, setEnabled] = useState(loadTurnPushEnabled)
@@ -55,17 +61,19 @@ export function useTurnPushSetting() {
   }
 }
 
-/** Always-on while signed in: token refresh + Scrabble turn pings. */
+/** Always-on while signed in: token refresh + arcade turn pings. */
 export function TurnPushListener() {
   const { user } = useFirebaseAuth()
   const enabled = useTurnPushOptIn()
-  const seenRef = useRef(false)
-  const prevRef = useRef<TurnSnapshot | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
+  const seenRef = useRef<Partial<Record<TurnNotifyGame, boolean>>>({})
+  const prevRef = useRef<Partial<Record<TurnNotifyGame, TurnSnapshot | null>>>(
+    {},
+  )
+  const [ping, setPing] = useState<TurnNotifyGame | null>(null)
 
   useEffect(() => {
-    seenRef.current = false
-    prevRef.current = null
+    seenRef.current = {}
+    prevRef.current = {}
   }, [user?.uid, enabled])
 
   useEffect(() => {
@@ -78,23 +86,32 @@ export function TurnPushListener() {
   useEffect(() => {
     if (!user?.uid || !enabled) return
     const uid = user.uid
-    const ref = doc(db, 'rooms', syncRoomId, 'scrabble', 'current')
-    return onSnapshot(ref, (snap) => {
-      const after = (snap.exists() ? snap.data() : null) as TurnSnapshot | null
-      if (!seenRef.current) {
-        seenRef.current = true
-        prevRef.current = after
-        return
-      }
-      const notifyUid = scrabbleTurnNotifyUid(prevRef.current, after)
-      prevRef.current = after
-      if (notifyUid !== uid) return
-      setModalOpen(true)
-      showTurnNotification()
+    const unsubs = TURN_NOTIFY_GAMES.map((game) => {
+      const ref = doc(db, 'rooms', syncRoomId, game, 'current')
+      return onSnapshot(ref, (snap) => {
+        const after = (snap.exists() ? snap.data() : null) as TurnSnapshot | null
+        if (!seenRef.current[game]) {
+          seenRef.current[game] = true
+          prevRef.current[game] = after
+          return
+        }
+        const notifyUid = arcadeTurnNotifyUid(prevRef.current[game], after)
+        prevRef.current[game] = after
+        if (notifyUid !== uid) return
+        setPing(game)
+        showTurnNotification(game)
+      })
     })
+    return () => {
+      for (const unsub of unsubs) unsub()
+    }
   }, [user?.uid, enabled])
 
   return (
-    <TurnNotifyModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    <TurnNotifyModal
+      open={ping != null}
+      game={ping ?? 'scrabble'}
+      onClose={() => setPing(null)}
+    />
   )
 }

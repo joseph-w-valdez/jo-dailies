@@ -1,6 +1,10 @@
 import { deleteDoc, doc, setDoc } from 'firebase/firestore'
 import { db, firebaseApp, firebaseConfigured, syncRoomId, toFirestoreData } from './firebase'
-import { turnNotifyPayload } from './turnNotify'
+import {
+  turnNotifyPath,
+  turnNotifyPayload,
+  type TurnNotifyGame,
+} from './turnNotify'
 
 export const TURN_PUSH_KEY = 'jo-dailies:turn-push:v1'
 const TURN_PUSH_EVENT = 'jo-dailies:turn-push'
@@ -41,10 +45,10 @@ export function vapidKey(): string {
   return import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim() ?? ''
 }
 
-export function showTurnNotification(): void {
+export function showTurnNotification(game: TurnNotifyGame): void {
   if (!notificationsSupported()) return
   if (Notification.permission !== 'granted') return
-  const { title, body, tag } = turnNotifyPayload()
+  const { title, body, tag } = turnNotifyPayload(game)
   const n = new Notification(title, {
     body,
     tag,
@@ -52,7 +56,7 @@ export function showTurnNotification(): void {
   })
   n.onclick = () => {
     window.focus()
-    window.location.assign('/arcade?game=scrabble')
+    window.location.assign(turnNotifyPath(game))
     n.close()
   }
 }

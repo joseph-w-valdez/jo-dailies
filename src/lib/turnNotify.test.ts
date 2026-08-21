@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { scrabbleTurnNotifyUid } from './turnNotify'
+import { arcadeTurnNotifyUid, scrabbleTurnNotifyUid } from './turnNotify'
 
 const jo = 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2'
 const joha = 'PLxEvRfAjSbj7kQumrbQ5xHF4S03'
 
-describe('scrabbleTurnNotifyUid', () => {
+describe('arcadeTurnNotifyUid', () => {
   it('notifies the new turn seat', () => {
     expect(
-      scrabbleTurnNotifyUid(
+      arcadeTurnNotifyUid(
         { status: 'playing', turnUid: jo, hotseat: false },
         { status: 'playing', turnUid: joha, hotseat: false },
       ),
@@ -16,7 +16,7 @@ describe('scrabbleTurnNotifyUid', () => {
 
   it('skips unchanged turns', () => {
     expect(
-      scrabbleTurnNotifyUid(
+      arcadeTurnNotifyUid(
         { status: 'playing', turnUid: jo },
         { status: 'playing', turnUid: jo },
       ),
@@ -25,7 +25,7 @@ describe('scrabbleTurnNotifyUid', () => {
 
   it('skips hotseat', () => {
     expect(
-      scrabbleTurnNotifyUid(
+      arcadeTurnNotifyUid(
         { status: 'playing', turnUid: jo, hotseat: false },
         { status: 'playing', turnUid: joha, hotseat: true },
       ),
@@ -34,7 +34,7 @@ describe('scrabbleTurnNotifyUid', () => {
 
   it('skips finished games', () => {
     expect(
-      scrabbleTurnNotifyUid(
+      arcadeTurnNotifyUid(
         { status: 'playing', turnUid: jo },
         { status: 'finished', turnUid: joha },
       ),
@@ -43,10 +43,32 @@ describe('scrabbleTurnNotifyUid', () => {
 
   it('notifies when a new game starts', () => {
     expect(
-      scrabbleTurnNotifyUid(
+      arcadeTurnNotifyUid(
         { status: 'finished', turnUid: joha },
         { status: 'playing', turnUid: jo },
       ),
     ).toBe(jo)
+  })
+
+  it('skips Wordle setup phases even when status is playing', () => {
+    expect(
+      arcadeTurnNotifyUid(
+        { status: 'playing', phase: 'pickMode', turnUid: jo },
+        { status: 'playing', phase: 'versusSetup', turnUid: joha },
+      ),
+    ).toBeNull()
+  })
+
+  it('notifies when Wordle enters playing and turn is yours', () => {
+    expect(
+      arcadeTurnNotifyUid(
+        { status: 'playing', phase: 'versusSetup', turnUid: jo },
+        { status: 'playing', phase: 'playing', turnUid: joha },
+      ),
+    ).toBe(joha)
+  })
+
+  it('keeps scrabbleTurnNotifyUid as an alias', () => {
+    expect(scrabbleTurnNotifyUid).toBe(arcadeTurnNotifyUid)
   })
 })

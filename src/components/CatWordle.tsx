@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSharedWordle } from '../hooks/useSharedWordle'
 import { householdName } from '../lib/household'
 import { hostSeatUid, otherPlayerUid } from '../lib/jenga'
@@ -28,6 +28,17 @@ import {
 } from './WordGameSetup'
 
 const KEYS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm']
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable
+  )
+}
 
 function markClass(mark: LetterMark | undefined): string {
   if (mark === 'correct') return 'bg-emerald-600 border-emerald-500 text-white'
@@ -129,11 +140,13 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     return map
   }, [game.mode, coopRows, myRows, theirRows])
 
+  const playing =
+    game.phase === 'playing' && game.status === 'playing'
   const myTurn =
-    game.phase === 'playing' &&
-    game.status === 'playing' &&
+    playing &&
     (game.hotseat || game.turnUid === uid) &&
     game.turnUid === actorUid
+  const canDraft = playing && myAnswerLen > 0
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
@@ -155,12 +168,35 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
       return `${householdName(game.winnerUid)} wins`
     }
     if (myTurn) return 'Your turn'
+    if (draft) return 'Drafting…'
     return 'Waiting…'
   })()
 
   const lengthMode = game.lengthMode ?? 'standard'
 
+  useEffect(() => {
+    setDraft((d) => (d.length > myAnswerLen ? d.slice(0, myAnswerLen) : d))
+  }, [myAnswerLen])
+
+  const typeLetter = (ch: string) => {
+    if (!canDraft) return
+    const letter = ch.toLowerCase()
+    if (!/^[a-z]$/.test(letter)) return
+    setDraft((d) => (d.length >= myAnswerLen ? d : d + letter))
+    setMsg(null)
+  }
+
+  const deleteLetter = () => {
+    if (!canDraft) return
+    setDraft((d) => d.slice(0, -1))
+    setMsg(null)
+  }
+
   const submitGuess = () => {
+    if (!myTurn) {
+      setMsg('Wait for your turn to submit')
+      return
+    }
     const g = draft.trim().toLowerCase().replace(/[^a-z]/g, '')
     if (g.length !== myAnswerLen) {
       setMsg(`Need ${myAnswerLen} letters`)
@@ -186,10 +222,33 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     })
   }
 
-  const typeLetter = (ch: string) => {
-    if (!myTurn) return
-    setDraft((d) => (d.length >= myAnswerLen ? d : d + ch))
-  }
+  const keyHandlersRef = useRef({ typeLetter, deleteLetter, submitGuess })
+  keyHandlersRef.current = { typeLetter, deleteLetter, submitGuess }
+
+  useEffect(() => {
+    if (!canDraft) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (isTypingTarget(event.target)) return
+      const handlers = keyHandlersRef.current
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault()
+        handlers.deleteLetter()
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handlers.submitGuess()
+        return
+      }
+      if (/^[a-zA-Z]$/.test(event.key)) {
+        event.preventDefault()
+        handlers.typeLetter(event.key)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canDraft])
 
   return (
     <ArcadeStage
@@ -302,38 +361,46 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                 </p>
               ) : null}
 
-              {myTurn ? (
-                <div className="space-y-2">
+              {canDraft ? (
+                <div className="mx-auto w-full max-w-xl space-y-3">
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {Array.from({ length: myAnswerLen }, (_, i) => (
                       <span
                         key={i}
                         className={[
-                          'flex items-center justify-center rounded-md border border-border bg-surface font-bold uppercase text-white',
+                          'flex items-center justify-center rounded-md border font-bold uppercase text-white',
+                          myTurn
+                            ? 'border-border bg-surface'
+                            : 'border-border bg-zinc-200/80 text-zinc-900',
                           myAnswerLen > 8
-                            ? 'h-8 w-8 text-sm'
+                            ? 'h-9 w-9 text-sm'
                             : myAnswerLen > 6
-                              ? 'h-10 w-10 text-base'
-                              : 'h-11 w-11 text-lg',
+                              ? 'h-11 w-11 text-base'
+                              : 'h-12 w-12 text-lg',
                         ].join(' ')}
                       >
                         {draft[i] ?? ''}
                       </span>
                     ))}
                   </div>
+                  {!myTurn ? (
+                    <p className="text-center text-xs text-app-text">
+                      Draft a word — submits when it’s your turn
+                    </p>
+                  ) : null}
                   {msg ? (
                     <p className="text-center text-xs text-rose-300">{msg}</p>
                   ) : null}
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {KEYS.map((row) => (
-                      <div key={row} className="flex justify-center gap-1">
+                      <div key={row} className="flex justify-center gap-1.5 sm:gap-2">
                         {row.split('').map((ch) => (
                           <button
                             key={ch}
                             type="button"
                             onClick={() => typeLetter(ch)}
                             className={[
-                              'h-10 min-w-[1.6rem] rounded-md border px-1.5 text-xs font-semibold uppercase',
+                              'h-12 w-10 shrink-0 rounded-lg border text-sm font-semibold uppercase sm:h-14 sm:w-12 sm:text-base',
                               markClass(letterMarks.get(ch)),
                             ].join(' ')}
                           >
@@ -345,15 +412,26 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                     <div className="flex justify-center gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => setDraft((d) => d.slice(0, -1))}
-                        className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-white"
+                        onClick={deleteLetter}
+                        className="h-12 min-w-[5.5rem] rounded-lg border border-border bg-surface px-4 text-sm font-medium text-white sm:h-14 sm:text-base"
                       >
                         Delete
                       </button>
                       <button
                         type="button"
                         onClick={submitGuess}
-                        className="rounded-md border border-emerald-500/55 bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-app-text"
+                        disabled={!myTurn}
+                        title={
+                          myTurn
+                            ? 'Submit guess'
+                            : 'Wait for your turn to submit'
+                        }
+                        className={[
+                          'h-12 min-w-[5.5rem] rounded-lg border px-5 text-sm font-semibold sm:h-14 sm:text-base',
+                          myTurn
+                            ? 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30'
+                            : 'cursor-default border-border/60 bg-surface/50 text-muted opacity-60',
+                        ].join(' ')}
                       >
                         Enter
                       </button>

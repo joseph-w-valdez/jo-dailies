@@ -3,6 +3,11 @@ import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { JENGA_CAT_THEMES } from '../lib/jenga'
 import { petAssetBundle } from '../lib/petAssets'
+import {
+  turnNotifyGameLabel,
+  turnNotifyPath,
+  type TurnNotifyGame,
+} from '../lib/turnNotify'
 
 const TURN_QUOTES = [
   "It's your turn!",
@@ -12,8 +17,6 @@ const TURN_QUOTES = [
   "The board awaits!",
   "I believe this is yours!",
 ] as const
-
-const SCRABBLE_PATH = '/arcade?game=scrabble'
 
 function pickCatSrc(): string {
   const theme =
@@ -25,22 +28,29 @@ function pickQuote(): string {
   return TURN_QUOTES[Math.floor(Math.random() * TURN_QUOTES.length)]!
 }
 
-function isOnScrabble(pathname: string, search: string): boolean {
+function isOnGame(
+  game: TurnNotifyGame,
+  pathname: string,
+  search: string,
+): boolean {
   if (pathname !== '/arcade') return false
-  return new URLSearchParams(search).get('game') === 'scrabble'
+  return new URLSearchParams(search).get('game') === game
 }
 
-/** In-app Scrabble turn alert — bouncing cat + quote. */
+/** In-app arcade turn alert — bouncing cat + quote. */
 export function TurnNotifyModal({
   open,
+  game,
   onClose,
 }: {
   open: boolean
+  game: TurnNotifyGame
   onClose: () => void
 }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const showOpenScrabble = !isOnScrabble(location.pathname, location.search)
+  const label = turnNotifyGameLabel(game)
+  const showOpenGame = !isOnGame(game, location.pathname, location.search)
   const catSrc = useMemo(() => (open ? pickCatSrc() : ''), [open])
   const quote = useMemo(() => (open ? pickQuote() : ''), [open])
 
@@ -94,20 +104,20 @@ export function TurnNotifyModal({
           id="turn-notify-title"
           className="mt-4 text-base font-semibold text-white"
         >
-          Scrabble
+          {label}
         </h3>
         <p className="mt-1 text-sm text-muted">It&apos;s your turn.</p>
         <div className="mt-4 flex flex-col gap-2">
-          {showOpenScrabble ? (
+          {showOpenGame ? (
             <button
               type="button"
               onClick={() => {
                 onClose()
-                navigate(SCRABBLE_PATH)
+                navigate(turnNotifyPath(game))
               }}
               className="w-full rounded-lg border border-emerald-500/55 bg-emerald-500/20 px-3 py-2 text-sm font-medium text-app-text hover:bg-emerald-500/30"
             >
-              Open Scrabble
+              Open {label}
             </button>
           ) : null}
           <button
