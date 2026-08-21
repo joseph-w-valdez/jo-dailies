@@ -5,6 +5,7 @@ import {
   JENGA_PLAYER_UIDS,
   nextTurnUid,
   otherPlayerUid,
+  parseOptionalSeatUid,
   pickTwoJengaCats,
 } from './jenga'
 import {
@@ -49,6 +50,8 @@ export type WordleState = {
   submittedFor: Record<string, boolean>
   guessesByUid: Record<string, WordleGuessRow[]>
   turnUid: string
+  /** null = who-goes-first picker (after New game). */
+  firstUid: string | null
   status: 'playing' | 'won' | 'lost' | 'draw'
   winnerUid: string | null
   hotseat: boolean
@@ -81,6 +84,7 @@ export function createInitialWordle(
     submittedFor: {},
     guessesByUid: emptyGuesses(),
     turnUid: turnUid || JENGA_PLAYER_UIDS[0]!,
+    firstUid: null,
     status: 'playing',
     winnerUid: null,
     hotseat: Boolean(opts?.hotseat),
@@ -91,15 +95,34 @@ export function createInitialWordle(
   }
 }
 
+/** After New game: pick who guesses first once play starts. */
+export function selectWordleFirst(
+  state: WordleState,
+  uid: string,
+): WordleState | null {
+  if (state.firstUid !== null) return null
+  if (!isRoomUid(uid)) return null
+  return {
+    ...state,
+    firstUid: uid,
+    turnUid: uid,
+    updatedAt: Date.now(),
+  }
+}
+
 /** Step 1: co-op or versus → then pick length. */
 export function selectWordleMode(
   prev: WordleState,
   mode: WordleMode,
 ): WordleState {
+  const firstUid = prev.firstUid
+  const turnUid = firstUid ?? prev.turnUid ?? JENGA_PLAYER_UIDS[0]!
   return {
-    ...createInitialWordle(prev.turnUid || JENGA_PLAYER_UIDS[0]!, {
+    ...createInitialWordle(turnUid, {
       hotseat: prev.hotseat,
     }),
+    firstUid,
+    turnUid,
     mode,
     phase: 'pickLength',
     version: prev.version,
@@ -167,7 +190,9 @@ export function submitVersusWord(
     answersByUid,
     submittedFor,
     phase: bothReady ? 'playing' : 'versusSetup',
-    turnUid: bothReady ? hostSeatUid() : state.turnUid,
+    turnUid: bothReady
+      ? state.firstUid ?? hostSeatUid()
+      : state.turnUid,
     updatedAt: Date.now(),
   }
 }
@@ -374,6 +399,11 @@ export function normalizeWordle(raw: unknown, fallbackUid: string): WordleState 
     guessesByUid,
     turnUid:
       typeof s.turnUid === 'string' && s.turnUid ? s.turnUid : base.turnUid,
+    firstUid: parseOptionalSeatUid(
+      s.firstUid,
+      'firstUid' in s,
+      typeof s.turnUid === 'string' && s.turnUid ? s.turnUid : null,
+    ),
     status,
     winnerUid: typeof s.winnerUid === 'string' ? s.winnerUid : null,
     hotseat: Boolean(s.hotseat),

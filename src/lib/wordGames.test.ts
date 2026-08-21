@@ -3,6 +3,7 @@ import { JENGA_PLAYER_UIDS } from './jenga'
 import {
   applyWordleGuess,
   createInitialWordle,
+  selectWordleFirst,
   selectWordleLength,
   selectWordleMode,
   startWordleCoop,
@@ -30,6 +31,13 @@ import {
 } from './hangman'
 
 describe('wordle', () => {
+  const jo = JENGA_PLAYER_UIDS[0]!
+  const joha = JENGA_PLAYER_UIDS[1]!
+
+  function fresh(first = jo) {
+    return selectWordleFirst(createInitialWordle(jo), first)!
+  }
+
   it('marks duplicates like Wordle', () => {
     expect(markWordleGuess('abbbb', 'axxxx')).toEqual([
       'correct',
@@ -51,20 +59,19 @@ describe('wordle', () => {
   })
 
   it('co-op rejects non-words and accepts a dictionary guess', () => {
-    let s = createInitialWordle(JENGA_PLAYER_UIDS[0]!)
-    s = startWordleCoop(s, () => 0)
+    let s = startWordleCoop(fresh(), () => 0)
     expect(s.answer).toBeTruthy()
     expect(s.answer!.length).toBe(5)
-    expect(applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'xxxxx')).toBeNull()
-    const probed = applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'apple')
+    expect(applyWordleGuess(s, jo, 'xxxxx')).toBeNull()
+    const probed = applyWordleGuess(s, jo, 'apple')
     expect(probed?.status).toBe('playing')
-    expect(probed?.guessesByUid[JENGA_PLAYER_UIDS[0]!]?.[0]?.word).toBe('apple')
-    const won = applyWordleGuess(probed!, JENGA_PLAYER_UIDS[1]!, s.answer!)
+    expect(probed?.guessesByUid[jo]?.[0]?.word).toBe('apple')
+    const won = applyWordleGuess(probed!, joha, s.answer!)
     expect(won?.status).toBe('won')
   })
 
   it('picks length after mode', () => {
-    let s = selectWordleMode(createInitialWordle(JENGA_PLAYER_UIDS[0]!), 'coop')
+    let s = selectWordleMode(fresh(), 'coop')
     expect(s.phase).toBe('pickLength')
     s = selectWordleLength(s, 'variable', () => 0)!
     expect(s.phase).toBe('playing')
@@ -73,16 +80,24 @@ describe('wordle', () => {
   })
 
   it('versus locks both words before play', () => {
-    let s = startWordleVersus(createInitialWordle(JENGA_PLAYER_UIDS[0]!))
+    let s = startWordleVersus(fresh(joha))
     expect(s.lengthMode).toBe('standard')
-    expect(submitVersusWord(s, JENGA_PLAYER_UIDS[0]!, 'xxxxx')).toBeNull()
-    s = submitVersusWord(s, JENGA_PLAYER_UIDS[0]!, 'apple')!
+    expect(submitVersusWord(s, jo, 'xxxxx')).toBeNull()
+    s = submitVersusWord(s, jo, 'apple')!
     expect(s.phase).toBe('versusSetup')
-    s = submitVersusWord(s, JENGA_PLAYER_UIDS[1]!, 'beach')!
+    s = submitVersusWord(s, joha, 'beach')!
     expect(s.phase).toBe('playing')
-    expect(s.answersByUid[JENGA_PLAYER_UIDS[1]!]).toBe('apple')
-    expect(s.answersByUid[JENGA_PLAYER_UIDS[0]!]).toBe('beach')
-    expect(applyWordleGuess(s, JENGA_PLAYER_UIDS[0]!, 'zzzzz')).toBeNull()
+    expect(s.answersByUid[joha]).toBe('apple')
+    expect(s.answersByUid[jo]).toBe('beach')
+    expect(s.turnUid).toBe(joha)
+    expect(applyWordleGuess(s, jo, 'zzzzz')).toBeNull()
+  })
+
+  it('selectWordleFirst sets the opening seat', () => {
+    const s = selectWordleFirst(createInitialWordle(jo), joha)!
+    expect(s.firstUid).toBe(joha)
+    expect(s.turnUid).toBe(joha)
+    expect(selectWordleFirst(s, jo)).toBeNull()
   })
 })
 

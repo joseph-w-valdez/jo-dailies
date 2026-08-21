@@ -18,7 +18,8 @@ export function useSharedWordle() {
   const actorUid = game.hotseat ? game.turnUid : uid
   const canAct =
     signedIn &&
-    (game.phase === 'pickMode' ||
+    (game.firstUid == null ||
+      game.phase === 'pickMode' ||
       game.phase === 'pickLength' ||
       game.phase === 'versusSetup' ||
       game.phase === 'finished' ||

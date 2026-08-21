@@ -4,6 +4,7 @@ import { householdName } from '../lib/household'
 import { hostSeatUid, otherPlayerUid } from '../lib/jenga'
 import {
   applyWordleGuess,
+  selectWordleFirst,
   selectWordleLength,
   selectWordleMode,
   submitVersusWord,
@@ -19,6 +20,7 @@ import {
   type LetterMark,
 } from '../lib/wordleWords'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
+import { GameSeatPicker } from './GameSeatPicker'
 import { NewGameConfirm } from './NewGameConfirm'
 import { SurrenderButton } from './SurrenderButton'
 import {
@@ -230,6 +232,7 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
+    if (game.firstUid == null) return 'Who goes first?'
     if (game.phase === 'pickMode') return 'Pick a mode'
     if (game.phase === 'pickLength') {
       return game.mode === 'coop' ? 'Co-op — pick word length' : 'Versus — pick word length'
@@ -361,6 +364,25 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
             />
           </div>
 
+          <NewGameConfirm
+            open={newGameOpen}
+            onClose={() => setNewGameOpen(false)}
+            onConfirm={(opts) => void resetGame(opts)}
+            blurb="Starts a fresh Wordle round. Pick who goes first."
+          />
+
+          {game.firstUid == null ? (
+            <GameSeatPicker
+              prompt="Who goes first?"
+              optionLabel={(name) => `${name} goes first`}
+              onPick={(seat) =>
+                void commitGame(
+                  (prev) => selectWordleFirst(prev, seat) ?? prev,
+                )
+              }
+            />
+          ) : (
+            <>
           {game.phase === 'pickMode' ? (
             <WordGameModePicker
               onCoop={() =>
@@ -528,13 +550,8 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
               ) : null}
             </>
           ) : null}
-
-          <NewGameConfirm
-            open={newGameOpen}
-            onClose={() => setNewGameOpen(false)}
-            onConfirm={(opts) => void resetGame(opts)}
-            blurb="Starts a fresh Wordle round for both of you."
-          />
+            </>
+          )}
         </div>
       )}
     </ArcadeStage>
