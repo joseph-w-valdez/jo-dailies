@@ -87,6 +87,7 @@ const HISTORY_GAME_IDS = new Set<MatchHistoryGameId>([
   'hangman',
   'codenames',
   'guesswho',
+  'spike',
 ])
 
 export function isMatchHistoryGameId(
@@ -134,6 +135,8 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
       return phase === 'finished' || status === 'won' || status === 'lost'
     case 'guesswho':
       return phase === 'finished' || status === 'won'
+    case 'spike':
+      return phase === 'match_over'
     default:
       return false
   }
@@ -194,6 +197,15 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
         if (g.correct === false) return 'Wrong guess'
       }
       return 'Surrender'
+    }
+    case 'spike': {
+      const rounds = state.rounds
+      if (!rounds || typeof rounds !== 'object') return undefined
+      const a = JENGA_PLAYER_UIDS[0]!
+      const b = JENGA_PLAYER_UIDS[1]!
+      const ra = Number((rounds as Record<string, unknown>)[a] ?? 0)
+      const rb = Number((rounds as Record<string, unknown>)[b] ?? 0)
+      return `${ra}–${rb}`
     }
     default:
       return undefined
@@ -576,6 +588,8 @@ export function arcadeGameTitle(gameId: MatchHistoryGameId): string {
       return 'Codenames'
     case 'guesswho':
       return 'Guess Who'
+    case 'spike':
+      return 'Spike'
   }
 }
 

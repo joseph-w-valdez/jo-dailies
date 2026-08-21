@@ -183,6 +183,33 @@ describe('arcadeMatches', () => {
     ).toBe('draw')
   })
 
+  it('records spike match_over once with scoreline', () => {
+    const prev = {
+      phase: 'playing',
+      roundId: 'sp1',
+      hotseat: false,
+      winnerUid: null,
+      rounds: { [a]: 2, [b]: 1 },
+    }
+    const next = {
+      phase: 'match_over',
+      roundId: 'sp1',
+      hotseat: false,
+      winnerUid: a,
+      rounds: { [a]: 3, [b]: 1 },
+      updatedAt: 5_000,
+    }
+    const match = matchFromGameTransition('spike', prev, next)
+    expect(match).toMatchObject({
+      gameId: 'spike',
+      roundId: 'sp1',
+      winnerUid: a,
+      result: 'win',
+      detail: '3–1',
+    })
+    expect(matchFromGameTransition('spike', next, next)).toBeNull()
+  })
+
   it('computes household stats from finished matches', () => {
     const stats = computeArcadeStats(sampleMatches)
     expect(stats.totalMatches).toBe(2)

@@ -24,8 +24,38 @@ for (const row of isoSlim) {
   numericToAlpha2.set(row['country-code'], row['alpha-2'])
 }
 
-// world-atlas France includes overseas; keep FR.
-// Somaliland etc. may be missing — fine.
+// world-atlas France includes overseas departments in one MultiPolygon.
+// We list French Guiana (GF) separately for guessing — split it out of FR.
+function partitionFrance(featureGeom) {
+  if (featureGeom?.type !== 'MultiPolygon') {
+    return { FR: featureGeom }
+  }
+  const frPolys = []
+  const gfPolys = []
+  for (const poly of featureGeom.coordinates) {
+    const ring = poly[0]
+    if (!ring?.length) continue
+    let sx = 0
+    let sy = 0
+    for (const [lon, lat] of ring) {
+      sx += lon
+      sy += lat
+    }
+    const lon = sx / ring.length
+    const lat = sy / ring.length
+    // French Guiana sits on the NE coast of South America.
+    if (lon < -30 && lat > -5 && lat < 15) gfPolys.push(poly)
+    else frPolys.push(poly)
+  }
+  const out = {}
+  if (frPolys.length === 1) out.FR = { type: 'Polygon', coordinates: frPolys[0] }
+  else if (frPolys.length > 1)
+    out.FR = { type: 'MultiPolygon', coordinates: frPolys }
+  if (gfPolys.length === 1) out.GF = { type: 'Polygon', coordinates: gfPolys[0] }
+  else if (gfPolys.length > 1)
+    out.GF = { type: 'MultiPolygon', coordinates: gfPolys }
+  return out
+}
 
 const WIDTH = 1000
 const HEIGHT = 500
@@ -38,6 +68,19 @@ const paths = {}
 let matched = 0
 let skipped = 0
 
+function addPath(alpha2, geom) {
+  const d = path(geom)
+  if (!d) {
+    skipped += 1
+    return
+  }
+  // Prefer larger geometries if duplicates appear.
+  if (!paths[alpha2] || d.length > paths[alpha2].length) {
+    paths[alpha2] = d
+  }
+  matched += 1
+}
+
 for (const f of countries.features) {
   const rawId = f.id == null ? '' : String(f.id)
   const alpha2 =
@@ -48,16 +91,12 @@ for (const f of countries.features) {
     skipped += 1
     continue
   }
-  const d = path(f)
-  if (!d) {
-    skipped += 1
+  if (alpha2 === 'FR') {
+    const parts = partitionFrance(f.geometry)
+    for (const [id, geom] of Object.entries(parts)) addPath(id, geom)
     continue
   }
-  // Prefer larger geometries if duplicates appear.
-  if (!paths[alpha2] || d.length > paths[alpha2].length) {
-    paths[alpha2] = d
-  }
-  matched += 1
+  addPath(alpha2, f.geometry)
 }
 
 const out = `/** Equirectangular SVG paths (viewBox 0 0 ${WIDTH} ${HEIGHT}). Generated. */
