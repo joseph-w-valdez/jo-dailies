@@ -219,10 +219,6 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     () => marksFromRows(game.mode === 'coop' ? coopRows : myRows),
     [game.mode, coopRows, myRows],
   )
-  const theirLetterMarks = useMemo(
-    () => marksFromRows(theirRows),
-    [theirRows],
-  )
 
   const playing =
     game.phase === 'playing' && game.status === 'playing'
@@ -484,15 +480,6 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                       title={householdName(otherUid)}
                       wordLen={theirAnswerLen}
                     />
-                    <div>
-                      <p className="mb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted">
-                        {householdName(otherUid)} keys
-                      </p>
-                      <WordleKeyboard
-                        letterMarks={theirLetterMarks}
-                        interactive={false}
-                      />
-                    </div>
                   </div>
                 </div>
               )}
