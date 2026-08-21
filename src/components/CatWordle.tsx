@@ -419,68 +419,17 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                 />
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-3">
-                    <Grid
-                      rows={myRows}
-                      title={`You (${householdName(actorUid)})`}
-                      highlight={myTurn}
-                      wordLen={myAnswerLen}
-                    />
-                    {canDraft ? (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap justify-center gap-1.5">
-                          {Array.from({ length: myAnswerLen }, (_, i) => (
-                            <span
-                              key={i}
-                              className={[
-                                'flex items-center justify-center rounded-md border font-bold uppercase text-white',
-                                myTurn
-                                  ? 'border-border bg-surface'
-                                  : 'border-border bg-zinc-200/80 text-zinc-900',
-                                myAnswerLen > 8
-                                  ? 'h-9 w-9 text-sm'
-                                  : myAnswerLen > 6
-                                    ? 'h-11 w-11 text-base'
-                                    : 'h-12 w-12 text-lg',
-                              ].join(' ')}
-                            >
-                              {draft[i] ?? ''}
-                            </span>
-                          ))}
-                        </div>
-                        {!myTurn ? (
-                          <p className="text-center text-xs text-app-text">
-                            Draft a word — submits when it’s your turn
-                          </p>
-                        ) : null}
-                        {msg ? (
-                          <p className="text-center text-xs text-rose-300">
-                            {msg}
-                          </p>
-                        ) : null}
-                        <WordleKeyboard
-                          letterMarks={myLetterMarks}
-                          interactive
-                          onLetter={typeLetter}
-                          onDelete={deleteLetter}
-                          onEnter={submitGuess}
-                          canEnter={myTurn}
-                        />
-                      </div>
-                    ) : (
-                      <WordleKeyboard
-                        letterMarks={myLetterMarks}
-                        interactive={false}
-                      />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    <Grid
-                      rows={theirRows}
-                      title={householdName(otherUid)}
-                      wordLen={theirAnswerLen}
-                    />
-                  </div>
+                  <Grid
+                    rows={myRows}
+                    title={`You (${householdName(actorUid)})`}
+                    highlight={myTurn}
+                    wordLen={myAnswerLen}
+                  />
+                  <Grid
+                    rows={theirRows}
+                    title={householdName(otherUid)}
+                    wordLen={theirAnswerLen}
+                  />
                 </div>
               )}
 
@@ -492,7 +441,7 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                 </p>
               ) : null}
 
-              {game.mode === 'coop' && canDraft ? (
+              {canDraft ? (
                 <div className="mx-auto w-full max-w-xl space-y-3">
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {Array.from({ length: myAnswerLen }, (_, i) => (
