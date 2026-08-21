@@ -34,7 +34,7 @@ describe('wordle', () => {
   const jo = JENGA_PLAYER_UIDS[0]!
   const joha = JENGA_PLAYER_UIDS[1]!
 
-  function fresh(first = jo) {
+  function fresh(first: string = jo) {
     return selectWordleFirst(createInitialWordle(jo), first)!
   }
 

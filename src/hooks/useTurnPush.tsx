@@ -18,7 +18,11 @@ import {
 } from '../lib/turnNotify'
 import { useFirebaseAuth } from './firebaseAuthContext'
 
-const TURN_NOTIFY_GAMES: readonly TurnNotifyGame[] = ['scrabble', 'wordle']
+const TURN_NOTIFY_GAMES: readonly TurnNotifyGame[] = [
+  'scrabble',
+  'wordle',
+  'chess',
+]
 
 function useTurnPushOptIn() {
   const [enabled, setEnabled] = useState(loadTurnPushEnabled)

@@ -68,6 +68,24 @@ describe('arcadeTurnNotifyUid', () => {
     ).toBe(joha)
   })
 
+  it('skips Chess while white seat is unset', () => {
+    expect(
+      arcadeTurnNotifyUid(
+        { status: 'playing', turnUid: jo, whiteUid: null },
+        { status: 'playing', turnUid: joha, whiteUid: null },
+      ),
+    ).toBeNull()
+  })
+
+  it('notifies Chess when the turn flips after white is set', () => {
+    expect(
+      arcadeTurnNotifyUid(
+        { status: 'playing', turnUid: jo, whiteUid: jo, hotseat: false },
+        { status: 'playing', turnUid: joha, whiteUid: jo, hotseat: false },
+      ),
+    ).toBe(joha)
+  })
+
   it('keeps scrabbleTurnNotifyUid as an alias', () => {
     expect(scrabbleTurnNotifyUid).toBe(arcadeTurnNotifyUid)
   })
