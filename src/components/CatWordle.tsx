@@ -47,6 +47,97 @@ function markClass(mark: LetterMark | undefined): string {
   return 'bg-surface border-border text-white'
 }
 
+function marksFromRows(rows: WordleGuessRow[]): Map<string, LetterMark> {
+  const map = new Map<string, LetterMark>()
+  for (const row of rows) {
+    row.word.split('').forEach((ch, i) => {
+      const m = row.marks[i]
+      if (!m) return
+      const prev = map.get(ch)
+      if (prev === 'correct') return
+      if (m === 'correct' || prev !== 'present') map.set(ch, m)
+    })
+  }
+  return map
+}
+
+function WordleKeyboard({
+  letterMarks,
+  interactive,
+  onLetter,
+  onDelete,
+  onEnter,
+  canEnter,
+}: {
+  letterMarks: Map<string, LetterMark>
+  interactive: boolean
+  onLetter?: (ch: string) => void
+  onDelete?: () => void
+  onEnter?: () => void
+  canEnter?: boolean
+}) {
+  const keyClass = interactive
+    ? 'h-11 w-9 shrink-0 rounded-lg border text-sm font-semibold uppercase sm:h-12 sm:w-10 sm:text-base'
+    : 'h-8 w-6 shrink-0 rounded-md border text-[10px] font-semibold uppercase sm:h-9 sm:w-7 sm:text-xs'
+
+  return (
+    <div className="space-y-1.5 sm:space-y-2">
+      {KEYS.map((row) => (
+        <div key={row} className="flex justify-center gap-1 sm:gap-1.5">
+          {row.split('').map((ch) =>
+            interactive ? (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => onLetter?.(ch)}
+                className={[keyClass, markClass(letterMarks.get(ch))].join(' ')}
+              >
+                {ch}
+              </button>
+            ) : (
+              <span
+                key={ch}
+                className={[
+                  'flex items-center justify-center',
+                  keyClass,
+                  markClass(letterMarks.get(ch)),
+                ].join(' ')}
+              >
+                {ch}
+              </span>
+            ),
+          )}
+        </div>
+      ))}
+      {interactive ? (
+        <div className="flex justify-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="h-11 min-w-[5rem] rounded-lg border border-border bg-surface px-4 text-sm font-medium text-white sm:h-12 sm:text-base"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={onEnter}
+            disabled={!canEnter}
+            title={canEnter ? 'Submit guess' : 'Wait for your turn to submit'}
+            className={[
+              'h-11 min-w-[5rem] rounded-lg border px-5 text-sm font-semibold sm:h-12 sm:text-base',
+              canEnter
+                ? 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30'
+                : 'cursor-default border-border/60 bg-surface/50 text-muted opacity-60',
+            ].join(' ')}
+          >
+            Enter
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function Grid({
   rows,
   title,
@@ -124,21 +215,14 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
       : wordleAnswerLength(game.answersByUid[actorUid])
   const theirAnswerLen = wordleAnswerLength(game.answersByUid[otherUid])
 
-  const letterMarks = useMemo(() => {
-    const map = new Map<string, LetterMark>()
-    const rows =
-      game.mode === 'coop' ? coopRows : [...myRows, ...theirRows]
-    for (const row of rows) {
-      row.word.split('').forEach((ch, i) => {
-        const m = row.marks[i]
-        if (!m) return
-        const prev = map.get(ch)
-        if (prev === 'correct') return
-        if (m === 'correct' || prev !== 'present') map.set(ch, m)
-      })
-    }
-    return map
-  }, [game.mode, coopRows, myRows, theirRows])
+  const myLetterMarks = useMemo(
+    () => marksFromRows(game.mode === 'coop' ? coopRows : myRows),
+    [game.mode, coopRows, myRows],
+  )
+  const theirLetterMarks = useMemo(
+    () => marksFromRows(theirRows),
+    [theirRows],
+  )
 
   const playing =
     game.phase === 'playing' && game.status === 'playing'
@@ -339,17 +423,77 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                 />
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Grid
-                    rows={myRows}
-                    title={`You (${householdName(actorUid)})`}
-                    highlight={myTurn}
-                    wordLen={myAnswerLen}
-                  />
-                  <Grid
-                    rows={theirRows}
-                    title={householdName(otherUid)}
-                    wordLen={theirAnswerLen}
-                  />
+                  <div className="space-y-3">
+                    <Grid
+                      rows={myRows}
+                      title={`You (${householdName(actorUid)})`}
+                      highlight={myTurn}
+                      wordLen={myAnswerLen}
+                    />
+                    {canDraft ? (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {Array.from({ length: myAnswerLen }, (_, i) => (
+                            <span
+                              key={i}
+                              className={[
+                                'flex items-center justify-center rounded-md border font-bold uppercase text-white',
+                                myTurn
+                                  ? 'border-border bg-surface'
+                                  : 'border-border bg-zinc-200/80 text-zinc-900',
+                                myAnswerLen > 8
+                                  ? 'h-9 w-9 text-sm'
+                                  : myAnswerLen > 6
+                                    ? 'h-11 w-11 text-base'
+                                    : 'h-12 w-12 text-lg',
+                              ].join(' ')}
+                            >
+                              {draft[i] ?? ''}
+                            </span>
+                          ))}
+                        </div>
+                        {!myTurn ? (
+                          <p className="text-center text-xs text-app-text">
+                            Draft a word — submits when it’s your turn
+                          </p>
+                        ) : null}
+                        {msg ? (
+                          <p className="text-center text-xs text-rose-300">
+                            {msg}
+                          </p>
+                        ) : null}
+                        <WordleKeyboard
+                          letterMarks={myLetterMarks}
+                          interactive
+                          onLetter={typeLetter}
+                          onDelete={deleteLetter}
+                          onEnter={submitGuess}
+                          canEnter={myTurn}
+                        />
+                      </div>
+                    ) : (
+                      <WordleKeyboard
+                        letterMarks={myLetterMarks}
+                        interactive={false}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <Grid
+                      rows={theirRows}
+                      title={householdName(otherUid)}
+                      wordLen={theirAnswerLen}
+                    />
+                    <div>
+                      <p className="mb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        {householdName(otherUid)} keys
+                      </p>
+                      <WordleKeyboard
+                        letterMarks={theirLetterMarks}
+                        interactive={false}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -361,7 +505,7 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                 </p>
               ) : null}
 
-              {canDraft ? (
+              {game.mode === 'coop' && canDraft ? (
                 <div className="mx-auto w-full max-w-xl space-y-3">
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {Array.from({ length: myAnswerLen }, (_, i) => (
@@ -391,52 +535,14 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                   {msg ? (
                     <p className="text-center text-xs text-rose-300">{msg}</p>
                   ) : null}
-                  <div className="space-y-2">
-                    {KEYS.map((row) => (
-                      <div key={row} className="flex justify-center gap-1.5 sm:gap-2">
-                        {row.split('').map((ch) => (
-                          <button
-                            key={ch}
-                            type="button"
-                            onClick={() => typeLetter(ch)}
-                            className={[
-                              'h-12 w-10 shrink-0 rounded-lg border text-sm font-semibold uppercase sm:h-14 sm:w-12 sm:text-base',
-                              markClass(letterMarks.get(ch)),
-                            ].join(' ')}
-                          >
-                            {ch}
-                          </button>
-                        ))}
-                      </div>
-                    ))}
-                    <div className="flex justify-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={deleteLetter}
-                        className="h-12 min-w-[5.5rem] rounded-lg border border-border bg-surface px-4 text-sm font-medium text-white sm:h-14 sm:text-base"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={submitGuess}
-                        disabled={!myTurn}
-                        title={
-                          myTurn
-                            ? 'Submit guess'
-                            : 'Wait for your turn to submit'
-                        }
-                        className={[
-                          'h-12 min-w-[5.5rem] rounded-lg border px-5 text-sm font-semibold sm:h-14 sm:text-base',
-                          myTurn
-                            ? 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30'
-                            : 'cursor-default border-border/60 bg-surface/50 text-muted opacity-60',
-                        ].join(' ')}
-                      >
-                        Enter
-                      </button>
-                    </div>
-                  </div>
+                  <WordleKeyboard
+                    letterMarks={myLetterMarks}
+                    interactive
+                    onLetter={typeLetter}
+                    onDelete={deleteLetter}
+                    onEnter={submitGuess}
+                    canEnter={myTurn}
+                  />
                 </div>
               ) : null}
             </>
