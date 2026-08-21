@@ -411,20 +411,106 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
           {game.phase === 'playing' || game.phase === 'finished' ? (
             <>
               {game.mode === 'coop' ? (
-                <Grid
-                  rows={coopRows}
-                  title="Shared board"
-                  highlight={myTurn}
-                  wordLen={myAnswerLen}
-                />
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <>
                   <Grid
-                    rows={myRows}
-                    title={`You (${householdName(actorUid)})`}
+                    rows={coopRows}
+                    title="Shared board"
                     highlight={myTurn}
                     wordLen={myAnswerLen}
                   />
+                  {canDraft ? (
+                    <div className="mx-auto w-full max-w-xl space-y-3">
+                      <div className="flex flex-wrap justify-center gap-1.5">
+                        {Array.from({ length: myAnswerLen }, (_, i) => (
+                          <span
+                            key={i}
+                            className={[
+                              'flex items-center justify-center rounded-md border font-bold uppercase text-white',
+                              myTurn
+                                ? 'border-border bg-surface'
+                                : 'border-border bg-zinc-200/80 text-zinc-900',
+                              myAnswerLen > 8
+                                ? 'h-9 w-9 text-sm'
+                                : myAnswerLen > 6
+                                  ? 'h-11 w-11 text-base'
+                                  : 'h-12 w-12 text-lg',
+                            ].join(' ')}
+                          >
+                            {draft[i] ?? ''}
+                          </span>
+                        ))}
+                      </div>
+                      {!myTurn ? (
+                        <p className="text-center text-xs text-app-text">
+                          Draft a word — submits when it’s your turn
+                        </p>
+                      ) : null}
+                      {msg ? (
+                        <p className="text-center text-xs text-rose-300">{msg}</p>
+                      ) : null}
+                      <WordleKeyboard
+                        letterMarks={myLetterMarks}
+                        interactive
+                        onLetter={typeLetter}
+                        onDelete={deleteLetter}
+                        onEnter={submitGuess}
+                        canEnter={myTurn}
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <Grid
+                      rows={myRows}
+                      title={`You (${householdName(actorUid)})`}
+                      highlight={myTurn}
+                      wordLen={myAnswerLen}
+                    />
+                    {canDraft ? (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {Array.from({ length: myAnswerLen }, (_, i) => (
+                            <span
+                              key={i}
+                              className={[
+                                'flex items-center justify-center rounded-md border font-bold uppercase text-white',
+                                myTurn
+                                  ? 'border-border bg-surface'
+                                  : 'border-border bg-zinc-200/80 text-zinc-900',
+                                myAnswerLen > 8
+                                  ? 'h-9 w-9 text-sm'
+                                  : myAnswerLen > 6
+                                    ? 'h-11 w-11 text-base'
+                                    : 'h-12 w-12 text-lg',
+                              ].join(' ')}
+                            >
+                              {draft[i] ?? ''}
+                            </span>
+                          ))}
+                        </div>
+                        {!myTurn ? (
+                          <p className="text-center text-xs text-app-text">
+                            Draft a word — submits when it’s your turn
+                          </p>
+                        ) : null}
+                        {msg ? (
+                          <p className="text-center text-xs text-rose-300">
+                            {msg}
+                          </p>
+                        ) : null}
+                        <WordleKeyboard
+                          letterMarks={myLetterMarks}
+                          interactive
+                          onLetter={typeLetter}
+                          onDelete={deleteLetter}
+                          onEnter={submitGuess}
+                          canEnter={myTurn}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                   <Grid
                     rows={theirRows}
                     title={householdName(otherUid)}
@@ -439,47 +525,6 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
                     ? `Answer: ${game.answer?.toUpperCase()}`
                     : `Answers — ${householdName(host)}: ${game.answersByUid[host]?.toUpperCase() ?? '?'} · ${householdName(otherPlayerUid(host))}: ${game.answersByUid[otherPlayerUid(host)]?.toUpperCase() ?? '?'}`}
                 </p>
-              ) : null}
-
-              {canDraft ? (
-                <div className="mx-auto w-full max-w-xl space-y-3">
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {Array.from({ length: myAnswerLen }, (_, i) => (
-                      <span
-                        key={i}
-                        className={[
-                          'flex items-center justify-center rounded-md border font-bold uppercase text-white',
-                          myTurn
-                            ? 'border-border bg-surface'
-                            : 'border-border bg-zinc-200/80 text-zinc-900',
-                          myAnswerLen > 8
-                            ? 'h-9 w-9 text-sm'
-                            : myAnswerLen > 6
-                              ? 'h-11 w-11 text-base'
-                              : 'h-12 w-12 text-lg',
-                        ].join(' ')}
-                      >
-                        {draft[i] ?? ''}
-                      </span>
-                    ))}
-                  </div>
-                  {!myTurn ? (
-                    <p className="text-center text-xs text-app-text">
-                      Draft a word — submits when it’s your turn
-                    </p>
-                  ) : null}
-                  {msg ? (
-                    <p className="text-center text-xs text-rose-300">{msg}</p>
-                  ) : null}
-                  <WordleKeyboard
-                    letterMarks={myLetterMarks}
-                    interactive
-                    onLetter={typeLetter}
-                    onDelete={deleteLetter}
-                    onEnter={submitGuess}
-                    canEnter={myTurn}
-                  />
-                </div>
               ) : null}
             </>
           ) : null}
