@@ -1,4 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
 import { useSharedWordle } from '../hooks/useSharedWordle'
 import { householdName } from '../lib/household'
 import { hostSeatUid, otherPlayerUid } from '../lib/jenga'
@@ -30,6 +42,10 @@ import {
 } from './WordGameSetup'
 
 const KEYS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm']
+
+type DragPayload =
+  | { kind: 'key'; letter: string }
+  | { kind: 'slot'; index: number; letter: string }
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -63,80 +79,265 @@ function marksFromRows(rows: WordleGuessRow[]): Map<string, LetterMark> {
   return map
 }
 
-function WordleKeyboard({
+function emptySlots(len: number): string[] {
+  return Array.from({ length: Math.max(0, len) }, () => '')
+}
+
+function slotCellClass(wordLen: number): string {
+  if (wordLen > 8) return 'h-9 w-9 text-sm'
+  if (wordLen > 6) return 'h-11 w-11 text-base'
+  return 'h-12 w-12 text-lg'
+}
+
+function LetterTile({
+  letter,
+  className,
+}: {
+  letter: string
+  className?: string
+}) {
+  return (
+    <span
+      className={[
+        'flex items-center justify-center rounded-md border font-bold uppercase',
+        className,
+      ].join(' ')}
+    >
+      {letter}
+    </span>
+  )
+}
+
+function DraftSlot({
+  index,
+  letter,
+  myTurn,
+  wordLen,
+}: {
+  index: number
+  letter: string
+  myTurn: boolean
+  wordLen: number
+}) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-${index}`,
+    data: { index },
+  })
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `slot-${index}`,
+    data: { kind: 'slot', index, letter } satisfies DragPayload,
+    disabled: !letter,
+  })
+
+  const setRefs = (node: HTMLButtonElement | null) => {
+    setDropRef(node)
+    setNodeRef(node)
+  }
+
+  return (
+    <button
+      ref={setRefs}
+      type="button"
+      {...(letter ? { ...listeners, ...attributes } : {})}
+      className={[
+        'flex items-center justify-center rounded-md border font-bold uppercase touch-none',
+        slotCellClass(wordLen),
+        myTurn
+          ? 'border-border bg-surface text-white'
+          : 'border-border bg-zinc-200/80 text-zinc-900',
+        letter ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
+        isOver ? 'ring-2 ring-sky-400/80' : '',
+        isDragging ? 'opacity-30' : '',
+      ].join(' ')}
+      aria-label={
+        letter
+          ? `Guess letter ${letter.toUpperCase()}, position ${index + 1}`
+          : `Empty guess slot ${index + 1}`
+      }
+    >
+      {isDragging ? '' : letter}
+    </button>
+  )
+}
+
+function KeyboardKey({
+  ch,
+  mark,
+  onLetter,
+}: {
+  ch: string
+  mark: LetterMark | undefined
+  onLetter: (ch: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `key-${ch}`,
+    data: { kind: 'key', letter: ch } satisfies DragPayload,
+  })
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...listeners}
+      {...attributes}
+      onClick={() => onLetter(ch)}
+      className={[
+        'h-11 w-9 shrink-0 touch-none rounded-lg border text-sm font-semibold uppercase sm:h-12 sm:w-10 sm:text-base',
+        'cursor-grab active:cursor-grabbing',
+        markClass(mark),
+        isDragging ? 'opacity-40' : '',
+      ].join(' ')}
+    >
+      {ch}
+    </button>
+  )
+}
+
+function WordleGuessComposer({
+  slots,
+  wordLen,
+  myTurn,
   letterMarks,
-  interactive,
+  msg,
   onLetter,
   onDelete,
   onEnter,
-  canEnter,
+  onPlace,
+  onSwap,
+  onClear,
 }: {
+  slots: string[]
+  wordLen: number
+  myTurn: boolean
   letterMarks: Map<string, LetterMark>
-  interactive: boolean
-  onLetter?: (ch: string) => void
-  onDelete?: () => void
-  onEnter?: () => void
-  canEnter?: boolean
+  msg: string | null
+  onLetter: (ch: string) => void
+  onDelete: () => void
+  onEnter: () => void
+  onPlace: (index: number, letter: string) => void
+  onSwap: (from: number, to: number) => void
+  onClear: (index: number) => void
 }) {
-  const keyClass = interactive
-    ? 'h-11 w-9 shrink-0 rounded-lg border text-sm font-semibold uppercase sm:h-12 sm:w-10 sm:text-base'
-    : 'h-8 w-6 shrink-0 rounded-md border text-[10px] font-semibold uppercase sm:h-9 sm:w-7 sm:text-xs'
+  const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  )
+
+  const onDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current as DragPayload | undefined
+    setActiveDrag(data ?? null)
+  }
+
+  const onDragEnd = (event: DragEndEvent) => {
+    setActiveDrag(null)
+    const payload = event.active.data.current as DragPayload | undefined
+    if (!payload) return
+    const over = event.over
+    if (!over) {
+      // Dragged off the guess row — remove that tile.
+      if (payload.kind === 'slot') onClear(payload.index)
+      return
+    }
+    const to =
+      typeof over.data.current?.index === 'number'
+        ? over.data.current.index
+        : Number(String(over.id).replace('drop-', ''))
+    if (!Number.isInteger(to) || to < 0 || to >= wordLen) {
+      if (payload.kind === 'slot') onClear(payload.index)
+      return
+    }
+    if (payload.kind === 'key') {
+      onPlace(to, payload.letter)
+      return
+    }
+    if (payload.kind === 'slot' && payload.index !== to) {
+      onSwap(payload.index, to)
+    }
+  }
 
   return (
-    <div className="space-y-1.5 sm:space-y-2">
-      {KEYS.map((row) => (
-        <div key={row} className="flex justify-center gap-1 sm:gap-1.5">
-          {row.split('').map((ch) =>
-            interactive ? (
-              <button
-                key={ch}
-                type="button"
-                onClick={() => onLetter?.(ch)}
-                className={[keyClass, markClass(letterMarks.get(ch))].join(' ')}
-              >
-                {ch}
-              </button>
-            ) : (
-              <span
-                key={ch}
-                className={[
-                  'flex items-center justify-center',
-                  keyClass,
-                  markClass(letterMarks.get(ch)),
-                ].join(' ')}
-              >
-                {ch}
-              </span>
-            ),
-          )}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setActiveDrag(null)}
+    >
+      <div className="space-y-2">
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {Array.from({ length: wordLen }, (_, i) => (
+            <DraftSlot
+              key={i}
+              index={i}
+              letter={slots[i] ?? ''}
+              myTurn={myTurn}
+              wordLen={wordLen}
+            />
+          ))}
         </div>
-      ))}
-      {interactive ? (
-        <div className="flex justify-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onDelete}
-            className="h-11 min-w-[5rem] rounded-lg border border-border bg-surface px-4 text-sm font-medium text-white sm:h-12 sm:text-base"
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            onClick={onEnter}
-            disabled={!canEnter}
-            title={canEnter ? 'Submit guess' : 'Wait for your turn to submit'}
+        <p className="text-center text-[10px] text-muted">
+          Drag onto slots · reorder tiles · drag off to delete
+        </p>
+        {!myTurn ? (
+          <p className="text-center text-xs text-app-text">
+            Draft a word — submits when it’s your turn
+          </p>
+        ) : null}
+        {msg ? (
+          <p className="text-center text-xs text-rose-300">{msg}</p>
+        ) : null}
+        <div className="space-y-1.5 sm:space-y-2">
+          {KEYS.map((row) => (
+            <div key={row} className="flex justify-center gap-1 sm:gap-1.5">
+              {row.split('').map((ch) => (
+                <KeyboardKey
+                  key={ch}
+                  ch={ch}
+                  mark={letterMarks.get(ch)}
+                  onLetter={onLetter}
+                />
+              ))}
+            </div>
+          ))}
+          <div className="flex justify-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onDelete}
+              className="h-11 min-w-[5rem] rounded-lg border border-border bg-surface px-4 text-sm font-medium text-white sm:h-12 sm:text-base"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={onEnter}
+              disabled={!myTurn}
+              title={
+                myTurn ? 'Submit guess' : 'Wait for your turn to submit'
+              }
+              className={[
+                'h-11 min-w-[5rem] rounded-lg border px-5 text-sm font-semibold sm:h-12 sm:text-base',
+                myTurn
+                  ? 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30'
+                  : 'cursor-default border-border/60 bg-surface/50 text-muted opacity-60',
+              ].join(' ')}
+            >
+              Enter
+            </button>
+          </div>
+        </div>
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDrag ? (
+          <LetterTile
+            letter={activeDrag.letter}
             className={[
-              'h-11 min-w-[5rem] rounded-lg border px-5 text-sm font-semibold sm:h-12 sm:text-base',
-              canEnter
-                ? 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30'
-                : 'cursor-default border-border/60 bg-surface/50 text-muted opacity-60',
+              slotCellClass(wordLen),
+              'border-sky-400/70 bg-sky-500/30 text-white shadow-lg',
             ].join(' ')}
-          >
-            Enter
-          </button>
-        </div>
-      ) : null}
-    </div>
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }
 
@@ -200,7 +401,7 @@ function Grid({
 
 export function CatWordle({ onClose }: { onClose: () => void }) {
   const { game, ready, uid, actorUid, commitGame, resetGame } = useSharedWordle()
-  const [draft, setDraft] = useState('')
+  const [draftSlots, setDraftSlots] = useState<string[]>(() => emptySlots(5))
   const [secretDraft, setSecretDraft] = useState('')
   const [newGameOpen, setNewGameOpen] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -229,13 +430,16 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     (game.hotseat || game.turnUid === uid) &&
     game.turnUid === actorUid
   const canDraft = playing && myAnswerLen > 0
+  const hasDraft = draftSlots.some(Boolean)
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
     if (game.firstUid == null) return 'Who goes first?'
     if (game.phase === 'pickMode') return 'Pick a mode'
     if (game.phase === 'pickLength') {
-      return game.mode === 'coop' ? 'Co-op — pick word length' : 'Versus — pick word length'
+      return game.mode === 'coop'
+        ? 'Co-op — pick word length'
+        : 'Versus — pick word length'
     }
     if (game.phase === 'versusSetup') {
       return game.submittedFor[actorUid]
@@ -251,27 +455,91 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
       return `${householdName(game.winnerUid)} wins`
     }
     if (myTurn) return 'Your turn'
-    if (draft) return 'Drafting…'
+    if (hasDraft) return 'Drafting…'
     return 'Waiting…'
   })()
 
   const lengthMode = game.lengthMode ?? 'standard'
 
   useEffect(() => {
-    setDraft((d) => (d.length > myAnswerLen ? d.slice(0, myAnswerLen) : d))
+    setDraftSlots((prev) => {
+      if (prev.length === myAnswerLen) return prev
+      return Array.from({ length: myAnswerLen }, (_, i) => prev[i] ?? '')
+    })
   }, [myAnswerLen])
 
   const typeLetter = (ch: string) => {
     if (!canDraft) return
     const letter = ch.toLowerCase()
     if (!/^[a-z]$/.test(letter)) return
-    setDraft((d) => (d.length >= myAnswerLen ? d : d + letter))
+    setDraftSlots((slots) => {
+      const next = [...slots]
+      const emptyAt = next.findIndex((s) => !s)
+      if (emptyAt < 0) return slots
+      next[emptyAt] = letter
+      return next
+    })
     setMsg(null)
   }
 
   const deleteLetter = () => {
     if (!canDraft) return
-    setDraft((d) => d.slice(0, -1))
+    setDraftSlots((slots) => {
+      const next = [...slots]
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        if (next[i]) {
+          next[i] = ''
+          return next
+        }
+      }
+      return slots
+    })
+    setMsg(null)
+  }
+
+  const placeLetter = (index: number, ch: string) => {
+    if (!canDraft) return
+    const letter = ch.toLowerCase()
+    if (!/^[a-z]$/.test(letter)) return
+    if (index < 0 || index >= myAnswerLen) return
+    setDraftSlots((slots) => {
+      const next = [...slots]
+      next[index] = letter
+      return next
+    })
+    setMsg(null)
+  }
+
+  const swapSlots = (from: number, to: number) => {
+    if (!canDraft) return
+    setDraftSlots((slots) => {
+      if (
+        from < 0 ||
+        to < 0 ||
+        from >= slots.length ||
+        to >= slots.length ||
+        from === to
+      ) {
+        return slots
+      }
+      const next = [...slots]
+      const tmp = next[from]!
+      next[from] = next[to]!
+      next[to] = tmp
+      return next
+    })
+    setMsg(null)
+  }
+
+  const clearSlot = (index: number) => {
+    if (!canDraft) return
+    if (index < 0 || index >= myAnswerLen) return
+    setDraftSlots((slots) => {
+      if (!slots[index]) return slots
+      const next = [...slots]
+      next[index] = ''
+      return next
+    })
     setMsg(null)
   }
 
@@ -280,11 +548,11 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
       setMsg('Wait for your turn to submit')
       return
     }
-    const g = draft.trim().toLowerCase().replace(/[^a-z]/g, '')
-    if (g.length !== myAnswerLen) {
+    if (draftSlots.some((s) => !s) || draftSlots.length !== myAnswerLen) {
       setMsg(`Need ${myAnswerLen} letters`)
       return
     }
+    const g = draftSlots.join('').toLowerCase()
     if (!isValidWordleGuess(g, myAnswerLen, lengthMode)) {
       const answer =
         game.mode === 'coop' ? game.answer : game.answersByUid[actorUid]
@@ -300,7 +568,7 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
         return prev
       }
       setMsg(null)
-      setDraft('')
+      setDraftSlots(emptySlots(myAnswerLen))
       return next
     })
   }
@@ -332,6 +600,24 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [canDraft])
+
+  const composer = canDraft ? (
+    <div className="mx-auto w-full max-w-xl">
+      <WordleGuessComposer
+        slots={draftSlots}
+        wordLen={myAnswerLen}
+        myTurn={myTurn}
+        letterMarks={myLetterMarks}
+        msg={msg}
+        onLetter={typeLetter}
+        onDelete={deleteLetter}
+        onEnter={submitGuess}
+        onPlace={placeLetter}
+        onSwap={swapSlots}
+        onClear={clearSlot}
+      />
+    </div>
+  ) : null
 
   return (
     <ArcadeStage
@@ -383,173 +669,97 @@ export function CatWordle({ onClose }: { onClose: () => void }) {
             />
           ) : (
             <>
-          {game.phase === 'pickMode' ? (
-            <WordGameModePicker
-              onCoop={() =>
-                void commitGame((prev) => selectWordleMode(prev, 'coop'))
-              }
-              onVersus={() =>
-                void commitGame((prev) => selectWordleMode(prev, 'versus'))
-              }
-              coopBlurb="Shared random word — alternate guesses on one grid."
-              versusBlurb="Each picks a word for the other. Race — both grids visible."
-            />
-          ) : null}
+              {game.phase === 'pickMode' ? (
+                <WordGameModePicker
+                  onCoop={() =>
+                    void commitGame((prev) => selectWordleMode(prev, 'coop'))
+                  }
+                  onVersus={() =>
+                    void commitGame((prev) => selectWordleMode(prev, 'versus'))
+                  }
+                  coopBlurb="Shared random word — alternate guesses on one grid."
+                  versusBlurb="Each picks a word for the other. Race — both grids visible."
+                />
+              ) : null}
 
-          {game.phase === 'pickLength' ? (
-            <WordGameLengthPicker
-              modeLabel={game.mode === 'coop' ? 'Co-op' : 'Versus'}
-              onStandard={() =>
-                void commitGame(
-                  (prev) => selectWordleLength(prev, 'standard') ?? prev,
-                )
-              }
-              onVariable={() =>
-                void commitGame(
-                  (prev) => selectWordleLength(prev, 'variable') ?? prev,
-                )
-              }
-            />
-          ) : null}
+              {game.phase === 'pickLength' ? (
+                <WordGameLengthPicker
+                  modeLabel={game.mode === 'coop' ? 'Co-op' : 'Versus'}
+                  onStandard={() =>
+                    void commitGame(
+                      (prev) => selectWordleLength(prev, 'standard') ?? prev,
+                    )
+                  }
+                  onVariable={() =>
+                    void commitGame(
+                      (prev) => selectWordleLength(prev, 'variable') ?? prev,
+                    )
+                  }
+                />
+              ) : null}
 
-          {game.phase === 'versusSetup' ? (
-            <WordGameSecretSetup
-              otherName={householdName(otherUid)}
-              lengthMode={lengthMode}
-              submitted={Boolean(game.submittedFor[actorUid])}
-              draft={secretDraft}
-              onDraftChange={setSecretDraft}
-              maxLen={secretMaxLen(lengthMode)}
-              canLock={isValidWordleAnswer(secretDraft, lengthMode)}
-              onLock={() =>
-                void commitGame((prev) => {
-                  const next = submitVersusWord(prev, actorUid, secretDraft)
-                  return next ?? prev
-                })
-              }
-            />
-          ) : null}
+              {game.phase === 'versusSetup' ? (
+                <WordGameSecretSetup
+                  otherName={householdName(otherUid)}
+                  lengthMode={lengthMode}
+                  submitted={Boolean(game.submittedFor[actorUid])}
+                  draft={secretDraft}
+                  onDraftChange={setSecretDraft}
+                  maxLen={secretMaxLen(lengthMode)}
+                  canLock={isValidWordleAnswer(secretDraft, lengthMode)}
+                  onLock={() =>
+                    void commitGame((prev) => {
+                      const next = submitVersusWord(
+                        prev,
+                        actorUid,
+                        secretDraft,
+                      )
+                      return next ?? prev
+                    })
+                  }
+                />
+              ) : null}
 
-          {game.phase === 'playing' || game.phase === 'finished' ? (
-            <>
-              {game.mode === 'coop' ? (
+              {game.phase === 'playing' || game.phase === 'finished' ? (
                 <>
-                  <Grid
-                    rows={coopRows}
-                    title="Shared board"
-                    highlight={myTurn}
-                    wordLen={myAnswerLen}
-                  />
-                  {canDraft ? (
-                    <div className="mx-auto w-full max-w-xl space-y-3">
-                      <div className="flex flex-wrap justify-center gap-1.5">
-                        {Array.from({ length: myAnswerLen }, (_, i) => (
-                          <span
-                            key={i}
-                            className={[
-                              'flex items-center justify-center rounded-md border font-bold uppercase text-white',
-                              myTurn
-                                ? 'border-border bg-surface'
-                                : 'border-border bg-zinc-200/80 text-zinc-900',
-                              myAnswerLen > 8
-                                ? 'h-9 w-9 text-sm'
-                                : myAnswerLen > 6
-                                  ? 'h-11 w-11 text-base'
-                                  : 'h-12 w-12 text-lg',
-                            ].join(' ')}
-                          >
-                            {draft[i] ?? ''}
-                          </span>
-                        ))}
+                  {game.mode === 'coop' ? (
+                    <>
+                      <Grid
+                        rows={coopRows}
+                        title="Shared board"
+                        highlight={myTurn}
+                        wordLen={myAnswerLen}
+                      />
+                      {composer}
+                    </>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-3">
+                        <Grid
+                          rows={myRows}
+                          title={`You (${householdName(actorUid)})`}
+                          highlight={myTurn}
+                          wordLen={myAnswerLen}
+                        />
+                        {composer}
                       </div>
-                      {!myTurn ? (
-                        <p className="text-center text-xs text-app-text">
-                          Draft a word — submits when it’s your turn
-                        </p>
-                      ) : null}
-                      {msg ? (
-                        <p className="text-center text-xs text-rose-300">{msg}</p>
-                      ) : null}
-                      <WordleKeyboard
-                        letterMarks={myLetterMarks}
-                        interactive
-                        onLetter={typeLetter}
-                        onDelete={deleteLetter}
-                        onEnter={submitGuess}
-                        canEnter={myTurn}
+                      <Grid
+                        rows={theirRows}
+                        title={householdName(otherUid)}
+                        wordLen={theirAnswerLen}
                       />
                     </div>
+                  )}
+
+                  {game.phase === 'finished' ? (
+                    <p className="text-center text-sm text-muted">
+                      {game.mode === 'coop'
+                        ? `Answer: ${game.answer?.toUpperCase()}`
+                        : `Answers — ${householdName(host)}: ${game.answersByUid[host]?.toUpperCase() ?? '?'} · ${householdName(otherPlayerUid(host))}: ${game.answersByUid[otherPlayerUid(host)]?.toUpperCase() ?? '?'}`}
+                    </p>
                   ) : null}
                 </>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-3">
-                    <Grid
-                      rows={myRows}
-                      title={`You (${householdName(actorUid)})`}
-                      highlight={myTurn}
-                      wordLen={myAnswerLen}
-                    />
-                    {canDraft ? (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap justify-center gap-1.5">
-                          {Array.from({ length: myAnswerLen }, (_, i) => (
-                            <span
-                              key={i}
-                              className={[
-                                'flex items-center justify-center rounded-md border font-bold uppercase text-white',
-                                myTurn
-                                  ? 'border-border bg-surface'
-                                  : 'border-border bg-zinc-200/80 text-zinc-900',
-                                myAnswerLen > 8
-                                  ? 'h-9 w-9 text-sm'
-                                  : myAnswerLen > 6
-                                    ? 'h-11 w-11 text-base'
-                                    : 'h-12 w-12 text-lg',
-                              ].join(' ')}
-                            >
-                              {draft[i] ?? ''}
-                            </span>
-                          ))}
-                        </div>
-                        {!myTurn ? (
-                          <p className="text-center text-xs text-app-text">
-                            Draft a word — submits when it’s your turn
-                          </p>
-                        ) : null}
-                        {msg ? (
-                          <p className="text-center text-xs text-rose-300">
-                            {msg}
-                          </p>
-                        ) : null}
-                        <WordleKeyboard
-                          letterMarks={myLetterMarks}
-                          interactive
-                          onLetter={typeLetter}
-                          onDelete={deleteLetter}
-                          onEnter={submitGuess}
-                          canEnter={myTurn}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  <Grid
-                    rows={theirRows}
-                    title={householdName(otherUid)}
-                    wordLen={theirAnswerLen}
-                  />
-                </div>
-              )}
-
-              {game.phase === 'finished' ? (
-                <p className="text-center text-sm text-muted">
-                  {game.mode === 'coop'
-                    ? `Answer: ${game.answer?.toUpperCase()}`
-                    : `Answers — ${householdName(host)}: ${game.answersByUid[host]?.toUpperCase() ?? '?'} · ${householdName(otherPlayerUid(host))}: ${game.answersByUid[otherPlayerUid(host)]?.toUpperCase() ?? '?'}`}
-                </p>
               ) : null}
-            </>
-          ) : null}
             </>
           )}
         </div>
