@@ -1,4 +1,5 @@
 import {
+  battleshipToDoc,
   createInitialBattleship,
   normalizeBattleship,
   type BattleshipState,
@@ -10,6 +11,7 @@ export function useSharedBattleship() {
     collectionId: 'battleship',
     createInitial: (uid) => createInitialBattleship(uid),
     normalize: (raw, uid) => normalizeBattleship(raw, uid),
+    toDoc: (state) => battleshipToDoc(state),
     buildReset: (_prev, uid, opts) =>
       createInitialBattleship(uid, { hotseat: Boolean(opts?.hotseat) }),
   })

@@ -51,6 +51,16 @@ export interface BsPlayerBoard {
   ready: boolean
 }
 
+/** Chronological shots — source of truth if dense `received` arrays get mangled in sync. */
+export type BsShotLogEntry = {
+  byUid: string
+  boardUid: string
+  x: number
+  y: number
+  result: 'hit' | 'miss'
+  at: number
+}
+
 export interface BattleshipState {
   /** Seat / player accent cats (header). */
   cats: [string, string]
@@ -69,6 +79,8 @@ export interface BattleshipState {
   lastShot: { x: number; y: number; boardUid: string } | null
   /** null = who-fires-first picker. */
   firstUid: string | null
+  /** Append-only attack log (both players). */
+  shotLog: BsShotLogEntry[]
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -86,6 +98,99 @@ export function emptyMarks(): BsMark[] {
 
 export function emptyPlayerBoard(): BsPlayerBoard {
   return { ships: [], received: emptyMarks(), ready: false }
+}
+
+/** Copy marks from an array or map-shaped Firestore payload. */
+export function cloneMarks(raw: unknown): BsMark[] {
+  const received = emptyMarks()
+  if (Array.isArray(raw)) {
+    for (let i = 0; i < BS_SIZE * BS_SIZE; i += 1) {
+      const v = raw[i]
+      if (v === 'hit' || v === 'miss') received[i] = v
+    }
+    return received
+  }
+  if (raw && typeof raw === 'object') {
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      const i = Number(key)
+      if (!Number.isInteger(i) || i < 0 || i >= BS_SIZE * BS_SIZE) continue
+      if (value === 'hit' || value === 'miss') received[i] = value
+    }
+  }
+  return received
+}
+
+/** Sparse map for Firestore — avoids dense null arrays getting mangled. */
+export function serializeMarks(
+  received: BsMark[],
+): Record<string, 'hit' | 'miss'> {
+  const out: Record<string, 'hit' | 'miss'> = {}
+  for (let i = 0; i < received.length; i += 1) {
+    const m = received[i]
+    if (m === 'hit' || m === 'miss') out[String(i)] = m
+  }
+  return out
+}
+
+function applyShotLogToBoards(
+  boards: Record<string, BsPlayerBoard>,
+  shotLog: BsShotLogEntry[],
+): Record<string, BsPlayerBoard> {
+  if (shotLog.length === 0) return boards
+  const next: Record<string, BsPlayerBoard> = { ...boards }
+  for (const shot of shotLog) {
+    const board = next[shot.boardUid]
+    if (!board) continue
+    const idx = cellIndex(shot.x, shot.y)
+    if (idx < 0 || idx >= BS_SIZE * BS_SIZE) continue
+    if (board.received[idx] === shot.result) continue
+    const received = cloneMarks(board.received)
+    received[idx] = shot.result
+    next[shot.boardUid] = { ...board, received }
+  }
+  return next
+}
+
+function normalizeShotLog(raw: unknown): BsShotLogEntry[] {
+  if (!Array.isArray(raw)) return []
+  const out: BsShotLogEntry[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const byUid = typeof o.byUid === 'string' ? o.byUid : ''
+    const boardUid = typeof o.boardUid === 'string' ? o.boardUid : ''
+    const x = Math.floor(clampNum(o.x, -1))
+    const y = Math.floor(clampNum(o.y, -1))
+    const result = o.result === 'hit' || o.result === 'miss' ? o.result : null
+    if (!byUid || !boardUid || !result) continue
+    if (x < 0 || y < 0 || x >= BS_SIZE || y >= BS_SIZE) continue
+    out.push({
+      byUid,
+      boardUid,
+      x,
+      y,
+      result,
+      at: Math.floor(clampNum(o.at, Date.now())),
+    })
+  }
+  return out
+}
+
+/** Firestore payload — sparse marks + shot log, no dense null arrays. */
+export function battleshipToDoc(state: BattleshipState): Record<string, unknown> {
+  const boards: Record<string, unknown> = {}
+  for (const [uid, board] of Object.entries(state.boards)) {
+    boards[uid] = {
+      ships: board.ships,
+      ready: board.ready,
+      received: serializeMarks(board.received),
+    }
+  }
+  return {
+    ...state,
+    boards,
+    shotLog: state.shotLog ?? [],
+  }
 }
 
 const JENGA_CAT_ICON_SET = new Set<string>(
@@ -177,6 +282,7 @@ export function createInitialBattleship(
     updatedAt: Date.now(),
     lastShot: null,
     firstUid: null,
+    shotLog: [],
   }
 }
 
@@ -435,15 +541,27 @@ export function applyBattleshipShot(
   const theirBoard = state.boards[opponent]
   if (!theirBoard) return null
   const idx = cellIndex(x, y)
-  if (theirBoard.received[idx] !== null) return null
+  const received = cloneMarks(theirBoard.received)
+  if (received[idx] !== null) return null
   const hit = cellHasShip(theirBoard.ships, x, y)
-  const received = theirBoard.received.slice()
-  received[idx] = hit ? 'hit' : 'miss'
+  const result: 'hit' | 'miss' = hit ? 'hit' : 'miss'
+  received[idx] = result
   const boards = {
     ...state.boards,
     [opponent]: { ...theirBoard, received },
   }
   const lastShot = { x, y, boardUid: opponent }
+  const shotLog: BsShotLogEntry[] = [
+    ...(Array.isArray(state.shotLog) ? state.shotLog : []),
+    {
+      byUid: uid,
+      boardUid: opponent,
+      x,
+      y,
+      result,
+      at: Date.now(),
+    },
+  ]
   if (hit && allShipsSunk(theirBoard.ships, received)) {
     return {
       ...state,
@@ -451,6 +569,7 @@ export function applyBattleshipShot(
       status: 'won',
       winnerUid: uid,
       lastShot,
+      shotLog,
       updatedAt: Date.now(),
     }
   }
@@ -459,6 +578,7 @@ export function applyBattleshipShot(
     boards,
     turnUid: nextTurnUid(uid),
     lastShot,
+    shotLog,
     updatedAt: Date.now(),
   }
 }
@@ -497,12 +617,7 @@ function normalizeBoard(raw: unknown): BsPlayerBoard {
       length: def.length,
     })
   }
-  const recvRaw = Array.isArray(b.received) ? b.received : []
-  const received: BsMark[] = emptyMarks()
-  for (let i = 0; i < BS_SIZE * BS_SIZE; i += 1) {
-    const v = recvRaw[i]
-    received[i] = v === 'hit' || v === 'miss' ? v : null
-  }
+  const received = cloneMarks(b.received)
   return {
     ships,
     received,
@@ -547,10 +662,13 @@ export function normalizeBattleship(
       ? s.status
       : 'placing'
   const seed = clampNum(s.version, 1) * 1009 + clampNum(s.updatedAt, 1)
+  const shotLog = normalizeShotLog(s.shotLog)
+  const boardsWithLog = applyShotLogToBoards(boards, shotLog)
+
   return {
     cats: normalizeJengaCats(s.cats, seed),
     shipCats: normalizeShipCats(s.shipCats, seed + 17),
-    boards,
+    boards: boardsWithLog,
     turnUid:
       typeof s.turnUid === 'string' && s.turnUid
         ? s.turnUid
@@ -570,5 +688,6 @@ export function normalizeBattleship(
         ? s.turnUid
         : fallbackTurnUid || JENGA_PLAYER_UIDS[0]!,
     ),
+    shotLog,
   }
 }
