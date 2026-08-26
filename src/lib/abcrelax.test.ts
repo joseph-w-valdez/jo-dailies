@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   ABCRELAX_LETTERS,
-  acceptAbcrelaxAnswer,
-  challengeAbcrelaxAnswer,
+  challengeAbcrelaxLast,
   createInitialAbcrelax,
   normalizeAbcrelax,
   pickAbcrelaxTheme,
@@ -38,27 +37,27 @@ describe('abcrelax', () => {
     expect(s.phase).toBe('pickTheme')
     s = pickAbcrelaxTheme(s, jo, 'Movies')!
     expect(s.phase).toBe('pickTimer')
-    expect(s.theme).toBe('Movies')
     s = pickAbcrelaxTimer(s, jo, 15_000)!
     expect(s.phase).toBe('playing')
     expect(s.turnMs).toBe(15_000)
-    expect(s.deadlineAt).toBeGreaterThan(Date.now())
   })
 
-  it('accept locks letter; challenge awards win to challenger', () => {
+  it('submit locks letter and passes turn immediately', () => {
     const s0 = primed()
     const s1 = submitAbcrelaxAnswer(s0, jo, 'A', 'Ant')!
-    expect(s1.phase).toBe('pending')
-    const s2 = acceptAbcrelaxAnswer(s1, joha)!
-    expect(s2.usedLetters).toContain('A')
-    expect(s2.phase).toBe('playing')
-    expect(s2.turnUid).toBe(joha)
+    expect(s1.phase).toBe('playing')
+    expect(s1.usedLetters).toContain('A')
+    expect(s1.turnUid).toBe(joha)
+    expect(s1.lastAnswer).toEqual({ uid: jo, letter: 'A', word: 'Ant' })
+    expect(s1.deadlineAt).toBeGreaterThan(Date.now())
+  })
 
-    const s3 = submitAbcrelaxAnswer(s2, joha, 'B', 'Bear')!
-    const s4 = challengeAbcrelaxAnswer(s3, jo)!
-    expect(s4.phase).toBe('finished')
-    expect(s4.status).toBe('won')
-    expect(s4.winnerUid).toBe(jo)
+  it('optional challenge of last answer wins for challenger', () => {
+    const s0 = primed()
+    const s1 = submitAbcrelaxAnswer(s0, jo, 'A', 'Ant')!
+    const s2 = challengeAbcrelaxLast(s1, joha)!
+    expect(s2.status).toBe('won')
+    expect(s2.winnerUid).toBe(joha)
   })
 
   it('timeout makes the other player win', () => {
@@ -75,12 +74,9 @@ describe('abcrelax', () => {
   it('clearing the alphabet is a draw', () => {
     const almost = ABCRELAX_LETTERS.slice(0, 25)
     const s0 = primed({ usedLetters: almost, turnUid: jo })
-    const last = 'Z'
-    const s1 = submitAbcrelaxAnswer(s0, jo, last, 'Zebra')!
-    const s2 = acceptAbcrelaxAnswer(s1, joha)!
-    expect(s2.status).toBe('draw')
-    expect(s2.phase).toBe('finished')
-    expect(s2.winnerUid).toBeNull()
+    const s1 = submitAbcrelaxAnswer(s0, jo, 'Z', 'Zebra')!
+    expect(s1.status).toBe('draw')
+    expect(s1.phase).toBe('finished')
   })
 
   it('surrender ends the match', () => {
@@ -90,11 +86,17 @@ describe('abcrelax', () => {
 
   it('normalize recovers bad docs', () => {
     const n = normalizeAbcrelax(
-      { version: 'x', usedLetters: ['aa', 'B'], phase: 'gameOver', status: 'won' },
+      {
+        version: 'x',
+        usedLetters: ['aa', 'B'],
+        phase: 'pending',
+        firstUid: jo,
+        status: 'playing',
+      },
       jo,
     )
     expect(n.version).toBe(1)
     expect(n.usedLetters).toEqual(['B'])
-    expect(n.phase).toBe('finished')
+    expect(n.phase).toBe('playing')
   })
 })

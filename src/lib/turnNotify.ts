@@ -30,10 +30,8 @@ export function arcadeTurnNotifyUid(
   if (!after || after.hotseat) return null
   if (after.status !== 'playing') return null
   if (typeof after.phase === 'string') {
-    // Abcrelax also pings on pending (accept/challenge).
     const ok =
       after.phase === 'playing' ||
-      after.phase === 'pending' ||
       after.phase === 'pickTheme' ||
       after.phase === 'pickTimer'
     if (!ok) return null
@@ -44,7 +42,6 @@ export function arcadeTurnNotifyUid(
     const beforePhaseOk =
       typeof before.phase !== 'string' ||
       before.phase === 'playing' ||
-      before.phase === 'pending' ||
       before.phase === 'pickTheme' ||
       before.phase === 'pickTimer'
     const beforeChessReady = before.whiteUid !== null

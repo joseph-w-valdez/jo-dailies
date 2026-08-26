@@ -4,8 +4,7 @@ import {
   ABCRELAX_LETTERS,
   ABCRELAX_THEMES,
   ABCRELAX_TIMER_OPTIONS_MS,
-  acceptAbcrelaxAnswer,
-  challengeAbcrelaxAnswer,
+  challengeAbcrelaxLast,
   letterIsUsed,
   msLeft,
   pickAbcrelaxTheme,
@@ -33,7 +32,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const [customTheme, setCustomTheme] = useState('')
   const [now, setNow] = useState(() => Date.now())
 
-  // Tick while a turn clock is running so both seats see the same countdown.
   useEffect(() => {
     if (game.phase !== 'playing' || game.deadlineAt == null) return
     let raf = 0
@@ -54,7 +52,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setSelectedLetter(null)
     setWordDraft('')
-  }, [game.roundId, game.phase, game.turnUid, game.pending?.letter])
+  }, [game.roundId, game.phase, game.turnUid, game.lastAnswer?.letter])
 
   const left = msLeft(game, now)
   const secondsLeft = left == null ? null : left / 1000
@@ -69,8 +67,10 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
   const myTurnAnswer =
     canAct && game.phase === 'playing' && game.turnUid === actorUid
-  const myTurnReview =
-    canAct && game.phase === 'pending' && game.turnUid === actorUid
+  const canChallenge =
+    myTurnAnswer &&
+    game.lastAnswer != null &&
+    game.lastAnswer.uid !== actorUid
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
@@ -83,19 +83,13 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
         ? 'You win!'
         : `${householdName(game.winnerUid)} wins`
     }
-    if (game.phase === 'pending' && game.pending) {
-      if (myTurnReview) {
-        return `Accept or challenge “${game.pending.word}”`
-      }
-      return 'Waiting for accept / challenge…'
-    }
     if (game.phase === 'playing' && statusTimerLabel != null) {
       const who = myTurnAnswer
         ? 'Your turn'
         : `${householdName(game.turnUid)}’s turn`
       return `${who} · ${statusTimerLabel}s`
     }
-    if (myTurnAnswer) return 'Your turn — type, tap letter, hit submit'
+    if (myTurnAnswer) return 'Your turn — type, tap letter, hit GO'
     return `Waiting for ${householdName(game.turnUid)}…`
   })()
 
@@ -136,9 +130,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
   const inMatch =
     game.firstUid != null &&
-    (game.phase === 'playing' ||
-      game.phase === 'pending' ||
-      game.phase === 'finished')
+    (game.phase === 'playing' || game.phase === 'finished')
 
   return (
     <ArcadeStage
@@ -155,10 +147,10 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           {immersive ? null : (
             <div className="rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
-                Pick a theme and timer. On your turn type any word, tap its
-                starting letter, then the circle to submit. Opponent accepts or
-                challenges. Miss the timer and you lose. Clear the alphabet and
-                it’s a draw.
+                Pick a theme and timer. Type a word, tap its letter, hit GO —
+                turn passes automatically. Challenge on the side if their last
+                word was bunk. Miss the timer and you lose. Clear the alphabet
+                for a draw.
               </p>
             </div>
           )}
@@ -185,9 +177,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                   !uid ||
                   game.firstUid == null ||
                   game.status !== 'playing' ||
-                  game.phase === 'finished' ||
-                  game.phase === 'pickTheme' ||
-                  game.phase === 'pickTimer'
+                  game.phase !== 'playing'
                 }
                 onSurrender={() =>
                   void commitGame(
@@ -298,7 +288,9 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
             <div
               className={[
                 'grid gap-3',
-                immersive ? 'min-h-0 flex-1 lg:grid-cols-[1fr_auto]' : 'lg:grid-cols-[1fr_auto]',
+                immersive
+                  ? 'min-h-0 flex-1 lg:grid-cols-[1fr_auto]'
+                  : 'lg:grid-cols-[1fr_auto]',
               ].join(' ')}
             >
               <div className="flex min-w-0 flex-col gap-3">
@@ -351,26 +343,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                       />
                     </div>
                   </div>
-                ) : game.phase === 'pending' ? (
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface/50 text-xl font-bold text-muted">
-                    ·
-                  </div>
-                ) : null}
-
-                {game.phase === 'pending' && game.pending ? (
-                  <div className="rounded-xl border border-border bg-surface/70 px-3 py-3 text-center sm:text-left">
-                    <p className="text-sm text-white">
-                      <span className="font-semibold text-sky-200">
-                        {householdName(game.pending.uid)}
-                      </span>
-                      : “{game.pending.word}” ({game.pending.letter})
-                    </p>
-                    {!myTurnReview ? (
-                      <p className="mt-1 text-[11px] text-muted">
-                        Waiting for {householdName(game.turnUid)}…
-                      </p>
-                    ) : null}
-                  </div>
                 ) : null}
 
                 {myTurnAnswer ? (
@@ -390,9 +362,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                   </label>
                 ) : null}
 
-                {/* Submit circle above keyboard */}
-                {(myTurnAnswer || game.phase === 'playing') &&
-                game.phase !== 'finished' ? (
+                {game.phase === 'playing' ? (
                   <div className="flex justify-center">
                     <button
                       type="button"
@@ -420,7 +390,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                       {row.split('').map((letter) => {
                         const used = letterIsUsed(game, letter)
                         const selected = selectedLetter === letter
-                        const pending = game.pending?.letter === letter
                         return (
                           <button
                             key={letter}
@@ -434,13 +403,11 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                               'flex h-9 w-8 items-center justify-center rounded-md border text-sm font-semibold sm:h-10 sm:w-9',
                               used
                                 ? 'border-transparent bg-zinc-800/90 text-zinc-500'
-                                : pending
-                                  ? 'border-amber-400/50 bg-amber-500/25 text-amber-50'
-                                  : selected
-                                    ? 'border-sky-400/60 bg-sky-500/30 text-white'
-                                    : myTurnAnswer
-                                      ? 'border-border bg-surface text-white hover:border-muted'
-                                      : 'border-border/60 bg-surface/50 text-muted',
+                                : selected
+                                  ? 'border-sky-400/60 bg-sky-500/30 text-white'
+                                  : myTurnAnswer
+                                    ? 'border-border bg-surface text-white hover:border-muted'
+                                    : 'border-border/60 bg-surface/50 text-muted',
                             ].join(' ')}
                           >
                             {letter}
@@ -459,38 +426,26 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 ) : null}
               </div>
 
-              {/* Side challenge / accept */}
               <div className="flex flex-col gap-2 lg:w-36">
-                {myTurnReview ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void commitGame(
-                          (prev) =>
-                            acceptAbcrelaxAnswer(prev, actorUid) ?? prev,
-                        )
-                      }
-                      className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-3 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void commitGame(
-                          (prev) =>
-                            challengeAbcrelaxAnswer(prev, actorUid) ?? prev,
-                        )
-                      }
-                      className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-3 py-3 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
-                    >
-                      Challenge
-                    </button>
-                  </>
+                {canChallenge ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void commitGame(
+                        (prev) =>
+                          challengeAbcrelaxLast(prev, actorUid) ?? prev,
+                      )
+                    }
+                    className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-3 py-3 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
+                  >
+                    Challenge
+                    <span className="mt-1 block text-[10px] font-normal text-rose-100/70">
+                      “{game.lastAnswer?.word}”
+                    </span>
+                  </button>
                 ) : (
                   <div className="rounded-xl border border-border/60 bg-surface/40 px-3 py-3 text-center text-[11px] text-muted lg:min-h-[5.5rem]">
-                    Challenge appears here on their lock-in
+                    Challenge is optional — only if their last word was bunk
                   </div>
                 )}
               </div>
