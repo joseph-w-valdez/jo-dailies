@@ -142,12 +142,14 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
       {({ immersive }) => (
         <div
           className={
-            immersive ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-3'
+            immersive
+              ? 'flex min-h-0 flex-1 flex-col gap-4 sm:gap-5'
+              : 'space-y-4 sm:space-y-5'
           }
         >
           {immersive ? null : (
-            <div className="rounded-xl border border-border bg-surface/60 px-3.5 py-3">
-              <p className="text-[11px] leading-relaxed text-muted">
+            <div className="rounded-xl border border-border bg-surface/60 px-4 py-3.5">
+              <p className="text-sm leading-relaxed text-muted">
                 Pick a theme and timer. Type a word, tap its letter, hit GO —
                 turn passes automatically. Challenge on the side if their last
                 word was bunk. Miss the timer and you lose. Clear the alphabet
@@ -156,8 +158,8 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] font-medium text-white/85">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-white/90">
               {game.theme
                 ? `${game.theme} · ${(game.turnMs / 1000).toFixed(0)}s turns`
                 : 'Abcrelax'}
@@ -165,11 +167,11 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 ? ` · ${game.usedLetters.length}/26 used`
                 : ''}
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setNewGameOpen(true)}
-                className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white hover:border-muted"
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-white hover:border-muted"
               >
                 New game
               </button>
@@ -211,9 +213,9 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           ) : null}
 
           {game.phase === 'pickTheme' ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white">Choose a theme</p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-lg font-semibold text-white">Choose a theme</p>
                 <button
                   type="button"
                   onClick={() =>
@@ -222,12 +224,12 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                         pickAbcrelaxThemeRandom(prev, actorUid) ?? prev,
                     )
                   }
-                  className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-100 hover:bg-violet-500/25"
+                  className="rounded-xl border border-violet-400/40 bg-violet-500/15 px-4 py-2.5 text-sm font-medium text-violet-100 hover:bg-violet-500/25"
                 >
                   Random theme
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {ABCRELAX_THEMES.map((theme) => (
                   <button
                     key={theme}
@@ -238,21 +240,21 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                           pickAbcrelaxTheme(prev, actorUid, theme) ?? prev,
                       )
                     }
-                    className="rounded-xl border border-border bg-surface px-3 py-2.5 text-left text-sm text-white hover:border-sky-400/50 hover:bg-sky-500/10"
+                    className="rounded-2xl border border-border bg-surface px-4 py-3.5 text-left text-base text-white hover:border-sky-400/50 hover:bg-sky-500/10"
                   >
                     {theme}
                   </button>
                 ))}
               </div>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="min-w-[12rem] flex-1 text-[11px] text-muted">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="min-w-[14rem] flex-1 text-sm text-muted">
                   Or type your own
                   <input
                     value={customTheme}
                     onChange={(e) => setCustomTheme(e.target.value)}
                     maxLength={80}
                     placeholder="Custom theme…"
-                    className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-white outline-none focus:border-sky-400/60"
+                    className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-base text-white outline-none focus:border-sky-400/60"
                   />
                 </label>
                 <button
@@ -265,7 +267,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                         prev,
                     )
                   }
-                  className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-50 enabled:hover:bg-sky-500/30 disabled:opacity-40"
+                  className="rounded-xl border border-sky-400/40 bg-sky-500/20 px-4 py-3 text-base font-medium text-sky-50 enabled:hover:bg-sky-500/30 disabled:opacity-40"
                 >
                   Use theme
                 </button>
@@ -274,12 +276,12 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           ) : null}
 
           {game.phase === 'pickTimer' ? (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-white">
+            <div className="space-y-4">
+              <p className="text-lg font-semibold text-white">
                 How long per turn?{' '}
                 <span className="font-normal text-muted">({game.theme})</span>
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {ABCRELAX_TIMER_OPTIONS_MS.map((ms) => (
                   <button
                     key={ms}
@@ -290,7 +292,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                           pickAbcrelaxTimer(prev, actorUid, ms) ?? prev,
                       )
                     }
-                    className="min-w-[5.5rem] rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-white hover:border-sky-400/50 hover:bg-sky-500/10"
+                    className="min-w-[7rem] rounded-2xl border border-border bg-surface px-6 py-5 text-xl font-semibold text-white hover:border-sky-400/50 hover:bg-sky-500/10"
                   >
                     {ms / 1000}s
                   </button>
@@ -302,19 +304,19 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           {inMatch ? (
             <div
               className={[
-                'grid gap-3',
+                'grid gap-4 sm:gap-5',
                 immersive
-                  ? 'min-h-0 flex-1 lg:grid-cols-[1fr_auto]'
-                  : 'lg:grid-cols-[1fr_auto]',
+                  ? 'min-h-0 flex-1 lg:grid-cols-[1fr_11rem]'
+                  : 'lg:grid-cols-[1fr_11rem]',
               ].join(' ')}
             >
-              <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
                 {game.theme ? (
-                  <div className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-center">
-                    <p className="text-[10px] uppercase tracking-wide text-sky-200/80">
+                  <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-center">
+                    <p className="text-xs uppercase tracking-wide text-sky-200/80">
                       Theme
                     </p>
-                    <p className="text-base font-semibold text-white">
+                    <p className="text-xl font-semibold text-white sm:text-2xl">
                       {game.theme}
                     </p>
                   </div>
@@ -323,10 +325,10 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 {game.phase === 'playing' &&
                 secondsLeft != null &&
                 game.deadlineAt != null ? (
-                  <div className="mx-auto w-full max-w-[14rem]">
+                  <div className="mx-auto w-full max-w-[18rem]">
                     <div
                       className={[
-                        'mx-auto flex h-20 w-20 flex-col items-center justify-center rounded-full border-2 tabular-nums',
+                        'mx-auto flex h-28 w-28 flex-col items-center justify-center rounded-full border-[3px] tabular-nums sm:h-32 sm:w-32',
                         left != null && left <= 3000
                           ? 'border-rose-400 bg-rose-500/20 text-rose-100'
                           : 'border-sky-400/50 bg-sky-500/15 text-sky-50',
@@ -334,14 +336,14 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                       aria-live="polite"
                       aria-label={`${timerLabel} seconds remaining`}
                     >
-                      <span className="text-3xl font-bold leading-none">
+                      <span className="text-5xl font-bold leading-none sm:text-6xl">
                         {timerLabel}
                       </span>
-                      <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide opacity-70">
+                      <span className="mt-1 text-xs font-medium uppercase tracking-wide opacity-70">
                         sec
                       </span>
                     </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface">
                       <div
                         className={[
                           'h-full rounded-full transition-[width] duration-75 ease-linear',
@@ -361,7 +363,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 ) : null}
 
                 {myTurnAnswer ? (
-                  <label className="text-[11px] text-muted">
+                  <label className="text-sm text-muted">
                     Your word
                     <input
                       value={wordDraft}
@@ -372,7 +374,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                       autoFocus
                       maxLength={64}
                       placeholder="Type any length…"
-                      className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-3 text-center text-lg font-semibold tracking-wide text-white outline-none focus:border-sky-400/60"
+                      className="mt-2 w-full rounded-2xl border border-border bg-surface px-4 py-4 text-center text-2xl font-semibold tracking-wide text-white outline-none focus:border-sky-400/60 sm:py-5 sm:text-3xl"
                     />
                   </label>
                 ) : null}
@@ -385,7 +387,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                       onClick={submit}
                       title="Submit answer"
                       className={[
-                        'flex h-14 w-14 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors',
+                        'flex h-20 w-20 items-center justify-center rounded-full border-[3px] text-lg font-bold transition-colors sm:h-24 sm:w-24 sm:text-xl',
                         canSubmit
                           ? 'border-emerald-400/60 bg-emerald-500/25 text-emerald-50 hover:bg-emerald-500/40'
                           : 'border-border bg-surface/40 text-muted opacity-50',
@@ -396,11 +398,11 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                   </div>
                 ) : null}
 
-                <div className="space-y-1.5">
+                <div className="mx-auto w-full max-w-3xl space-y-2 sm:space-y-2.5">
                   {KEY_ROWS.map((row) => (
                     <div
                       key={row}
-                      className="flex justify-center gap-1 sm:gap-1.5"
+                      className="flex justify-center gap-1.5 sm:gap-2"
                     >
                       {row.split('').map((letter) => {
                         const used = letterIsUsed(game, letter)
@@ -415,7 +417,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                               setSelectedLetter(letter)
                             }}
                             className={[
-                              'flex h-9 w-8 items-center justify-center rounded-md border text-sm font-semibold sm:h-10 sm:w-9',
+                              'flex h-12 min-w-[2.1rem] flex-1 items-center justify-center rounded-lg border text-base font-bold sm:h-14 sm:min-w-[2.6rem] sm:rounded-xl sm:text-lg',
                               used
                                 ? 'border-transparent bg-zinc-800/90 text-zinc-500'
                                 : selected
@@ -434,14 +436,14 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 </div>
 
                 {game.lastAnswer && game.phase === 'playing' ? (
-                  <p className="text-center text-[11px] text-muted">
+                  <p className="text-center text-sm text-muted">
                     Last: {householdName(game.lastAnswer.uid)} —{' '}
                     {game.lastAnswer.word} ({game.lastAnswer.letter})
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-2 lg:w-36">
+              <div className="flex flex-col gap-2 lg:w-44">
                 {canChallenge ? (
                   <button
                     type="button"
@@ -451,15 +453,15 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                           challengeAbcrelaxLast(prev, actorUid) ?? prev,
                       )
                     }
-                    className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-3 py-3 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
+                    className="rounded-2xl border border-rose-400/40 bg-rose-500/15 px-4 py-4 text-base font-medium text-rose-100 hover:bg-rose-500/25"
                   >
                     Challenge
-                    <span className="mt-1 block text-[10px] font-normal text-rose-100/70">
+                    <span className="mt-1.5 block text-sm font-normal text-rose-100/70">
                       “{game.lastAnswer?.word}”
                     </span>
                   </button>
                 ) : (
-                  <div className="rounded-xl border border-border/60 bg-surface/40 px-3 py-3 text-center text-[11px] text-muted lg:min-h-[5.5rem]">
+                  <div className="rounded-2xl border border-border/60 bg-surface/40 px-4 py-4 text-center text-sm text-muted lg:min-h-[7rem]">
                     Challenge is optional — only if their last word was bunk
                   </div>
                 )}
