@@ -8,6 +8,7 @@ import {
   letterIsUsed,
   msLeft,
   pickAbcrelaxTheme,
+  pickAbcrelaxThemeRandom,
   pickAbcrelaxTimer,
   resolveAbcrelaxTimeout,
   selectAbcrelaxFirst,
@@ -211,7 +212,21 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
           {game.phase === 'pickTheme' ? (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-white">Choose a theme</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-white">Choose a theme</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void commitGame(
+                      (prev) =>
+                        pickAbcrelaxThemeRandom(prev, actorUid) ?? prev,
+                    )
+                  }
+                  className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-100 hover:bg-violet-500/25"
+                >
+                  Random theme
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {ABCRELAX_THEMES.map((theme) => (
                   <button

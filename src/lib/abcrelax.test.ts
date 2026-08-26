@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   ABCRELAX_LETTERS,
+  ABCRELAX_THEMES,
   challengeAbcrelaxLast,
   createInitialAbcrelax,
   normalizeAbcrelax,
   pickAbcrelaxTheme,
+  pickAbcrelaxThemeRandom,
   pickAbcrelaxTimer,
   resolveAbcrelaxTimeout,
   selectAbcrelaxFirst,
@@ -40,6 +42,13 @@ describe('abcrelax', () => {
     s = pickAbcrelaxTimer(s, jo, 15_000)!
     expect(s.phase).toBe('playing')
     expect(s.turnMs).toBe(15_000)
+  })
+
+  it('random theme picks from the list', () => {
+    const s0 = selectAbcrelaxFirst(createInitialAbcrelax(jo), jo)!
+    const s1 = pickAbcrelaxThemeRandom(s0, jo, () => 0)!
+    expect(s1.phase).toBe('pickTimer')
+    expect(s1.theme).toBe(ABCRELAX_THEMES[0])
   })
 
   it('submit locks letter and passes turn immediately', () => {

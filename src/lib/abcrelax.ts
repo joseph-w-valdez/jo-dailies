@@ -274,6 +274,19 @@ export function pickAbcrelaxTheme(
   })
 }
 
+/** Pick a random theme from the built-in list. */
+export function pickAbcrelaxThemeRandom(
+  state: AbcrelaxState,
+  uid: string,
+  rand: () => number = Math.random,
+): AbcrelaxState | null {
+  if (ABCRELAX_THEMES.length === 0) return null
+  const theme =
+    ABCRELAX_THEMES[Math.floor(rand() * ABCRELAX_THEMES.length)] ??
+    ABCRELAX_THEMES[0]!
+  return pickAbcrelaxTheme(state, uid, theme)
+}
+
 export function pickAbcrelaxTimer(
   state: AbcrelaxState,
   uid: string,
