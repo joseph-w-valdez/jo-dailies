@@ -14,6 +14,7 @@ import {
   selectAbcrelaxFirst,
   submitAbcrelaxAnswer,
   surrenderAbcrelax,
+  turnDeadlineAt,
   wordMatchesLetter,
 } from '../lib/abcrelax'
 import { householdName } from '../lib/household'
@@ -33,8 +34,10 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const [customTheme, setCustomTheme] = useState('')
   const [now, setNow] = useState(() => Date.now())
 
+  // Keep `now` fresh while a turn clock is running.
   useEffect(() => {
-    if (game.phase !== 'playing' || game.deadlineAt == null) return
+    if (game.phase !== 'playing' || turnDeadlineAt(game) == null) return
+    setNow(Date.now())
     let raf = 0
     const tick = () => {
       setNow(Date.now())
@@ -42,13 +45,27 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [game.phase, game.deadlineAt])
+  }, [game.phase, game.turnStartedAt, game.deadlineAt, game.turnMs])
 
+  // Auto-resolve expired clocks. Pass uid so a skewed opponent clock
+  // cannot end your turn early (needs grace).
   useEffect(() => {
-    if (game.phase !== 'playing' || game.deadlineAt == null) return
-    if (now < game.deadlineAt) return
-    void commitGame((prev) => resolveAbcrelaxTimeout(prev) ?? prev)
-  }, [game.phase, game.deadlineAt, now, commitGame])
+    if (game.phase !== 'playing') return
+    const deadline = turnDeadlineAt(game)
+    if (deadline == null || now < deadline) return
+    void commitGame(
+      (prev) => resolveAbcrelaxTimeout(prev, actorUid) ?? prev,
+    )
+  }, [
+    game.phase,
+    game.turnStartedAt,
+    game.deadlineAt,
+    game.turnMs,
+    game.turnUid,
+    now,
+    actorUid,
+    commitGame,
+  ])
 
   useEffect(() => {
     setSelectedLetter(null)
@@ -324,7 +341,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
                 {game.phase === 'playing' &&
                 secondsLeft != null &&
-                game.deadlineAt != null ? (
+                turnDeadlineAt(game) != null ? (
                   <div className="mx-auto w-full max-w-[18rem]">
                     <div
                       className={[

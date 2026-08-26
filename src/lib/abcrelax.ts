@@ -66,6 +66,9 @@ export interface AbcrelaxState {
   /** Per-turn budget once the round starts. */
   turnMs: number
   usedLetters: string[]
+  /** Wall-clock start of the current turn (writer's clock). */
+  turnStartedAt: number | null
+  /** Denormalized: turnStartedAt + turnMs (legacy + sync convenience). */
   deadlineAt: number | null
   lastAnswer: AbcrelaxAnswer | null
   winnerUid: string | null
@@ -146,13 +149,48 @@ function bump(state: AbcrelaxState, patch: Partial<AbcrelaxState>): AbcrelaxStat
   return { ...state, ...patch, updatedAt: Date.now() }
 }
 
+/** Absolute end time for the active turn clock. */
+export function turnDeadlineAt(state: AbcrelaxState): number | null {
+  if (state.phase !== 'playing') return null
+  if (
+    typeof state.turnStartedAt === 'number' &&
+    Number.isFinite(state.turnStartedAt)
+  ) {
+    return state.turnStartedAt + state.turnMs
+  }
+  if (typeof state.deadlineAt === 'number' && Number.isFinite(state.deadlineAt)) {
+    return state.deadlineAt
+  }
+  return null
+}
+
+function beginTurnClock(
+  turnMs: number,
+  turnUid: string,
+): Pick<AbcrelaxState, 'turnUid' | 'phase' | 'turnStartedAt' | 'deadlineAt'> {
+  const started = Date.now()
+  return {
+    turnUid,
+    phase: 'playing',
+    turnStartedAt: started,
+    deadlineAt: started + turnMs,
+  }
+}
+
+function clearTurnClock(): Pick<
+  AbcrelaxState,
+  'turnStartedAt' | 'deadlineAt'
+> {
+  return { turnStartedAt: null, deadlineAt: null }
+}
+
 function finishWin(state: AbcrelaxState, winnerUid: string): AbcrelaxState {
   return bump(state, {
     status: 'won',
     phase: 'finished',
     winnerUid,
     turnUid: winnerUid,
-    deadlineAt: null,
+    ...clearTurnClock(),
   })
 }
 
@@ -161,7 +199,7 @@ function finishDraw(state: AbcrelaxState): AbcrelaxState {
     status: 'draw',
     phase: 'finished',
     winnerUid: null,
-    deadlineAt: null,
+    ...clearTurnClock(),
   })
 }
 
@@ -182,6 +220,7 @@ export function createInitialAbcrelax(
     theme: null,
     turnMs: 10_000,
     usedLetters: [],
+    turnStartedAt: null,
     deadlineAt: null,
     lastAnswer: null,
     winnerUid: null,
@@ -226,6 +265,10 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
           : null,
     turnMs: parseTurnMs(s.turnMs),
     usedLetters: normalizeUsedLetters(s.usedLetters),
+    turnStartedAt:
+      typeof s.turnStartedAt === 'number' && Number.isFinite(s.turnStartedAt)
+        ? s.turnStartedAt
+        : null,
     deadlineAt:
       typeof s.deadlineAt === 'number' && Number.isFinite(s.deadlineAt)
         ? s.deadlineAt
@@ -251,9 +294,9 @@ export function selectAbcrelaxFirst(
     phase: 'pickTheme',
     theme: null,
     usedLetters: [],
-    deadlineAt: null,
     lastAnswer: null,
     winnerUid: null,
+    ...clearTurnClock(),
   })
 }
 
@@ -271,6 +314,7 @@ export function pickAbcrelaxTheme(
     theme: trimmed,
     phase: 'pickTimer',
     turnUid: state.firstUid,
+    ...clearTurnClock(),
   })
 }
 
@@ -301,11 +345,9 @@ export function pickAbcrelaxTimer(
   const starter = state.firstUid
   return bump(state, {
     turnMs,
-    phase: 'playing',
-    turnUid: starter,
     usedLetters: [],
     lastAnswer: null,
-    deadlineAt: Date.now() + turnMs,
+    ...beginTurnClock(turnMs, starter),
   })
 }
 
@@ -326,7 +368,8 @@ export function submitAbcrelaxAnswer(
   if (state.firstUid == null || !state.theme) return null
   if (state.status !== 'playing' || state.phase !== 'playing') return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
-  if (state.deadlineAt != null && Date.now() > state.deadlineAt) return null
+  const deadline = turnDeadlineAt(state)
+  if (deadline != null && Date.now() > deadline) return null
 
   const letter = normalizeLetter(letterRaw)
   const word = normalizeWord(wordRaw)
@@ -350,9 +393,7 @@ export function submitAbcrelaxAnswer(
   return bump(state, {
     usedLetters,
     lastAnswer: answer,
-    phase: 'playing',
-    turnUid: next,
-    deadlineAt: Date.now() + state.turnMs,
+    ...beginTurnClock(state.turnMs, next),
   })
 }
 
@@ -370,18 +411,28 @@ export function challengeAbcrelaxLast(
   return finishWin(state, uid)
 }
 
-/** Either seat may resolve an expired timer — current player loses. */
+/** Grace before the opponent may claim a timeout (clock skew cushion). */
+const OPPONENT_TIMEOUT_GRACE_MS = 2_500
+
+/**
+ * Resolve an expired turn clock.
+ * Prefer the current player’s client; opponent only after a short grace
+ * so a skewed clock cannot end a 20s turn in a few seconds.
+ */
 export function resolveAbcrelaxTimeout(
   state: AbcrelaxState,
-  _uid?: string,
+  uid?: string,
 ): AbcrelaxState | null {
   if (state.status !== 'playing' || state.phase !== 'playing') return null
-  if (state.deadlineAt == null || Date.now() < state.deadlineAt) return null
+  const deadline = turnDeadlineAt(state)
+  if (deadline == null) return null
+  const now = Date.now()
+  if (now < deadline) return null
+  if (uid && isRoomUid(uid) && uid !== state.turnUid && !state.hotseat) {
+    if (now < deadline + OPPONENT_TIMEOUT_GRACE_MS) return null
+  }
   const loser = state.turnUid
-  return finishWin(
-    bump(state, { deadlineAt: null }),
-    nextTurnUid(loser),
-  )
+  return finishWin(bump(state, clearTurnClock()), nextTurnUid(loser))
 }
 
 export function surrenderAbcrelax(
@@ -402,6 +453,7 @@ export function letterIsUsed(state: AbcrelaxState, letter: string): boolean {
 }
 
 export function msLeft(state: AbcrelaxState, now = Date.now()): number | null {
-  if (state.phase !== 'playing' || state.deadlineAt == null) return null
-  return Math.max(0, state.deadlineAt - now)
+  const deadline = turnDeadlineAt(state)
+  if (deadline == null) return null
+  return Math.max(0, deadline - now)
 }

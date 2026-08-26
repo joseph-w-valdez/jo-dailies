@@ -4,6 +4,7 @@ import {
   ABCRELAX_THEMES,
   challengeAbcrelaxLast,
   createInitialAbcrelax,
+  msLeft,
   normalizeAbcrelax,
   pickAbcrelaxTheme,
   pickAbcrelaxThemeRandom,
@@ -69,14 +70,38 @@ describe('abcrelax', () => {
     expect(s2.winnerUid).toBe(joha)
   })
 
-  it('timeout makes the other player win', () => {
+  it('pickTimer starts a full turnMs clock', () => {
     vi.useFakeTimers()
-    const now = Date.now()
+    const now = 1_700_000_000_000
     vi.setSystemTime(now)
-    const s0 = primed({ deadlineAt: now - 1 })
-    const s1 = resolveAbcrelaxTimeout(s0)!
-    expect(s1.status).toBe('won')
-    expect(s1.winnerUid).toBe(joha)
+    let s = selectAbcrelaxFirst(createInitialAbcrelax(jo), jo)!
+    s = pickAbcrelaxTheme(s, jo, 'Animals')!
+    s = pickAbcrelaxTimer(s, jo, 20_000)!
+    expect(s.turnMs).toBe(20_000)
+    expect(s.turnStartedAt).toBe(now)
+    expect(s.deadlineAt).toBe(now + 20_000)
+    expect(msLeft(s, now)).toBe(20_000)
+    expect(msLeft(s, now + 5_000)).toBe(15_000)
+    expect(resolveAbcrelaxTimeout(s, joha)).toBeNull()
+    vi.setSystemTime(now + 20_000)
+    expect(resolveAbcrelaxTimeout(s, jo)?.status).toBe('won')
+    vi.useRealTimers()
+  })
+
+  it('opponent cannot resolve timeout before grace', () => {
+    vi.useFakeTimers()
+    const now = 1_700_000_000_000
+    vi.setSystemTime(now)
+    let s = pickAbcrelaxTheme(
+      selectAbcrelaxFirst(createInitialAbcrelax(jo), jo)!,
+      jo,
+      'Animals',
+    )!
+    s = pickAbcrelaxTimer(s, jo, 20_000)!
+    vi.setSystemTime(now + 20_000)
+    expect(resolveAbcrelaxTimeout(s, joha)).toBeNull()
+    vi.setSystemTime(now + 20_000 + 2_500)
+    expect(resolveAbcrelaxTimeout(s, joha)?.winnerUid).toBe(joha)
     vi.useRealTimers()
   })
 
