@@ -37,7 +37,7 @@ export const ARCADE_TILES: ArcadeTile[] = [
   { id: 'globle', title: 'Globle', blurb: 'Guess the country', wide: true },
   { id: 'notes', title: 'Notes', blurb: 'Staff flashcards' },
   { id: 'spike', title: 'Spike', blurb: 'Valorant card duel', wide: true },
-  { id: 'abcrelax', title: 'Abcrelax', blurb: 'Letter wheel', wide: true },
+  { id: 'abcrelax', title: 'Abcrelax', blurb: 'Theme letter race', wide: true },
 ]
 
 type GameProps = { onClose: () => void }

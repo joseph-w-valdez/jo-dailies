@@ -1,4 +1,4 @@
-/** Abcrelax — Tapple-style letter wheel for two household seats. */
+/** Abcrelax — shared letter race (type answers, timer, challenge). */
 
 import {
   JENGA_PLAYER_UIDS,
@@ -9,17 +9,42 @@ import {
 
 export const ABCRELAX_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
 
-export const ABCRELAX_TURN_MS = 10_000
-export const ABCRELAX_CARDS_TO_WIN = 3
-export const ABCRELAX_MAX_ANSWERS_NEEDED = 3
+export const ABCRELAX_TIMER_OPTIONS_MS = [10_000, 15_000, 20_000] as const
+export type AbcrelaxTimerMs = (typeof ABCRELAX_TIMER_OPTIONS_MS)[number]
+
+export const ABCRELAX_THEMES: readonly string[] = [
+  'Animals',
+  'Foods',
+  'Movies',
+  'Countries',
+  'Cities',
+  'Sports',
+  'Jobs',
+  'Things in a kitchen',
+  'Video games',
+  'TV shows',
+  'Car brands',
+  'Valorant agents',
+  'Things that are cold',
+  'Things that fly',
+  'Boy names',
+  'Girl names',
+  'Desserts',
+  'Drinks',
+  'Holidays',
+  'Apps on your phone',
+  'Things Joseph likes',
+  'Things Joha likes',
+]
 
 export type AbcrelaxPhase =
+  | 'pickTheme'
+  | 'pickTimer'
   | 'playing'
   | 'pending'
-  | 'roundOver'
-  | 'gameOver'
+  | 'finished'
 
-export type AbcrelaxStatus = 'playing' | 'won'
+export type AbcrelaxStatus = 'playing' | 'won' | 'draw'
 
 export type AbcrelaxPending = {
   uid: string
@@ -44,20 +69,14 @@ export interface AbcrelaxState {
   phase: AbcrelaxPhase
   /** Who must act (answer, or accept/challenge while pending). */
   turnUid: string
+  theme: string | null
+  /** Per-turn budget once the round starts. */
+  turnMs: number
   usedLetters: string[]
-  alive: Record<string, boolean>
-  scores: Record<string, number>
-  /** 1 normally; 2–3 in overtime. */
-  answersNeeded: number
-  /** Locked answers this turn toward answersNeeded. */
-  answersThisTurn: AbcrelaxAnswer[]
   deadlineAt: number | null
   pending: AbcrelaxPending | null
   lastAnswer: AbcrelaxAnswer | null
   winnerUid: string | null
-  roundWinnerUid: string | null
-  /** Who starts the next round (rotates after each card). */
-  roundStarterUid: string
 }
 
 function clampNum(n: unknown, fallback = 0): number {
@@ -67,38 +86,6 @@ function clampNum(n: unknown, fallback = 0): number {
 
 function newRoundId(): string {
   return `abc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function emptyAlive(): Record<string, boolean> {
-  const out: Record<string, boolean> = {}
-  for (const uid of JENGA_PLAYER_UIDS) out[uid] = true
-  return out
-}
-
-function emptyScores(): Record<string, number> {
-  const out: Record<string, number> = {}
-  for (const uid of JENGA_PLAYER_UIDS) out[uid] = 0
-  return out
-}
-
-function normalizeAlive(raw: unknown): Record<string, boolean> {
-  const out = emptyAlive()
-  if (!raw || typeof raw !== 'object') return out
-  const o = raw as Record<string, unknown>
-  for (const uid of JENGA_PLAYER_UIDS) {
-    if (typeof o[uid] === 'boolean') out[uid] = o[uid]
-  }
-  return out
-}
-
-function normalizeScores(raw: unknown): Record<string, number> {
-  const out = emptyScores()
-  if (!raw || typeof raw !== 'object') return out
-  const o = raw as Record<string, unknown>
-  for (const uid of JENGA_PLAYER_UIDS) {
-    out[uid] = Math.max(0, Math.floor(clampNum(o[uid], 0)))
-  }
-  return out
 }
 
 function normalizeLetter(raw: unknown): string | null {
@@ -127,16 +114,6 @@ function normalizeAnswer(raw: unknown): AbcrelaxAnswer | null {
   return normalizePending(raw)
 }
 
-function normalizeAnswers(raw: unknown): AbcrelaxAnswer[] {
-  if (!Array.isArray(raw)) return []
-  const out: AbcrelaxAnswer[] = []
-  for (const item of raw) {
-    const a = normalizeAnswer(item)
-    if (a) out.push(a)
-  }
-  return out.slice(0, ABCRELAX_MAX_ANSWERS_NEEDED)
-}
-
 function normalizeUsedLetters(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
@@ -151,49 +128,54 @@ function normalizeUsedLetters(raw: unknown): string[] {
 }
 
 function parsePhase(raw: unknown): AbcrelaxPhase {
-  // Legacy docs used pickCategory — treat as waiting to start a round.
-  if (raw === 'pickCategory') return 'roundOver'
+  // Legacy phases collapse into finished / setup.
+  if (raw === 'roundOver' || raw === 'gameOver') return 'finished'
   if (
+    raw === 'pickTheme' ||
+    raw === 'pickTimer' ||
     raw === 'playing' ||
     raw === 'pending' ||
-    raw === 'roundOver' ||
-    raw === 'gameOver'
+    raw === 'finished'
   ) {
     return raw
   }
+  if (raw === 'pickCategory') return 'pickTheme'
+  return 'pickTheme'
+}
+
+function parseStatus(raw: unknown): AbcrelaxStatus {
+  if (raw === 'won' || raw === 'draw') return raw
   return 'playing'
 }
 
-function aliveCount(alive: Record<string, boolean>): number {
-  return JENGA_PLAYER_UIDS.filter((uid) => alive[uid]).length
-}
-
-function soleAliveUid(alive: Record<string, boolean>): string | null {
-  const left = JENGA_PLAYER_UIDS.filter((uid) => alive[uid])
-  return left.length === 1 ? left[0]! : null
+function parseTurnMs(raw: unknown): number {
+  const n = Math.floor(clampNum(raw, 10_000))
+  if ((ABCRELAX_TIMER_OPTIONS_MS as readonly number[]).includes(n)) return n
+  return 10_000
 }
 
 function bump(state: AbcrelaxState, patch: Partial<AbcrelaxState>): AbcrelaxState {
   return { ...state, ...patch, updatedAt: Date.now() }
 }
 
-function beginRound(
-  state: AbcrelaxState,
-  starterUid: string,
-  answersNeeded: number,
-): AbcrelaxState {
+function finishWin(state: AbcrelaxState, winnerUid: string): AbcrelaxState {
   return bump(state, {
-    usedLetters: [],
-    alive: emptyAlive(),
-    answersNeeded,
-    answersThisTurn: [],
+    status: 'won',
+    phase: 'finished',
+    winnerUid,
+    turnUid: winnerUid,
+    deadlineAt: null,
     pending: null,
-    lastAnswer: null,
-    roundWinnerUid: null,
-    roundStarterUid: starterUid,
-    phase: 'playing',
-    turnUid: starterUid,
-    deadlineAt: Date.now() + ABCRELAX_TURN_MS,
+  })
+}
+
+function finishDraw(state: AbcrelaxState): AbcrelaxState {
+  return bump(state, {
+    status: 'draw',
+    phase: 'finished',
+    winnerUid: null,
+    deadlineAt: null,
+    pending: null,
   })
 }
 
@@ -209,19 +191,15 @@ export function createInitialAbcrelax(
     hotseat: Boolean(opts?.hotseat),
     firstUid: null,
     status: 'playing',
-    phase: 'playing',
+    phase: 'pickTheme',
     turnUid: starter,
+    theme: null,
+    turnMs: 10_000,
     usedLetters: [],
-    alive: emptyAlive(),
-    scores: emptyScores(),
-    answersNeeded: 1,
-    answersThisTurn: [],
     deadlineAt: null,
     pending: null,
     lastAnswer: null,
     winnerUid: null,
-    roundWinnerUid: null,
-    roundStarterUid: starter,
   }
 }
 
@@ -238,14 +216,10 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
     typeof s.turnUid === 'string' && isRoomUid(s.turnUid)
       ? s.turnUid
       : fallback.turnUid
-  const roundStarterUid =
-    typeof s.roundStarterUid === 'string' && isRoomUid(s.roundStarterUid)
-      ? s.roundStarterUid
-      : turnUid
-  const status: AbcrelaxStatus = s.status === 'won' ? 'won' : 'playing'
+  let status = parseStatus(s.status)
   let phase = parsePhase(s.phase)
-  if (status === 'won') phase = 'gameOver'
-  if (firstUid == null && phase !== 'gameOver') phase = 'playing'
+  if (status === 'won' || status === 'draw') phase = 'finished'
+  if (firstUid == null && phase !== 'finished') phase = 'pickTheme'
 
   return {
     version: Math.max(1, Math.floor(clampNum(s.version, 1))),
@@ -259,14 +233,14 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
     status,
     phase,
     turnUid,
+    theme:
+      typeof s.theme === 'string' && s.theme.trim()
+        ? s.theme.trim().slice(0, 80)
+        : typeof s.category === 'string' && s.category.trim()
+          ? s.category.trim().slice(0, 80)
+          : null,
+    turnMs: parseTurnMs(s.turnMs),
     usedLetters: normalizeUsedLetters(s.usedLetters),
-    alive: normalizeAlive(s.alive),
-    scores: normalizeScores(s.scores),
-    answersNeeded: Math.min(
-      ABCRELAX_MAX_ANSWERS_NEEDED,
-      Math.max(1, Math.floor(clampNum(s.answersNeeded, 1))),
-    ),
-    answersThisTurn: normalizeAnswers(s.answersThisTurn),
     deadlineAt:
       typeof s.deadlineAt === 'number' && Number.isFinite(s.deadlineAt)
         ? s.deadlineAt
@@ -277,11 +251,6 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
       typeof s.winnerUid === 'string' && isRoomUid(s.winnerUid)
         ? s.winnerUid
         : null,
-    roundWinnerUid:
-      typeof s.roundWinnerUid === 'string' && isRoomUid(s.roundWinnerUid)
-        ? s.roundWinnerUid
-        : null,
-    roundStarterUid,
   }
 }
 
@@ -292,110 +261,57 @@ export function selectAbcrelaxFirst(
   if (state.firstUid !== null) return null
   if (state.status !== 'playing') return null
   if (!isRoomUid(uid)) return null
-  return beginRound(
-    bump(state, {
-      firstUid: uid,
-      scores: emptyScores(),
-      winnerUid: null,
-    }),
-    uid,
-    1,
-  )
-}
-
-function awardRound(
-  state: AbcrelaxState,
-  winnerUid: string,
-): AbcrelaxState {
-  const scores = { ...state.scores }
-  scores[winnerUid] = (scores[winnerUid] ?? 0) + 1
-  const won = (scores[winnerUid] ?? 0) >= ABCRELAX_CARDS_TO_WIN
   return bump(state, {
-    scores,
-    phase: won ? 'gameOver' : 'roundOver',
-    status: won ? 'won' : 'playing',
-    winnerUid: won ? winnerUid : null,
-    roundWinnerUid: winnerUid,
-    turnUid: winnerUid,
+    firstUid: uid,
+    turnUid: uid,
+    phase: 'pickTheme',
+    theme: null,
+    usedLetters: [],
     deadlineAt: null,
     pending: null,
-    answersThisTurn: [],
+    lastAnswer: null,
+    winnerUid: null,
   })
 }
 
-function eliminate(
+export function pickAbcrelaxTheme(
   state: AbcrelaxState,
-  loserUid: string,
-): AbcrelaxState {
-  if (!state.alive[loserUid]) return state
-  const alive = { ...state.alive, [loserUid]: false }
-  const sole = soleAliveUid(alive)
-  if (sole) return awardRound({ ...state, alive }, sole)
+  uid: string,
+  theme: string,
+): AbcrelaxState | null {
+  if (state.firstUid == null) return null
+  if (state.status !== 'playing' || state.phase !== 'pickTheme') return null
+  if (!isRoomUid(uid)) return null
+  const trimmed = theme.trim().slice(0, 80)
+  if (!trimmed) return null
   return bump(state, {
-    alive,
-    phase: 'roundOver',
-    roundWinnerUid: null,
-    deadlineAt: null,
-    pending: null,
-    answersThisTurn: [],
+    theme: trimmed,
+    phase: 'pickTimer',
+    turnUid: state.firstUid,
   })
 }
 
-function startTurnTimer(state: AbcrelaxState, turnUid: string): AbcrelaxState {
+export function pickAbcrelaxTimer(
+  state: AbcrelaxState,
+  uid: string,
+  turnMs: number,
+): AbcrelaxState | null {
+  if (state.firstUid == null || !state.theme) return null
+  if (state.status !== 'playing' || state.phase !== 'pickTimer') return null
+  if (!isRoomUid(uid)) return null
+  if (!(ABCRELAX_TIMER_OPTIONS_MS as readonly number[]).includes(turnMs)) {
+    return null
+  }
+  const starter = state.firstUid
   return bump(state, {
-    turnUid,
+    turnMs,
     phase: 'playing',
+    turnUid: starter,
+    usedLetters: [],
     pending: null,
-    answersThisTurn: [],
-    deadlineAt: Date.now() + ABCRELAX_TURN_MS,
+    lastAnswer: null,
+    deadlineAt: Date.now() + turnMs,
   })
-}
-
-function enterOvertime(state: AbcrelaxState): AbcrelaxState {
-  const nextNeeded = Math.min(
-    ABCRELAX_MAX_ANSWERS_NEEDED,
-    state.answersNeeded + 1,
-  )
-  // Same starter; shout a new category out loud, then go.
-  return beginRound(state, state.roundStarterUid, nextNeeded)
-}
-
-function afterAcceptedAnswer(
-  state: AbcrelaxState,
-  answer: AbcrelaxAnswer,
-): AbcrelaxState {
-  const usedLetters = state.usedLetters.includes(answer.letter)
-    ? state.usedLetters
-    : [...state.usedLetters, answer.letter]
-  const answersThisTurn = [...state.answersThisTurn, answer]
-  const base = bump(state, {
-    usedLetters,
-    answersThisTurn,
-    pending: null,
-    lastAnswer: answer,
-  })
-
-  if (answersThisTurn.length < state.answersNeeded) {
-    return bump(base, {
-      phase: 'playing',
-      deadlineAt: Date.now() + ABCRELAX_TURN_MS,
-    })
-  }
-
-  if (
-    usedLetters.length >= ABCRELAX_LETTERS.length &&
-    aliveCount(base.alive) > 1
-  ) {
-    return enterOvertime(base)
-  }
-
-  const next = nextTurnUid(answer.uid)
-  const nextAlive = base.alive[next] ? next : soleAliveUid(base.alive)
-  if (!nextAlive) return awardRound(base, answer.uid)
-  if (nextAlive !== next && nextAlive === answer.uid) {
-    return awardRound(base, answer.uid)
-  }
-  return startTurnTimer(base, nextAlive)
 }
 
 export function wordMatchesLetter(word: string, letter: string): boolean {
@@ -411,10 +327,9 @@ export function submitAbcrelaxAnswer(
   letterRaw: string,
   wordRaw: string,
 ): AbcrelaxState | null {
-  if (state.firstUid == null) return null
+  if (state.firstUid == null || !state.theme) return null
   if (state.status !== 'playing' || state.phase !== 'playing') return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
-  if (!state.alive[uid]) return null
   if (state.deadlineAt != null && Date.now() > state.deadlineAt) return null
 
   const letter = normalizeLetter(letterRaw)
@@ -422,14 +337,12 @@ export function submitAbcrelaxAnswer(
   if (!letter || !word) return null
   if (!wordMatchesLetter(word, letter)) return null
   if (state.usedLetters.includes(letter)) return null
-  if (state.answersThisTurn.some((a) => a.letter === letter)) return null
 
   const pending: AbcrelaxPending = { uid, letter, word }
-  const responder = nextTurnUid(uid)
   return bump(state, {
     phase: 'pending',
     pending,
-    turnUid: responder,
+    turnUid: nextTurnUid(uid),
     deadlineAt: null,
   })
 }
@@ -441,7 +354,31 @@ export function acceptAbcrelaxAnswer(
   if (state.phase !== 'pending' || !state.pending) return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
   if (state.pending.uid === uid) return null
-  return afterAcceptedAnswer(state, state.pending)
+
+  const answer = state.pending
+  const usedLetters = state.usedLetters.includes(answer.letter)
+    ? state.usedLetters
+    : [...state.usedLetters, answer.letter]
+
+  if (usedLetters.length >= ABCRELAX_LETTERS.length) {
+    return finishDraw(
+      bump(state, {
+        usedLetters,
+        pending: null,
+        lastAnswer: answer,
+      }),
+    )
+  }
+
+  const next = nextTurnUid(answer.uid)
+  return bump(state, {
+    usedLetters,
+    pending: null,
+    lastAnswer: answer,
+    phase: 'playing',
+    turnUid: next,
+    deadlineAt: Date.now() + state.turnMs,
+  })
 }
 
 export function challengeAbcrelaxAnswer(
@@ -451,19 +388,17 @@ export function challengeAbcrelaxAnswer(
   if (state.phase !== 'pending' || !state.pending) return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
   if (state.pending.uid === uid) return null
-  const loser = state.pending.uid
-  return eliminate(
+  // Challenger wins — submitter failed the category check.
+  return finishWin(
     bump(state, {
       pending: null,
       lastAnswer: state.pending,
-      deadlineAt: null,
-      answersThisTurn: [],
     }),
-    loser,
+    uid,
   )
 }
 
-/** Either seat may resolve an expired timer. */
+/** Either seat may resolve an expired timer — current player loses. */
 export function resolveAbcrelaxTimeout(
   state: AbcrelaxState,
   _uid?: string,
@@ -471,28 +406,10 @@ export function resolveAbcrelaxTimeout(
   if (state.status !== 'playing' || state.phase !== 'playing') return null
   if (state.deadlineAt == null || Date.now() < state.deadlineAt) return null
   const loser = state.turnUid
-  if (!state.alive[loser]) return null
-  return eliminate(
-    bump(state, {
-      deadlineAt: null,
-      pending: null,
-      answersThisTurn: [],
-    }),
-    loser,
+  return finishWin(
+    bump(state, { deadlineAt: null, pending: null }),
+    nextTurnUid(loser),
   )
-}
-
-export function continueAbcrelaxRound(
-  state: AbcrelaxState,
-  uid: string,
-): AbcrelaxState | null {
-  if (state.phase !== 'roundOver') return null
-  if (state.status !== 'playing') return null
-  if (!isRoomUid(uid)) return null
-  const nextStarter = state.roundWinnerUid
-    ? nextTurnUid(state.roundWinnerUid)
-    : nextTurnUid(state.roundStarterUid)
-  return beginRound(state, nextStarter, 1)
 }
 
 export function surrenderAbcrelax(
@@ -501,17 +418,9 @@ export function surrenderAbcrelax(
 ): AbcrelaxState | null {
   if (state.firstUid == null) return null
   if (state.status !== 'playing') return null
-  if (state.phase === 'gameOver') return null
+  if (state.phase === 'finished') return null
   if (!isRoomUid(loserUid)) return null
-  const winnerUid = nextTurnUid(loserUid)
-  return bump(state, {
-    status: 'won',
-    phase: 'gameOver',
-    winnerUid,
-    turnUid: winnerUid,
-    deadlineAt: null,
-    pending: null,
-  })
+  return finishWin(state, nextTurnUid(loserUid))
 }
 
 export function letterIsUsed(state: AbcrelaxState, letter: string): boolean {

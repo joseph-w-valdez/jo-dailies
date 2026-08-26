@@ -1,221 +1,28 @@
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Text } from '@react-three/drei'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import * as THREE from 'three'
+import { useEffect, useState } from 'react'
 import { useSharedAbcrelax } from '../hooks/useSharedAbcrelax'
 import {
-  ABCRELAX_CARDS_TO_WIN,
   ABCRELAX_LETTERS,
-  ABCRELAX_TURN_MS,
+  ABCRELAX_THEMES,
+  ABCRELAX_TIMER_OPTIONS_MS,
   acceptAbcrelaxAnswer,
   challengeAbcrelaxAnswer,
-  continueAbcrelaxRound,
   letterIsUsed,
   msLeft,
+  pickAbcrelaxTheme,
+  pickAbcrelaxTimer,
   resolveAbcrelaxTimeout,
   selectAbcrelaxFirst,
   submitAbcrelaxAnswer,
   surrenderAbcrelax,
   wordMatchesLetter,
-  type AbcrelaxState,
 } from '../lib/abcrelax'
 import { householdName } from '../lib/household'
-import { JENGA_PLAYER_UIDS } from '../lib/jenga'
 import { ArcadeStage, ArcadeStatus } from './ArcadeStage'
 import { GameSeatPicker } from './GameSeatPicker'
 import { NewGameConfirm } from './NewGameConfirm'
 import { SurrenderButton } from './SurrenderButton'
-import { ThemeClearColor } from './ThemeClearColor'
 
-const WHEEL_R = 2.55
-const KEY_R = 0.28
-
-function LetterKey({
-  letter,
-  index,
-  used,
-  selected,
-  pending,
-  interactive,
-  onPick,
-}: {
-  letter: string
-  index: number
-  used: boolean
-  selected: boolean
-  pending: boolean
-  interactive: boolean
-  onPick: (letter: string) => void
-}) {
-  const group = useRef<THREE.Group>(null)
-  const mat = useRef<THREE.MeshStandardMaterial>(null)
-  const angle = (index / ABCRELAX_LETTERS.length) * Math.PI * 2 - Math.PI / 2
-  const x = Math.cos(angle) * WHEEL_R
-  const z = Math.sin(angle) * WHEEL_R
-  // Used keys sink into the wheel; pending is half-pressed amber.
-  const targetY = used ? -0.28 : pending ? -0.08 : selected ? 0.14 : 0.06
-  const targetColor = useMemo(() => {
-    if (used) return new THREE.Color('#1e293b')
-    if (pending || selected) return new THREE.Color('#fbbf24')
-    if (interactive) return new THREE.Color('#f1f5f9')
-    return new THREE.Color('#94a3b8')
-  }, [used, pending, selected, interactive])
-
-  useFrame((_, dt) => {
-    const g = group.current
-    if (g) g.position.y = THREE.MathUtils.damp(g.position.y, targetY, 14, dt)
-    const m = mat.current
-    if (m) m.color.lerp(targetColor, 1 - Math.exp(-12 * dt))
-  })
-
-  return (
-    <group position={[x, 0, z]} rotation={[0, -angle + Math.PI / 2, 0]}>
-      <group ref={group}>
-        <mesh
-          castShadow
-          onClick={(e) => {
-            e.stopPropagation()
-            if (!interactive || used) return
-            onPick(letter)
-          }}
-          onPointerOver={(e) => {
-            e.stopPropagation()
-            if (interactive && !used) {
-              document.body.style.cursor = 'pointer'
-            }
-          }}
-          onPointerOut={() => {
-            document.body.style.cursor = 'auto'
-          }}
-        >
-          <cylinderGeometry args={[KEY_R, KEY_R * 0.92, 0.22, 20]} />
-          <meshStandardMaterial
-            ref={mat}
-            color={used ? '#1e293b' : '#f1f5f9'}
-            roughness={used ? 0.9 : 0.4}
-            metalness={used ? 0.05 : 0.25}
-            emissive={used ? '#020617' : '#000000'}
-            emissiveIntensity={used ? 0.35 : 0}
-          />
-        </mesh>
-        <Text
-          position={[0, 0.13, 0]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.28}
-          color={used ? '#475569' : pending || selected ? '#1c1917' : '#0f172a'}
-          fillOpacity={used ? 0.45 : 1}
-          anchorX="center"
-          anchorY="middle"
-        >
-          {letter}
-        </Text>
-      </group>
-    </group>
-  )
-}
-
-function CenterTimer({
-  seconds,
-  urgent,
-}: {
-  seconds: number | null
-  urgent: boolean
-}) {
-  const mesh = useRef<THREE.Mesh>(null)
-  useFrame((_, dt) => {
-    const m = mesh.current
-    if (!m) return
-    const pulse = urgent ? 1 + Math.sin(performance.now() / 120) * 0.04 : 1
-    m.scale.setScalar(THREE.MathUtils.damp(m.scale.x, pulse, 10, dt))
-  })
-  const label =
-    seconds == null ? '·' : String(Math.max(0, Math.ceil(seconds)))
-  return (
-    <group>
-      <mesh ref={mesh} position={[0, 0.05, 0]} castShadow>
-        <cylinderGeometry args={[0.85, 0.9, 0.35, 48]} />
-        <meshStandardMaterial
-          color={urgent ? '#f43f5e' : '#0ea5e9'}
-          roughness={0.35}
-          metalness={0.35}
-        />
-      </mesh>
-      <Text
-        position={[0, 0.28, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.55}
-        color="#f8fafc"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.02}
-        outlineColor="#0f172a"
-      >
-        {label}
-      </Text>
-    </group>
-  )
-}
-
-function WheelScene({
-  game,
-  selected,
-  canPickLetter,
-  onPickLetter,
-  secondsLeft,
-}: {
-  game: AbcrelaxState
-  selected: string | null
-  canPickLetter: boolean
-  onPickLetter: (letter: string) => void
-  secondsLeft: number | null
-}) {
-  const urgent =
-    secondsLeft != null && secondsLeft <= 3 && game.phase === 'playing'
-  return (
-    <>
-      <ThemeClearColor color="#0b1220" />
-      <ambientLight intensity={0.55} />
-      <directionalLight
-        position={[4, 8, 3]}
-        intensity={1.15}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-      />
-      <mesh position={[0, -0.12, 0]} receiveShadow>
-        <cylinderGeometry args={[3.35, 3.35, 0.18, 64]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.7} metalness={0.15} />
-      </mesh>
-      <CenterTimer seconds={secondsLeft} urgent={urgent} />
-      {ABCRELAX_LETTERS.map((letter, i) => (
-        <LetterKey
-          key={letter}
-          letter={letter}
-          index={i}
-          used={letterIsUsed(game, letter)}
-          selected={selected === letter}
-          pending={game.pending?.letter === letter}
-          interactive={canPickLetter}
-          onPick={onPickLetter}
-        />
-      ))}
-      <OrbitControls
-        enablePan={false}
-        minPolarAngle={0.35}
-        maxPolarAngle={1.15}
-        minDistance={5}
-        maxDistance={9}
-        target={[0, 0, 0]}
-      />
-    </>
-  )
-}
-
-function scoreLine(game: AbcrelaxState): string {
-  const a = JENGA_PLAYER_UIDS[0]!
-  const b = JENGA_PLAYER_UIDS[1]!
-  return `${householdName(a)} ${game.scores[a] ?? 0}–${game.scores[b] ?? 0} ${householdName(b)} · first to ${ABCRELAX_CARDS_TO_WIN}`
-}
+const KEY_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'] as const
 
 export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const { game, ready, uid, actorUid, canAct, commitGame, resetGame } =
@@ -223,12 +30,20 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const [newGameOpen, setNewGameOpen] = useState(false)
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null)
   const [wordDraft, setWordDraft] = useState('')
+  const [customTheme, setCustomTheme] = useState('')
   const [now, setNow] = useState(() => Date.now())
 
+  // Tick while a turn clock is running so both seats see the same countdown.
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 100)
-    return () => window.clearInterval(id)
-  }, [])
+    if (game.phase !== 'playing' || game.deadlineAt == null) return
+    let raf = 0
+    const tick = () => {
+      setNow(Date.now())
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [game.phase, game.deadlineAt])
 
   useEffect(() => {
     if (game.phase !== 'playing' || game.deadlineAt == null) return
@@ -243,6 +58,14 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
   const left = msLeft(game, now)
   const secondsLeft = left == null ? null : left / 1000
+  const timerLabel =
+    secondsLeft == null
+      ? null
+      : secondsLeft >= 9.95
+        ? String(Math.ceil(secondsLeft))
+        : secondsLeft.toFixed(1)
+  const statusTimerLabel =
+    secondsLeft == null ? null : String(Math.max(0, Math.ceil(secondsLeft)))
 
   const myTurnAnswer =
     canAct && game.phase === 'playing' && game.turnUid === actorUid
@@ -252,15 +75,13 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
     if (game.firstUid == null) return 'Who goes first?'
-    if (game.phase === 'gameOver' || game.status === 'won') {
+    if (game.phase === 'pickTheme') return 'Pick a theme'
+    if (game.phase === 'pickTimer') return 'Pick a timer'
+    if (game.phase === 'finished') {
+      if (game.status === 'draw') return 'Draw — alphabet cleared'
       return game.winnerUid === uid
-        ? 'You win the stack!'
+        ? 'You win!'
         : `${householdName(game.winnerUid)} wins`
-    }
-    if (game.phase === 'roundOver') {
-      return game.roundWinnerUid
-        ? `${householdName(game.roundWinnerUid)} takes the card`
-        : 'Round over'
     }
     if (game.phase === 'pending' && game.pending) {
       if (myTurnReview) {
@@ -268,25 +89,32 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
       }
       return 'Waiting for accept / challenge…'
     }
-    if (myTurnAnswer) {
-      const need =
-        game.answersNeeded > 1
-          ? ` · ${game.answersThisTurn.length + 1}/${game.answersNeeded}`
-          : ''
-      return `Your turn — type a word + letter${need}`
+    if (game.phase === 'playing' && statusTimerLabel != null) {
+      const who = myTurnAnswer
+        ? 'Your turn'
+        : `${householdName(game.turnUid)}’s turn`
+      return `${who} · ${statusTimerLabel}s`
     }
+    if (myTurnAnswer) return 'Your turn — type, tap letter, hit submit'
     return `Waiting for ${householdName(game.turnUid)}…`
   })()
 
   const statusTone =
-    game.phase === 'gameOver'
+    game.phase === 'finished' && game.status === 'won'
       ? 'win'
       : left != null && left <= 3000 && game.phase === 'playing'
         ? 'danger'
         : 'ready'
 
-  const submitTyped = () => {
-    if (!myTurnAnswer || !selectedLetter) return
+  const canSubmit =
+    myTurnAnswer &&
+    selectedLetter &&
+    wordDraft.trim().length > 0 &&
+    wordMatchesLetter(wordDraft, selectedLetter) &&
+    !letterIsUsed(game, selectedLetter)
+
+  const submit = () => {
+    if (!canSubmit || !selectedLetter) return
     void commitGame(
       (prev) =>
         submitAbcrelaxAnswer(prev, actorUid, selectedLetter, wordDraft) ??
@@ -294,21 +122,23 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
     )
   }
 
-  const canSubmitTyped =
-    myTurnAnswer &&
-    selectedLetter &&
-    wordDraft.trim().length > 0 &&
-    wordMatchesLetter(wordDraft, selectedLetter)
-
-  const pressLetter = (letter: string) => {
-    if (!myTurnAnswer) return
-    setSelectedLetter(letter)
-    if (!wordDraft.trim() || !wordMatchesLetter(wordDraft, letter)) {
-      setWordDraft(letter)
+  const onWordChange = (v: string) => {
+    setWordDraft(v)
+    const first = v.trim().charAt(0).toUpperCase()
+    if (
+      first &&
+      ABCRELAX_LETTERS.includes(first) &&
+      !letterIsUsed(game, first)
+    ) {
+      setSelectedLetter(first)
     }
   }
 
-  const wheelHeight = 'min-h-[22rem] h-[min(52vh,28rem)]'
+  const inMatch =
+    game.firstUid != null &&
+    (game.phase === 'playing' ||
+      game.phase === 'pending' ||
+      game.phase === 'finished')
 
   return (
     <ArcadeStage
@@ -325,17 +155,22 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           {immersive ? null : (
             <div className="rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
-                Announce a category out loud. Type a word, press its letter,
-                Lock in — opponent Accepts or Challenges. Used letters sink and
-                stay dead for the round. First to {ABCRELAX_CARDS_TO_WIN} cards
-                wins.
+                Pick a theme and timer. On your turn type any word, tap its
+                starting letter, then the circle to submit. Opponent accepts or
+                challenges. Miss the timer and you lose. Clear the alphabet and
+                it’s a draw.
               </p>
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] font-medium text-white/85">
-              {scoreLine(game)}
+              {game.theme
+                ? `${game.theme} · ${(game.turnMs / 1000).toFixed(0)}s turns`
+                : 'Abcrelax'}
+              {game.usedLetters.length > 0
+                ? ` · ${game.usedLetters.length}/26 used`
+                : ''}
             </p>
             <div className="flex items-center gap-1.5">
               <button
@@ -350,7 +185,9 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                   !uid ||
                   game.firstUid == null ||
                   game.status !== 'playing' ||
-                  game.phase === 'gameOver'
+                  game.phase === 'finished' ||
+                  game.phase === 'pickTheme' ||
+                  game.phase === 'pickTimer'
                 }
                 onSurrender={() =>
                   void commitGame(
@@ -365,7 +202,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
             open={newGameOpen}
             onClose={() => setNewGameOpen(false)}
             onConfirm={(opts) => void resetGame(opts)}
-            blurb="Resets the wheel and card stack."
+            blurb="Starts fresh — pick who goes first again."
           />
 
           {game.firstUid == null ? (
@@ -380,158 +217,285 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 }
               />
             </div>
-          ) : (
-            <>
-              {game.answersNeeded > 1 &&
-              (game.phase === 'playing' || game.phase === 'pending') ? (
-                <p className="text-center text-[11px] font-medium text-amber-200/90">
-                  Overtime — {game.answersNeeded} answers per turn
-                </p>
-              ) : null}
+          ) : null}
 
-              {game.phase === 'roundOver' || game.phase === 'gameOver' ? (
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {game.phase === 'roundOver' ? (
+          {game.phase === 'pickTheme' ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-white">Choose a theme</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {ABCRELAX_THEMES.map((theme) => (
+                  <button
+                    key={theme}
+                    type="button"
+                    onClick={() =>
+                      void commitGame(
+                        (prev) =>
+                          pickAbcrelaxTheme(prev, actorUid, theme) ?? prev,
+                      )
+                    }
+                    className="rounded-xl border border-border bg-surface px-3 py-2.5 text-left text-sm text-white hover:border-sky-400/50 hover:bg-sky-500/10"
+                  >
+                    {theme}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-[12rem] flex-1 text-[11px] text-muted">
+                  Or type your own
+                  <input
+                    value={customTheme}
+                    onChange={(e) => setCustomTheme(e.target.value)}
+                    maxLength={80}
+                    placeholder="Custom theme…"
+                    className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-white outline-none focus:border-sky-400/60"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!customTheme.trim()}
+                  onClick={() =>
+                    void commitGame(
+                      (prev) =>
+                        pickAbcrelaxTheme(prev, actorUid, customTheme) ??
+                        prev,
+                    )
+                  }
+                  className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-50 enabled:hover:bg-sky-500/30 disabled:opacity-40"
+                >
+                  Use theme
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {game.phase === 'pickTimer' ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-white">
+                How long per turn?{' '}
+                <span className="font-normal text-muted">({game.theme})</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ABCRELAX_TIMER_OPTIONS_MS.map((ms) => (
+                  <button
+                    key={ms}
+                    type="button"
+                    onClick={() =>
+                      void commitGame(
+                        (prev) =>
+                          pickAbcrelaxTimer(prev, actorUid, ms) ?? prev,
+                      )
+                    }
+                    className="min-w-[5.5rem] rounded-xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-white hover:border-sky-400/50 hover:bg-sky-500/10"
+                  >
+                    {ms / 1000}s
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {inMatch ? (
+            <div
+              className={[
+                'grid gap-3',
+                immersive ? 'min-h-0 flex-1 lg:grid-cols-[1fr_auto]' : 'lg:grid-cols-[1fr_auto]',
+              ].join(' ')}
+            >
+              <div className="flex min-w-0 flex-col gap-3">
+                {game.theme ? (
+                  <div className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-center">
+                    <p className="text-[10px] uppercase tracking-wide text-sky-200/80">
+                      Theme
+                    </p>
+                    <p className="text-base font-semibold text-white">
+                      {game.theme}
+                    </p>
+                  </div>
+                ) : null}
+
+                {game.phase === 'playing' &&
+                secondsLeft != null &&
+                game.deadlineAt != null ? (
+                  <div className="mx-auto w-full max-w-[14rem]">
+                    <div
+                      className={[
+                        'mx-auto flex h-20 w-20 flex-col items-center justify-center rounded-full border-2 tabular-nums',
+                        left != null && left <= 3000
+                          ? 'border-rose-400 bg-rose-500/20 text-rose-100'
+                          : 'border-sky-400/50 bg-sky-500/15 text-sky-50',
+                      ].join(' ')}
+                      aria-live="polite"
+                      aria-label={`${timerLabel} seconds remaining`}
+                    >
+                      <span className="text-3xl font-bold leading-none">
+                        {timerLabel}
+                      </span>
+                      <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide opacity-70">
+                        sec
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                      <div
+                        className={[
+                          'h-full rounded-full transition-[width] duration-75 ease-linear',
+                          left != null && left <= 3000
+                            ? 'bg-rose-400'
+                            : 'bg-sky-400',
+                        ].join(' ')}
+                        style={{
+                          width: `${Math.max(
+                            0,
+                            Math.min(100, (left! / game.turnMs) * 100),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : game.phase === 'pending' ? (
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface/50 text-xl font-bold text-muted">
+                    ·
+                  </div>
+                ) : null}
+
+                {game.phase === 'pending' && game.pending ? (
+                  <div className="rounded-xl border border-border bg-surface/70 px-3 py-3 text-center sm:text-left">
+                    <p className="text-sm text-white">
+                      <span className="font-semibold text-sky-200">
+                        {householdName(game.pending.uid)}
+                      </span>
+                      : “{game.pending.word}” ({game.pending.letter})
+                    </p>
+                    {!myTurnReview ? (
+                      <p className="mt-1 text-[11px] text-muted">
+                        Waiting for {householdName(game.turnUid)}…
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {myTurnAnswer ? (
+                  <label className="text-[11px] text-muted">
+                    Your word
+                    <input
+                      value={wordDraft}
+                      onChange={(e) => onWordChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && canSubmit) submit()
+                      }}
+                      autoFocus
+                      maxLength={64}
+                      placeholder="Type any length…"
+                      className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-3 text-center text-lg font-semibold tracking-wide text-white outline-none focus:border-sky-400/60"
+                    />
+                  </label>
+                ) : null}
+
+                {/* Submit circle above keyboard */}
+                {(myTurnAnswer || game.phase === 'playing') &&
+                game.phase !== 'finished' ? (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      disabled={!canSubmit}
+                      onClick={submit}
+                      title="Submit answer"
+                      className={[
+                        'flex h-14 w-14 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors',
+                        canSubmit
+                          ? 'border-emerald-400/60 bg-emerald-500/25 text-emerald-50 hover:bg-emerald-500/40'
+                          : 'border-border bg-surface/40 text-muted opacity-50',
+                      ].join(' ')}
+                    >
+                      GO
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="space-y-1.5">
+                  {KEY_ROWS.map((row) => (
+                    <div
+                      key={row}
+                      className="flex justify-center gap-1 sm:gap-1.5"
+                    >
+                      {row.split('').map((letter) => {
+                        const used = letterIsUsed(game, letter)
+                        const selected = selectedLetter === letter
+                        const pending = game.pending?.letter === letter
+                        return (
+                          <button
+                            key={letter}
+                            type="button"
+                            disabled={!myTurnAnswer || used}
+                            onClick={() => {
+                              if (!myTurnAnswer || used) return
+                              setSelectedLetter(letter)
+                            }}
+                            className={[
+                              'flex h-9 w-8 items-center justify-center rounded-md border text-sm font-semibold sm:h-10 sm:w-9',
+                              used
+                                ? 'border-transparent bg-zinc-800/90 text-zinc-500'
+                                : pending
+                                  ? 'border-amber-400/50 bg-amber-500/25 text-amber-50'
+                                  : selected
+                                    ? 'border-sky-400/60 bg-sky-500/30 text-white'
+                                    : myTurnAnswer
+                                      ? 'border-border bg-surface text-white hover:border-muted'
+                                      : 'border-border/60 bg-surface/50 text-muted',
+                            ].join(' ')}
+                          >
+                            {letter}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+
+                {game.lastAnswer && game.phase === 'playing' ? (
+                  <p className="text-center text-[11px] text-muted">
+                    Last: {householdName(game.lastAnswer.uid)} —{' '}
+                    {game.lastAnswer.word} ({game.lastAnswer.letter})
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Side challenge / accept */}
+              <div className="flex flex-col gap-2 lg:w-36">
+                {myTurnReview ? (
+                  <>
                     <button
                       type="button"
                       onClick={() =>
                         void commitGame(
                           (prev) =>
-                            continueAbcrelaxRound(prev, actorUid) ?? prev,
+                            acceptAbcrelaxAnswer(prev, actorUid) ?? prev,
                         )
                       }
-                      className="rounded-lg border border-golden/40 bg-golden/15 px-3 py-2 text-sm font-medium text-golden hover:bg-golden/25"
+                      className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-3 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25"
                     >
-                      Next round
+                      Accept
                     </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {game.phase === 'pending' && game.pending ? (
-                <div className="rounded-xl border border-border bg-surface/70 px-3 py-3">
-                  <p className="text-sm text-white">
-                    <span className="font-semibold text-sky-200">
-                      {householdName(game.pending.uid)}
-                    </span>
-                    : “{game.pending.word}” ({game.pending.letter})
-                  </p>
-                  {myTurnReview ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void commitGame(
-                            (prev) =>
-                              acceptAbcrelaxAnswer(prev, actorUid) ?? prev,
-                          )
-                        }
-                        className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void commitGame(
-                            (prev) =>
-                              challengeAbcrelaxAnswer(prev, actorUid) ?? prev,
-                          )
-                        }
-                        className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
-                      >
-                        Challenge
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-[11px] text-muted">
-                      Waiting for {householdName(game.turnUid)}…
-                    </p>
-                  )}
-                </div>
-              ) : null}
-
-              {myTurnAnswer ? (
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="min-w-[12rem] flex-1 text-[11px] text-muted">
-                    Word
-                    <input
-                      value={wordDraft}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setWordDraft(v)
-                        const first = v.trim().charAt(0).toUpperCase()
-                        if (
-                          first &&
-                          ABCRELAX_LETTERS.includes(first) &&
-                          !letterIsUsed(game, first)
-                        ) {
-                          setSelectedLetter(first)
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && canSubmitTyped) submitTyped()
-                      }}
-                      autoFocus
-                      maxLength={64}
-                      placeholder="Type a word…"
-                      className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-white outline-none focus:border-sky-400/60"
-                    />
-                  </label>
-                  <div className="text-[11px] text-muted">
-                    Letter
-                    <div className="mt-1 flex h-[38px] min-w-[2.5rem] items-center justify-center rounded-lg border border-border bg-surface px-3 text-lg font-bold text-white">
-                      {selectedLetter ?? '—'}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void commitGame(
+                          (prev) =>
+                            challengeAbcrelaxAnswer(prev, actorUid) ?? prev,
+                        )
+                      }
+                      className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-3 py-3 text-sm font-medium text-rose-100 hover:bg-rose-500/25"
+                    >
+                      Challenge
+                    </button>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-border/60 bg-surface/40 px-3 py-3 text-center text-[11px] text-muted lg:min-h-[5.5rem]">
+                    Challenge appears here on their lock-in
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canSubmitTyped}
-                    onClick={submitTyped}
-                    className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-50 enabled:hover:bg-sky-500/30 disabled:opacity-40"
-                  >
-                    Lock in
-                  </button>
-                </div>
-              ) : null}
-
-              <div
-                className={[
-                  'overflow-hidden rounded-2xl border border-border bg-[#0b1220]',
-                  wheelHeight,
-                  immersive ? 'min-h-0 flex-1' : '',
-                ].join(' ')}
-              >
-                <Canvas
-                  shadows
-                  camera={{ position: [0, 6.2, 5.2], fov: 42 }}
-                  gl={{ antialias: true }}
-                >
-                  <WheelScene
-                    game={game}
-                    selected={selectedLetter}
-                    canPickLetter={Boolean(myTurnAnswer)}
-                    onPickLetter={pressLetter}
-                    secondsLeft={
-                      game.phase === 'playing' ? secondsLeft : null
-                    }
-                  />
-                </Canvas>
+                )}
               </div>
-
-              {game.lastAnswer && game.phase === 'playing' ? (
-                <p className="text-center text-[11px] text-muted">
-                  Last: {householdName(game.lastAnswer.uid)} —{' '}
-                  {game.lastAnswer.word} ({game.lastAnswer.letter})
-                </p>
-              ) : null}
-
-              <p className="text-center text-[10px] text-muted">
-                Timer {ABCRELAX_TURN_MS / 1000}s ·{' '}
-                {game.usedLetters.length}/{ABCRELAX_LETTERS.length} letters used
-              </p>
-            </>
-          )}
+            </div>
+          ) : null}
         </div>
       )}
     </ArcadeStage>

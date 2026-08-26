@@ -139,7 +139,7 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
     case 'spike':
       return phase === 'match_over'
     case 'abcrelax':
-      return phase === 'gameOver' || status === 'won'
+      return phase === 'finished' || status === 'won' || status === 'draw'
     default:
       return false
   }
@@ -211,13 +211,13 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
       return `${ra}–${rb}`
     }
     case 'abcrelax': {
-      const scores = state.scores
-      if (!scores || typeof scores !== 'object') return undefined
-      const a = JENGA_PLAYER_UIDS[0]!
-      const b = JENGA_PLAYER_UIDS[1]!
-      const sa = Number((scores as Record<string, unknown>)[a] ?? 0)
-      const sb = Number((scores as Record<string, unknown>)[b] ?? 0)
-      return `${sa}–${sb}`
+      const status = typeof state.status === 'string' ? state.status : ''
+      if (status === 'draw') return 'Draw · alphabet'
+      const theme =
+        typeof state.theme === 'string' && state.theme.trim()
+          ? state.theme.trim()
+          : null
+      return theme ?? undefined
     }
     default:
       return undefined
