@@ -1,5 +1,5 @@
 /** Arcade games that fire in-app / browser turn pings. */
-export type TurnNotifyGame = 'scrabble' | 'wordle' | 'chess'
+export type TurnNotifyGame = 'scrabble' | 'wordle' | 'chess' | 'abcrelax'
 
 /** Fields we read off arcade current-game docs for turn pings. */
 export type TurnSnapshot = {
@@ -16,6 +16,7 @@ const GAME_LABEL: Record<TurnNotifyGame, string> = {
   scrabble: 'Scrabble',
   wordle: 'Wordle',
   chess: 'Chess',
+  abcrelax: 'Abcrelax',
 }
 
 /**
@@ -28,12 +29,18 @@ export function arcadeTurnNotifyUid(
 ): string | null {
   if (!after || after.hotseat) return null
   if (after.status !== 'playing') return null
-  if (typeof after.phase === 'string' && after.phase !== 'playing') return null
+  if (typeof after.phase === 'string') {
+    // Abcrelax also pings on pending (accept/challenge).
+    const ok = after.phase === 'playing' || after.phase === 'pending'
+    if (!ok) return null
+  }
   if (after.whiteUid === null) return null
   if (typeof after.turnUid !== 'string' || !after.turnUid) return null
   if (before && before.status === 'playing') {
     const beforePhaseOk =
-      typeof before.phase !== 'string' || before.phase === 'playing'
+      typeof before.phase !== 'string' ||
+      before.phase === 'playing' ||
+      before.phase === 'pending'
     const beforeChessReady = before.whiteUid !== null
     if (
       beforePhaseOk &&

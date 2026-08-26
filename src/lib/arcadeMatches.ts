@@ -88,6 +88,7 @@ const HISTORY_GAME_IDS = new Set<MatchHistoryGameId>([
   'codenames',
   'guesswho',
   'spike',
+  'abcrelax',
 ])
 
 export function isMatchHistoryGameId(
@@ -137,6 +138,8 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
       return phase === 'finished' || status === 'won'
     case 'spike':
       return phase === 'match_over'
+    case 'abcrelax':
+      return phase === 'gameOver' || status === 'won'
     default:
       return false
   }
@@ -206,6 +209,15 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
       const ra = Number((rounds as Record<string, unknown>)[a] ?? 0)
       const rb = Number((rounds as Record<string, unknown>)[b] ?? 0)
       return `${ra}–${rb}`
+    }
+    case 'abcrelax': {
+      const scores = state.scores
+      if (!scores || typeof scores !== 'object') return undefined
+      const a = JENGA_PLAYER_UIDS[0]!
+      const b = JENGA_PLAYER_UIDS[1]!
+      const sa = Number((scores as Record<string, unknown>)[a] ?? 0)
+      const sb = Number((scores as Record<string, unknown>)[b] ?? 0)
+      return `${sa}–${sb}`
     }
     default:
       return undefined
@@ -590,6 +602,8 @@ export function arcadeGameTitle(gameId: MatchHistoryGameId): string {
       return 'Guess Who'
     case 'spike':
       return 'Spike'
+    case 'abcrelax':
+      return 'Abcrelax'
   }
 }
 

@@ -22,6 +22,7 @@ const TURN_NOTIFY_GAMES: readonly TurnNotifyGame[] = [
   'scrabble',
   'wordle',
   'chess',
+  'abcrelax',
 ]
 
 function useTurnPushOptIn() {

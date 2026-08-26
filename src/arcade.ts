@@ -14,6 +14,7 @@ export type ArcadeGameId =
   | 'globle'
   | 'notes'
   | 'spike'
+  | 'abcrelax'
 
 export type ArcadeTile = {
   id: ArcadeGameId
@@ -36,6 +37,7 @@ export const ARCADE_TILES: ArcadeTile[] = [
   { id: 'globle', title: 'Globle', blurb: 'Guess the country', wide: true },
   { id: 'notes', title: 'Notes', blurb: 'Staff flashcards' },
   { id: 'spike', title: 'Spike', blurb: 'Valorant card duel', wide: true },
+  { id: 'abcrelax', title: 'Abcrelax', blurb: 'Letter wheel', wide: true },
 ]
 
 type GameProps = { onClose: () => void }
@@ -73,6 +75,7 @@ export const ARCADE_COMPONENTS: Record<
   globle: lazyNamed(() => import('./components/CatGloble'), 'CatGloble'),
   notes: lazyNamed(() => import('./components/CatNotes'), 'CatNotes'),
   spike: lazyNamed(() => import('./components/CatSpike'), 'CatSpike'),
+  abcrelax: lazyNamed(() => import('./components/CatAbcrelax'), 'CatAbcrelax'),
 }
 
 export function isArcadeWide(id: ArcadeGameId | null): boolean {
