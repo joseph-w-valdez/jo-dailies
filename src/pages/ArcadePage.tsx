@@ -2,9 +2,11 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   ARCADE_COMPONENTS,
+  ARCADE_TILE_ACCENTS,
   ARCADE_TILES,
   isArcadeWide,
   type ArcadeGameId,
+  type ArcadeTile,
 } from '../arcade'
 import { ArcadeHistoryDrawer } from '../components/ArcadeHistoryDrawer'
 import { ArcadeMatchHistory } from '../components/ArcadeMatchHistory'
@@ -14,11 +16,68 @@ import { CursorTrail, useCursorTrailSetting } from '../components/CursorTrail'
 import { ScrollTopButton } from '../components/ScrollTopButton'
 import { TurnPushToggle } from '../components/TurnPushToggle'
 import { useArcadeMatches } from '../hooks/useArcadeMatches'
+import { useArcadeTileImage } from '../hooks/useArcadeTileImage'
 import {
   arcadeGameTitle,
   isMatchHistoryGameId,
   type MatchHistoryGameId,
 } from '../lib/arcadeMatches'
+
+function ArcadeGameTile({
+  tile,
+  onOpen,
+}: {
+  tile: ArcadeTile
+  onOpen: (id: ArcadeGameId) => void
+}) {
+  const accent = ARCADE_TILE_ACCENTS[tile.accent]
+  const image = useArcadeTileImage(tile.id)
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(tile.id)}
+      className={[
+        'relative overflow-hidden rounded-xl border border-border px-3 py-8 text-center transition',
+        image ? 'bg-surface' : accent.wash,
+        accent.hoverBorder,
+      ].join(' ')}
+    >
+      {image ? (
+        <img
+          src={image}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
+      <span
+        aria-hidden
+        className={['absolute inset-y-0 left-0 z-[1] w-1.5', accent.rail].join(
+          ' ',
+        )}
+      />
+      <span className="relative z-[1] mx-auto flex max-w-full flex-col items-center gap-1.5">
+        <span
+          className={[
+            'rounded-md border bg-white/90 px-3 py-1.5 text-base font-semibold text-zinc-900 shadow-sm',
+            accent.chipBorder,
+          ].join(' ')}
+        >
+          {tile.title}
+        </span>
+        <span
+          className={[
+            'rounded-md border bg-white/75 px-2 py-0.5 text-[11px] font-medium text-zinc-700 shadow-sm',
+            accent.chipBorderSoft,
+          ].join(' ')}
+        >
+          {tile.blurb}
+        </span>
+      </span>
+    </button>
+  )
+}
 
 function parseArcadeGame(raw: string | null): ArcadeGameId | null {
   if (!raw) return null
@@ -117,19 +176,11 @@ export function ArcadePage() {
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {ARCADE_TILES.map((tile) => (
-                    <button
+                    <ArcadeGameTile
                       key={tile.id}
-                      type="button"
-                      onClick={() => openGame(tile.id)}
-                      className="rounded-xl border border-border bg-surface/80 px-3 py-8 text-center transition hover:border-muted hover:bg-surface"
-                    >
-                      <span className="block text-base font-semibold text-white">
-                        {tile.title}
-                      </span>
-                      <span className="mt-1 block text-[11px] text-muted">
-                        {tile.blurb}
-                      </span>
-                    </button>
+                      tile={tile}
+                      onOpen={openGame}
+                    />
                   ))}
                 </div>
               </div>

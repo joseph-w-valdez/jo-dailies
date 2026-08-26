@@ -6,13 +6,14 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// Art tools save in place and hold Windows file locks (plus temp files like
-// `speak-1_0`). Watching those kills the dev server with EBUSY, so cat/chess
-// art is left unwatched — drop in new frames and refresh the browser.
-const UNWATCHED_ART = ['/public/cats/', '/public/chess/']
+// Art tools / Explorer save-in-place hold Windows file locks. Watching those
+// kills the dev server with EBUSY, so cats/chess/arcade art is left unwatched —
+// drop in new files and refresh the browser.
+const UNWATCHED_ART = ['/public/cats/', '/public/chess/', '/public/arcade/']
 
 const CATS_ROOT = path.resolve(import.meta.dirname, 'public/cats')
 const CHESS_ROOT = path.resolve(import.meta.dirname, 'public/chess')
+const ARCADE_ROOT = path.resolve(import.meta.dirname, 'public/arcade')
 
 /**
  * Vite indexes `public/` once at startup and depends on the watcher to notice
@@ -88,6 +89,56 @@ firebase.messaging();
   }
 }
 
+function serveArcadeArt(): Plugin {
+  const mime: Record<string, string> = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+  }
+  return {
+    name: 'serve-arcade-art',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0]
+        if (!url?.startsWith('/arcade/')) return next()
+
+        const ext = path.extname(url).toLowerCase()
+        const type = mime[ext]
+        if (!type) return next()
+
+        const file = path.resolve(ARCADE_ROOT, `.${url.slice('/arcade'.length)}`)
+        if (!isInsideRoot(ARCADE_ROOT, file)) return next()
+
+        void stat(file).then(
+          (info) => {
+            if (!info.isFile()) {
+              next()
+              return
+            }
+            const etag = `W/"${info.size}-${info.mtimeMs}"`
+            res.setHeader('ETag', etag)
+            res.setHeader('Cache-Control', 'no-cache')
+            if (req.headers['if-none-match'] === etag) {
+              res.statusCode = 304
+              res.end()
+              return
+            }
+            res.setHeader('Content-Type', type)
+            res.setHeader('Content-Length', info.size)
+            createReadStream(file).pipe(res)
+          },
+          () => {
+            res.statusCode = 404
+            res.end()
+          },
+        )
+      })
+    },
+  }
+}
+
 function servePngTree(urlPrefix: '/cats' | '/chess', diskRoot: string): Plugin {
   return {
     name: `serve-png-${urlPrefix.slice(1)}`,
@@ -153,6 +204,7 @@ export default defineConfig({
     tailwindcss(),
     servePngTree('/cats', CATS_ROOT),
     servePngTree('/chess', CHESS_ROOT),
+    serveArcadeArt(),
     firebaseMessagingSwPlugin(),
   ],
   server: {
