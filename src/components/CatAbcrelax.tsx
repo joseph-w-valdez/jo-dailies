@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAbcrelaxTurnClock } from '../hooks/useAbcrelaxTurnClock'
 import { useSharedAbcrelax } from '../hooks/useSharedAbcrelax'
 import {
   ABCRELAX_LETTERS,
@@ -6,7 +7,6 @@ import {
   ABCRELAX_TIMER_OPTIONS_MS,
   challengeAbcrelaxLast,
   letterIsUsed,
-  msLeft,
   pickAbcrelaxTheme,
   pickAbcrelaxThemeRandom,
   pickAbcrelaxTimer,
@@ -14,7 +14,6 @@ import {
   selectAbcrelaxFirst,
   submitAbcrelaxAnswer,
   surrenderAbcrelax,
-  turnDeadlineAt,
   wordMatchesLetter,
 } from '../lib/abcrelax'
 import { householdName } from '../lib/household'
@@ -32,38 +31,23 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null)
   const [wordDraft, setWordDraft] = useState('')
   const [customTheme, setCustomTheme] = useState('')
-  const [now, setNow] = useState(() => Date.now())
+  const { now, msLeft: left, deadline: turnDeadline } =
+    useAbcrelaxTurnClock(game)
 
-  // Keep `now` fresh while a turn clock is running.
+  // Only the player on the clock resolves timeouts (uses their local anchor).
   useEffect(() => {
-    if (game.phase !== 'playing' || turnDeadlineAt(game) == null) return
-    setNow(Date.now())
-    let raf = 0
-    const tick = () => {
-      setNow(Date.now())
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [game.phase, game.turnStartedAt, game.deadlineAt, game.turnMs])
-
-  // Auto-resolve expired clocks. Pass uid so a skewed opponent clock
-  // cannot end your turn early (needs grace).
-  useEffect(() => {
-    if (game.phase !== 'playing') return
-    const deadline = turnDeadlineAt(game)
-    if (deadline == null || now < deadline) return
+    if (game.phase !== 'playing' || game.turnUid !== uid) return
+    if (turnDeadline == null || now < turnDeadline) return
     void commitGame(
-      (prev) => resolveAbcrelaxTimeout(prev, actorUid) ?? prev,
+      (prev) =>
+        resolveAbcrelaxTimeout(prev, uid, turnDeadline) ?? prev,
     )
   }, [
     game.phase,
-    game.turnStartedAt,
-    game.deadlineAt,
-    game.turnMs,
     game.turnUid,
+    turnDeadline,
     now,
-    actorUid,
+    uid,
     commitGame,
   ])
 
@@ -72,7 +56,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
     setWordDraft('')
   }, [game.roundId, game.phase, game.turnUid, game.lastAnswer?.letter])
 
-  const left = msLeft(game, now)
   const secondsLeft = left == null ? null : left / 1000
   const timerLabel =
     secondsLeft == null
@@ -123,14 +106,17 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
     selectedLetter &&
     wordDraft.trim().length > 0 &&
     wordMatchesLetter(wordDraft, selectedLetter) &&
-    !letterIsUsed(game, selectedLetter)
+    !letterIsUsed(game, selectedLetter) &&
+    (left == null || left > 0)
 
   const submit = () => {
     if (!canSubmit || !selectedLetter) return
     void commitGame(
       (prev) =>
-        submitAbcrelaxAnswer(prev, actorUid, selectedLetter, wordDraft) ??
-        prev,
+        submitAbcrelaxAnswer(prev, actorUid, selectedLetter, wordDraft, {
+          now,
+          localDeadlineAt: turnDeadline,
+        }) ?? prev,
     )
   }
 
@@ -175,7 +161,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium text-white/90">
               {game.theme
                 ? `${game.theme} · ${(game.turnMs / 1000).toFixed(0)}s turns`
@@ -230,8 +216,14 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           ) : null}
 
           {game.phase === 'pickTheme' ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <div
+              className={
+                immersive
+                  ? 'flex min-h-0 flex-1 flex-col gap-4'
+                  : 'space-y-4'
+              }
+            >
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
                 <p className="text-lg font-semibold text-white">Choose a theme</p>
                 <button
                   type="button"
@@ -246,7 +238,15 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                   Random theme
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              <div
+                className={[
+                  'jo-scroll grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4',
+                  'overflow-y-auto overscroll-contain pr-1',
+                  immersive
+                    ? 'min-h-0 flex-1'
+                    : 'max-h-[min(55vh,26rem)]',
+                ].join(' ')}
+              >
                 {ABCRELAX_THEMES.map((theme) => (
                   <button
                     key={theme}
@@ -257,13 +257,13 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                           pickAbcrelaxTheme(prev, actorUid, theme) ?? prev,
                       )
                     }
-                    className="rounded-2xl border border-border bg-surface px-4 py-3.5 text-left text-base text-white hover:border-sky-400/50 hover:bg-sky-500/10"
+                    className="rounded-xl border border-border bg-surface px-3 py-2.5 text-left text-sm text-white hover:border-sky-400/50 hover:bg-sky-500/10 sm:px-3.5 sm:py-3 sm:text-base"
                   >
                     {theme}
                   </button>
                 ))}
               </div>
-              <div className="flex flex-wrap items-end gap-3">
+              <div className="flex shrink-0 flex-wrap items-end gap-3">
                 <label className="min-w-[14rem] flex-1 text-sm text-muted">
                   Or type your own
                   <input
@@ -341,7 +341,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
                 {game.phase === 'playing' &&
                 secondsLeft != null &&
-                turnDeadlineAt(game) != null ? (
+                turnDeadline != null ? (
                   <div className="mx-auto w-full max-w-[18rem]">
                     <div
                       className={[

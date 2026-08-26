@@ -246,9 +246,11 @@ export interface AbcrelaxState {
   /** Per-turn budget once the round starts. */
   turnMs: number
   usedLetters: string[]
-  /** Wall-clock start of the current turn (writer's clock). */
+  /** Bumps each time a turn clock starts — clients anchor locally on change. */
+  turnEpoch: number
+  /** Legacy writer clock — ignored for display; kept for old Firestore docs. */
   turnStartedAt: number | null
-  /** Denormalized: turnStartedAt + turnMs (legacy + sync convenience). */
+  /** Legacy denormalized deadline — ignored for display. */
   deadlineAt: number | null
   lastAnswer: AbcrelaxAnswer | null
   winnerUid: string | null
@@ -345,23 +347,32 @@ export function turnDeadlineAt(state: AbcrelaxState): number | null {
 }
 
 function beginTurnClock(
-  turnMs: number,
+  state: AbcrelaxState,
   turnUid: string,
-): Pick<AbcrelaxState, 'turnUid' | 'phase' | 'turnStartedAt' | 'deadlineAt'> {
-  const started = Date.now()
+): Pick<
+  AbcrelaxState,
+  'turnUid' | 'phase' | 'turnEpoch' | 'turnStartedAt' | 'deadlineAt'
+> {
   return {
     turnUid,
     phase: 'playing',
-    turnStartedAt: started,
-    deadlineAt: started + turnMs,
+    turnEpoch: state.turnEpoch + 1,
+    turnStartedAt: null,
+    deadlineAt: null,
   }
+}
+
+/** Stable id for the active turn clock — each client starts a local timer on change. */
+export function abcrelaxTurnClockKey(state: AbcrelaxState): string | null {
+  if (state.phase !== 'playing' || state.turnEpoch <= 0) return null
+  return `${state.roundId}:${state.turnEpoch}:${state.turnUid}`
 }
 
 function clearTurnClock(): Pick<
   AbcrelaxState,
-  'turnStartedAt' | 'deadlineAt'
+  'turnEpoch' | 'turnStartedAt' | 'deadlineAt'
 > {
-  return { turnStartedAt: null, deadlineAt: null }
+  return { turnEpoch: 0, turnStartedAt: null, deadlineAt: null }
 }
 
 function finishWin(state: AbcrelaxState, winnerUid: string): AbcrelaxState {
@@ -400,6 +411,7 @@ export function createInitialAbcrelax(
     theme: null,
     turnMs: 10_000,
     usedLetters: [],
+    turnEpoch: 0,
     turnStartedAt: null,
     deadlineAt: null,
     lastAnswer: null,
@@ -445,6 +457,14 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
           : null,
     turnMs: parseTurnMs(s.turnMs),
     usedLetters: normalizeUsedLetters(s.usedLetters),
+    turnEpoch: (() => {
+      const raw = Math.max(0, Math.floor(clampNum(s.turnEpoch, 0)))
+      if (raw > 0) return raw
+      const legacyStarted =
+        typeof s.turnStartedAt === 'number' && Number.isFinite(s.turnStartedAt)
+      if (phase === 'playing' && legacyStarted) return 1
+      return 0
+    })(),
     turnStartedAt:
       typeof s.turnStartedAt === 'number' && Number.isFinite(s.turnStartedAt)
         ? s.turnStartedAt
@@ -527,7 +547,7 @@ export function pickAbcrelaxTimer(
     turnMs,
     usedLetters: [],
     lastAnswer: null,
-    ...beginTurnClock(turnMs, starter),
+    ...beginTurnClock(state, starter),
   })
 }
 
@@ -544,12 +564,15 @@ export function submitAbcrelaxAnswer(
   uid: string,
   letterRaw: string,
   wordRaw: string,
+  opts?: { now?: number; localDeadlineAt?: number | null },
 ): AbcrelaxState | null {
   if (state.firstUid == null || !state.theme) return null
   if (state.status !== 'playing' || state.phase !== 'playing') return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
-  const deadline = turnDeadlineAt(state)
-  if (deadline != null && Date.now() > deadline) return null
+  const now = opts?.now ?? Date.now()
+  if (opts?.localDeadlineAt != null && now > opts.localDeadlineAt) return null
+  const legacyDeadline = turnDeadlineAt(state)
+  if (legacyDeadline != null && now > legacyDeadline) return null
 
   const letter = normalizeLetter(letterRaw)
   const word = normalizeWord(wordRaw)
@@ -573,7 +596,7 @@ export function submitAbcrelaxAnswer(
   return bump(state, {
     usedLetters,
     lastAnswer: answer,
-    ...beginTurnClock(state.turnMs, next),
+    ...beginTurnClock(state, next),
   })
 }
 
@@ -596,20 +619,25 @@ const OPPONENT_TIMEOUT_GRACE_MS = 2_500
 
 /**
  * Resolve an expired turn clock.
- * Prefer the current player’s client; opponent only after a short grace
- * so a skewed clock cannot end a 20s turn in a few seconds.
+ * Pass the acting client's local deadline (from turnEpoch anchor).
+ * Legacy docs without turnEpoch still use shared turnDeadlineAt + opponent grace.
  */
 export function resolveAbcrelaxTimeout(
   state: AbcrelaxState,
   uid?: string,
+  localDeadlineAt?: number | null,
 ): AbcrelaxState | null {
   if (state.status !== 'playing' || state.phase !== 'playing') return null
-  const deadline = turnDeadlineAt(state)
-  if (deadline == null) return null
   const now = Date.now()
-  if (now < deadline) return null
-  if (uid && isRoomUid(uid) && uid !== state.turnUid && !state.hotseat) {
-    if (now < deadline + OPPONENT_TIMEOUT_GRACE_MS) return null
+  if (localDeadlineAt != null) {
+    if (now < localDeadlineAt) return null
+  } else {
+    const deadline = turnDeadlineAt(state)
+    if (deadline == null) return null
+    if (now < deadline) return null
+    if (uid && isRoomUid(uid) && uid !== state.turnUid && !state.hotseat) {
+      if (now < deadline + OPPONENT_TIMEOUT_GRACE_MS) return null
+    }
   }
   const loser = state.turnUid
   return finishWin(bump(state, clearTurnClock()), nextTurnUid(loser))

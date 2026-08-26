@@ -4,7 +4,6 @@ import {
   ABCRELAX_THEMES,
   challengeAbcrelaxLast,
   createInitialAbcrelax,
-  msLeft,
   normalizeAbcrelax,
   pickAbcrelaxTheme,
   pickAbcrelaxThemeRandom,
@@ -58,8 +57,9 @@ describe('abcrelax', () => {
     expect(s1.phase).toBe('playing')
     expect(s1.usedLetters).toContain('A')
     expect(s1.turnUid).toBe(joha)
+    expect(s1.turnEpoch).toBe(2)
     expect(s1.lastAnswer).toEqual({ uid: jo, letter: 'A', word: 'Ant' })
-    expect(s1.deadlineAt).toBeGreaterThan(Date.now())
+    expect(s1.deadlineAt).toBeNull()
   })
 
   it('optional challenge of last answer wins for challenger', () => {
@@ -70,25 +70,33 @@ describe('abcrelax', () => {
     expect(s2.winnerUid).toBe(joha)
   })
 
-  it('pickTimer starts a full turnMs clock', () => {
+  it('pickTimer bumps turnEpoch for local client clocks', () => {
+    vi.useFakeTimers()
+    let s = selectAbcrelaxFirst(createInitialAbcrelax(jo), jo)!
+    s = pickAbcrelaxTheme(s, jo, 'Animals')!
+    s = pickAbcrelaxTimer(s, jo, 20_000)!
+    expect(s.turnMs).toBe(20_000)
+    expect(s.turnEpoch).toBe(1)
+    expect(s.turnStartedAt).toBeNull()
+    expect(s.deadlineAt).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('resolveAbcrelaxTimeout uses local deadline when provided', () => {
     vi.useFakeTimers()
     const now = 1_700_000_000_000
     vi.setSystemTime(now)
     let s = selectAbcrelaxFirst(createInitialAbcrelax(jo), jo)!
     s = pickAbcrelaxTheme(s, jo, 'Animals')!
     s = pickAbcrelaxTimer(s, jo, 20_000)!
-    expect(s.turnMs).toBe(20_000)
-    expect(s.turnStartedAt).toBe(now)
-    expect(s.deadlineAt).toBe(now + 20_000)
-    expect(msLeft(s, now)).toBe(20_000)
-    expect(msLeft(s, now + 5_000)).toBe(15_000)
-    expect(resolveAbcrelaxTimeout(s, joha)).toBeNull()
-    vi.setSystemTime(now + 20_000)
-    expect(resolveAbcrelaxTimeout(s, jo)?.status).toBe('won')
+    const deadline = now + 20_000
+    expect(resolveAbcrelaxTimeout(s, jo, deadline)).toBeNull()
+    vi.setSystemTime(deadline)
+    expect(resolveAbcrelaxTimeout(s, jo, deadline)?.status).toBe('won')
     vi.useRealTimers()
   })
 
-  it('opponent cannot resolve timeout before grace', () => {
+  it('legacy shared deadline still supports opponent grace', () => {
     vi.useFakeTimers()
     const now = 1_700_000_000_000
     vi.setSystemTime(now)
@@ -97,7 +105,12 @@ describe('abcrelax', () => {
       jo,
       'Animals',
     )!
-    s = pickAbcrelaxTimer(s, jo, 20_000)!
+    s = {
+      ...pickAbcrelaxTimer(s, jo, 20_000)!,
+      turnEpoch: 0,
+      turnStartedAt: now,
+      deadlineAt: now + 20_000,
+    }
     vi.setSystemTime(now + 20_000)
     expect(resolveAbcrelaxTimeout(s, joha)).toBeNull()
     vi.setSystemTime(now + 20_000 + 2_500)
