@@ -5,14 +5,12 @@ import {
   ABCRELAX_TURN_MS,
   acceptAbcrelaxAnswer,
   challengeAbcrelaxAnswer,
-  challengeAbcrelaxLast,
   continueAbcrelaxRound,
   createInitialAbcrelax,
   normalizeAbcrelax,
   resolveAbcrelaxTimeout,
   selectAbcrelaxFirst,
   submitAbcrelaxAnswer,
-  submitAbcrelaxLetter,
   surrenderAbcrelax,
   wordMatchesLetter,
   type AbcrelaxState,
@@ -42,12 +40,13 @@ describe('abcrelax', () => {
     expect(s.deadlineAt).toBeGreaterThan(Date.now())
   })
 
-  it('submit → pending for opponent; accept advances turn', () => {
+  it('submit → pending for opponent; accept locks letter', () => {
     const s0 = primed()
     const s1 = submitAbcrelaxAnswer(s0, jo, 'A', 'Ant')!
     expect(s1.phase).toBe('pending')
     expect(s1.turnUid).toBe(joha)
     expect(s1.pending).toEqual({ uid: jo, letter: 'A', word: 'Ant' })
+    expect(s1.usedLetters).not.toContain('A')
 
     const s2 = acceptAbcrelaxAnswer(s1, joha)!
     expect(s2.phase).toBe('playing')
@@ -96,6 +95,7 @@ describe('abcrelax', () => {
     expect(s1.deadlineAt).toBeGreaterThan(Date.now())
     expect(s1.alive[jo]).toBe(true)
     expect(s1.alive[joha]).toBe(true)
+    expect(s1.usedLetters).toEqual([])
   })
 
   it('reaches gameOver at cards-to-win', () => {
@@ -123,26 +123,5 @@ describe('abcrelax', () => {
     expect(n.usedLetters).toEqual(['B'])
     expect(ABCRELAX_LETTERS).toHaveLength(26)
     expect(ABCRELAX_TURN_MS).toBe(10_000)
-  })
-
-  it('verbal mode locks a letter immediately', () => {
-    const s0 = primed({ answerMode: 'verbal' })
-    const s1 = submitAbcrelaxLetter(s0, jo, 'C')!
-    expect(s1.phase).toBe('playing')
-    expect(s1.usedLetters).toContain('C')
-    expect(s1.turnUid).toBe(joha)
-    expect(s1.pending).toBeNull()
-  })
-
-  it('verbal challenge last eliminates previous player', () => {
-    const s0 = primed({
-      answerMode: 'verbal',
-      turnUid: joha,
-      lastAnswer: { uid: jo, letter: 'A', word: '' },
-      usedLetters: ['A'],
-    })
-    const s1 = challengeAbcrelaxLast(s0, joha)!
-    expect(s1.phase).toBe('roundOver')
-    expect(s1.roundWinnerUid).toBe(joha)
   })
 })

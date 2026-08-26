@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Text } from '@react-three/drei'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useSharedAbcrelax } from '../hooks/useSharedAbcrelax'
 import {
@@ -9,15 +9,12 @@ import {
   ABCRELAX_TURN_MS,
   acceptAbcrelaxAnswer,
   challengeAbcrelaxAnswer,
-  challengeAbcrelaxLast,
   continueAbcrelaxRound,
   letterIsUsed,
   msLeft,
   resolveAbcrelaxTimeout,
   selectAbcrelaxFirst,
-  setAbcrelaxAnswerMode,
   submitAbcrelaxAnswer,
-  submitAbcrelaxLetter,
   surrenderAbcrelax,
   wordMatchesLetter,
   type AbcrelaxState,
@@ -38,6 +35,7 @@ function LetterKey({
   index,
   used,
   selected,
+  pending,
   interactive,
   onPick,
 }: {
@@ -45,67 +43,73 @@ function LetterKey({
   index: number
   used: boolean
   selected: boolean
+  pending: boolean
   interactive: boolean
   onPick: (letter: string) => void
 }) {
-  const mesh = useRef<THREE.Mesh>(null)
+  const group = useRef<THREE.Group>(null)
+  const mat = useRef<THREE.MeshStandardMaterial>(null)
   const angle = (index / ABCRELAX_LETTERS.length) * Math.PI * 2 - Math.PI / 2
   const x = Math.cos(angle) * WHEEL_R
   const z = Math.sin(angle) * WHEEL_R
-  const targetY = used ? -0.18 : selected ? 0.12 : 0.02
+  // Used keys sink into the wheel; pending is half-pressed amber.
+  const targetY = used ? -0.28 : pending ? -0.08 : selected ? 0.14 : 0.06
+  const targetColor = useMemo(() => {
+    if (used) return new THREE.Color('#1e293b')
+    if (pending || selected) return new THREE.Color('#fbbf24')
+    if (interactive) return new THREE.Color('#f1f5f9')
+    return new THREE.Color('#94a3b8')
+  }, [used, pending, selected, interactive])
 
   useFrame((_, dt) => {
-    const m = mesh.current
-    if (!m) return
-    m.position.y = THREE.MathUtils.damp(m.position.y, targetY, 12, dt)
+    const g = group.current
+    if (g) g.position.y = THREE.MathUtils.damp(g.position.y, targetY, 14, dt)
+    const m = mat.current
+    if (m) m.color.lerp(targetColor, 1 - Math.exp(-12 * dt))
   })
-
-  const color = used
-    ? '#334155'
-    : selected
-      ? '#fbbf24'
-      : interactive
-        ? '#e2e8f0'
-        : '#94a3b8'
 
   return (
     <group position={[x, 0, z]} rotation={[0, -angle + Math.PI / 2, 0]}>
-      <mesh
-        ref={mesh}
-        castShadow
-        position={[0, 0.02, 0]}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (!interactive || used) return
-          onPick(letter)
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation()
-          if (interactive && !used) {
-            document.body.style.cursor = 'pointer'
-          }
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = 'auto'
-        }}
-      >
-        <cylinderGeometry args={[KEY_R, KEY_R * 0.92, 0.22, 20]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.45}
-          metalness={used ? 0.05 : 0.2}
-        />
-      </mesh>
-      <Text
-        position={[0, used ? -0.02 : 0.16, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.28}
-        color={used ? '#64748b' : selected ? '#1c1917' : '#0f172a'}
-        anchorX="center"
-        anchorY="middle"
-      >
-        {letter}
-      </Text>
+      <group ref={group}>
+        <mesh
+          castShadow
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!interactive || used) return
+            onPick(letter)
+          }}
+          onPointerOver={(e) => {
+            e.stopPropagation()
+            if (interactive && !used) {
+              document.body.style.cursor = 'pointer'
+            }
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'auto'
+          }}
+        >
+          <cylinderGeometry args={[KEY_R, KEY_R * 0.92, 0.22, 20]} />
+          <meshStandardMaterial
+            ref={mat}
+            color={used ? '#1e293b' : '#f1f5f9'}
+            roughness={used ? 0.9 : 0.4}
+            metalness={used ? 0.05 : 0.25}
+            emissive={used ? '#020617' : '#000000'}
+            emissiveIntensity={used ? 0.35 : 0}
+          />
+        </mesh>
+        <Text
+          position={[0, 0.13, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.28}
+          color={used ? '#475569' : pending || selected ? '#1c1917' : '#0f172a'}
+          fillOpacity={used ? 0.45 : 1}
+          anchorX="center"
+          anchorY="middle"
+        >
+          {letter}
+        </Text>
+      </group>
     </group>
   )
 }
@@ -178,13 +182,9 @@ function WheelScene({
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.12, 0]} receiveShadow>
+      <mesh position={[0, -0.12, 0]} receiveShadow>
         <cylinderGeometry args={[3.35, 3.35, 0.18, 64]} />
         <meshStandardMaterial color="#1e293b" roughness={0.7} metalness={0.15} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <ringGeometry args={[1.15, 3.15, 64]} />
-        <meshStandardMaterial color="#334155" roughness={0.85} metalness={0.1} />
       </mesh>
       <CenterTimer seconds={secondsLeft} urgent={urgent} />
       {ABCRELAX_LETTERS.map((letter, i) => (
@@ -194,6 +194,7 @@ function WheelScene({
           index={i}
           used={letterIsUsed(game, letter)}
           selected={selected === letter}
+          pending={game.pending?.letter === letter}
           interactive={canPickLetter}
           onPick={onPickLetter}
         />
@@ -223,7 +224,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null)
   const [wordDraft, setWordDraft] = useState('')
   const [now, setNow] = useState(() => Date.now())
-  const verbal = game.answerMode === 'verbal'
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 100)
@@ -248,11 +248,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
     canAct && game.phase === 'playing' && game.turnUid === actorUid
   const myTurnReview =
     canAct && game.phase === 'pending' && game.turnUid === actorUid
-  const canChallengeLast =
-    verbal &&
-    myTurnAnswer &&
-    game.lastAnswer != null &&
-    game.lastAnswer.uid !== actorUid
 
   const statusLabel = (() => {
     if (!ready) return 'Syncing…'
@@ -278,9 +273,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
         game.answersNeeded > 1
           ? ` · ${game.answersThisTurn.length + 1}/${game.answersNeeded}`
           : ''
-      return verbal
-        ? `Your turn — say it on Discord, press a letter${need}`
-        : `Your turn — type a word + letter${need}`
+      return `Your turn — type a word + letter${need}`
     }
     return `Waiting for ${householdName(game.turnUid)}…`
   })()
@@ -293,7 +286,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
         : 'ready'
 
   const submitTyped = () => {
-    if (!myTurnAnswer || verbal || !selectedLetter) return
+    if (!myTurnAnswer || !selectedLetter) return
     void commitGame(
       (prev) =>
         submitAbcrelaxAnswer(prev, actorUid, selectedLetter, wordDraft) ??
@@ -303,19 +296,12 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
   const canSubmitTyped =
     myTurnAnswer &&
-    !verbal &&
     selectedLetter &&
     wordDraft.trim().length > 0 &&
     wordMatchesLetter(wordDraft, selectedLetter)
 
   const pressLetter = (letter: string) => {
     if (!myTurnAnswer) return
-    if (verbal) {
-      void commitGame(
-        (prev) => submitAbcrelaxLetter(prev, actorUid, letter) ?? prev,
-      )
-      return
-    }
     setSelectedLetter(letter)
     if (!wordDraft.trim() || !wordMatchesLetter(wordDraft, letter)) {
       setWordDraft(letter)
@@ -323,7 +309,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
   }
 
   const wheelHeight = 'min-h-[22rem] h-[min(52vh,28rem)]'
-  const modeLocked = game.phase === 'pending'
 
   return (
     <ArcadeStage
@@ -340,11 +325,10 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
           {immersive ? null : (
             <div className="rounded-xl border border-border bg-surface/60 px-3.5 py-3">
               <p className="text-[11px] leading-relaxed text-muted">
-                Announce a category out loud. <strong className="text-white/80">Type</strong>{' '}
-                mode: enter the word for Accept/Challenge.{' '}
-                <strong className="text-white/80">Verbal</strong> mode: say it on
-                Discord and just press the letter — the app never hears you.
-                First to {ABCRELAX_CARDS_TO_WIN} cards wins.
+                Announce a category out loud. Type a word, press its letter,
+                Lock in — opponent Accepts or Challenges. Used letters sink and
+                stay dead for the round. First to {ABCRELAX_CARDS_TO_WIN} cards
+                wins.
               </p>
             </div>
           )}
@@ -375,38 +359,6 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 }
               />
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {(
-              [
-                ['type', 'Type answers'],
-                ['verbal', 'Verbal (Discord)'],
-              ] as const
-            ).map(([mode, label]) => {
-              const active = game.answerMode === mode
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  disabled={modeLocked || !uid}
-                  onClick={() =>
-                    void commitGame(
-                      (prev) =>
-                        setAbcrelaxAnswerMode(prev, actorUid, mode) ?? prev,
-                    )
-                  }
-                  className={[
-                    'rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-40',
-                    active
-                      ? 'border-sky-400/50 bg-sky-500/20 text-sky-50'
-                      : 'border-border bg-surface text-muted hover:border-muted hover:text-white',
-                  ].join(' ')}
-                >
-                  {label}
-                </button>
-              )
-            })}
           </div>
 
           <NewGameConfirm
@@ -499,24 +451,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 </div>
               ) : null}
 
-              {canChallengeLast ? (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void commitGame(
-                        (prev) =>
-                          challengeAbcrelaxLast(prev, actorUid) ?? prev,
-                      )
-                    }
-                    className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-100 hover:bg-rose-500/25"
-                  >
-                    Challenge last ({game.lastAnswer?.letter})
-                  </button>
-                </div>
-              ) : null}
-
-              {myTurnAnswer && !verbal ? (
+              {myTurnAnswer ? (
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="min-w-[12rem] flex-1 text-[11px] text-muted">
                     Word
@@ -574,7 +509,7 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
                 >
                   <WheelScene
                     game={game}
-                    selected={verbal ? null : selectedLetter}
+                    selected={selectedLetter}
                     canPickLetter={Boolean(myTurnAnswer)}
                     onPickLetter={pressLetter}
                     secondsLeft={
@@ -586,10 +521,8 @@ export function CatAbcrelax({ onClose }: { onClose: () => void }) {
 
               {game.lastAnswer && game.phase === 'playing' ? (
                 <p className="text-center text-[11px] text-muted">
-                  Last: {householdName(game.lastAnswer.uid)}
-                  {game.lastAnswer.word
-                    ? ` — ${game.lastAnswer.word} (${game.lastAnswer.letter})`
-                    : ` — ${game.lastAnswer.letter}`}
+                  Last: {householdName(game.lastAnswer.uid)} —{' '}
+                  {game.lastAnswer.word} ({game.lastAnswer.letter})
                 </p>
               ) : null}
 

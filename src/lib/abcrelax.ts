@@ -21,9 +21,6 @@ export type AbcrelaxPhase =
 
 export type AbcrelaxStatus = 'playing' | 'won'
 
-/** How answers are entered — shared so both seats match. */
-export type AbcrelaxAnswerMode = 'type' | 'verbal'
-
 export type AbcrelaxPending = {
   uid: string
   letter: string
@@ -43,8 +40,6 @@ export interface AbcrelaxState {
   hotseat: boolean
   /** null until who-goes-first is picked. */
   firstUid: string | null
-  /** `type` = typed word + accept/challenge; `verbal` = Discord + letter only. */
-  answerMode: AbcrelaxAnswerMode
   status: AbcrelaxStatus
   phase: AbcrelaxPhase
   /** Who must act (answer, or accept/challenge while pending). */
@@ -155,10 +150,6 @@ function normalizeUsedLetters(raw: unknown): string[] {
   return out
 }
 
-function parseAnswerMode(raw: unknown): AbcrelaxAnswerMode {
-  return raw === 'verbal' ? 'verbal' : 'type'
-}
-
 function parsePhase(raw: unknown): AbcrelaxPhase {
   // Legacy docs used pickCategory — treat as waiting to start a round.
   if (raw === 'pickCategory') return 'roundOver'
@@ -217,7 +208,6 @@ export function createInitialAbcrelax(
     roundId: newRoundId(),
     hotseat: Boolean(opts?.hotseat),
     firstUid: null,
-    answerMode: 'type',
     status: 'playing',
     phase: 'playing',
     turnUid: starter,
@@ -266,7 +256,6 @@ export function normalizeAbcrelax(raw: unknown, uid: string): AbcrelaxState {
         : fallback.roundId,
     hotseat: Boolean(s.hotseat),
     firstUid,
-    answerMode: parseAnswerMode(s.answerMode),
     status,
     phase,
     turnUid,
@@ -308,23 +297,10 @@ export function selectAbcrelaxFirst(
       firstUid: uid,
       scores: emptyScores(),
       winnerUid: null,
-      answerMode: state.answerMode,
     }),
     uid,
     1,
   )
-}
-
-export function setAbcrelaxAnswerMode(
-  state: AbcrelaxState,
-  uid: string,
-  mode: AbcrelaxAnswerMode,
-): AbcrelaxState | null {
-  if (!isRoomUid(uid)) return null
-  if (state.answerMode === mode) return null
-  // Don't flip mid-pending typed review.
-  if (state.phase === 'pending') return null
-  return bump(state, { answerMode: mode })
 }
 
 function awardRound(
@@ -435,7 +411,6 @@ export function submitAbcrelaxAnswer(
   letterRaw: string,
   wordRaw: string,
 ): AbcrelaxState | null {
-  if (state.answerMode !== 'type') return null
   if (state.firstUid == null) return null
   if (state.status !== 'playing' || state.phase !== 'playing') return null
   if (!isRoomUid(uid) || state.turnUid !== uid) return null
@@ -457,52 +432,6 @@ export function submitAbcrelaxAnswer(
     turnUid: responder,
     deadlineAt: null,
   })
-}
-
-/**
- * Verbal / Discord mode — shout on voice chat, then press a letter.
- * Locks immediately (no typed word, no accept step).
- */
-export function submitAbcrelaxLetter(
-  state: AbcrelaxState,
-  uid: string,
-  letterRaw: string,
-): AbcrelaxState | null {
-  if (state.answerMode !== 'verbal') return null
-  if (state.firstUid == null) return null
-  if (state.status !== 'playing' || state.phase !== 'playing') return null
-  if (!isRoomUid(uid) || state.turnUid !== uid) return null
-  if (!state.alive[uid]) return null
-  if (state.deadlineAt != null && Date.now() > state.deadlineAt) return null
-
-  const letter = normalizeLetter(letterRaw)
-  if (!letter) return null
-  if (state.usedLetters.includes(letter)) return null
-  if (state.answersThisTurn.some((a) => a.letter === letter)) return null
-
-  return afterAcceptedAnswer(state, { uid, letter, word: '' })
-}
-
-/**
- * Verbal mode: challenge the previous player's letter while it's your turn.
- */
-export function challengeAbcrelaxLast(
-  state: AbcrelaxState,
-  uid: string,
-): AbcrelaxState | null {
-  if (state.answerMode !== 'verbal') return null
-  if (state.phase !== 'playing' || !state.lastAnswer) return null
-  if (!isRoomUid(uid) || state.turnUid !== uid) return null
-  if (state.lastAnswer.uid === uid) return null
-  const loser = state.lastAnswer.uid
-  return eliminate(
-    bump(state, {
-      pending: null,
-      deadlineAt: null,
-      answersThisTurn: [],
-    }),
-    loser,
-  )
 }
 
 export function acceptAbcrelaxAnswer(
