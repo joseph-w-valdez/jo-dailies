@@ -40,6 +40,7 @@ import { RecipeViewerPage } from "./pages/RecipeViewerPage";
 import { ShoppingPage } from "./pages/ShoppingPage";
 import { WheelPage } from "./pages/WheelPage";
 import { TrackerPage } from "./pages/TrackerPage";
+import { TokonPage } from "./pages/TokonPage";
 
 function HomePage() {
   const {
@@ -307,6 +308,7 @@ function AppContent() {
           <Route path="/shopping" element={<ShoppingPage />} />
           <Route path="/wheel" element={<WheelPage />} />
           <Route path="/tracker" element={<TrackerPage />} />
+          <Route path="/tokon" element={<TokonPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

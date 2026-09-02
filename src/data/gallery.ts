@@ -86,6 +86,20 @@ export const galleryEntries: GalleryEntry[] = [
     date: "2026-08-12",
   },
   {
+    id: "croqueta",
+    title: "Croqueta",
+    type: "image",
+    src: "/gallery/croqueta.jpg",
+    date: "2026-09-29",
+  },
+  {
+    id: "croqueta-timelapse",
+    title: "Croqueta Timelapse",
+    type: "video",
+    src: "/gallery/croqueta.mp4",
+    date: "2026-09-29",
+  },
+  {
     id: "coffee-cup",
     title: "Coffee Cup",
     type: "image",

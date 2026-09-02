@@ -7,13 +7,19 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // Art tools / Explorer save-in-place hold Windows file locks. Watching those
-// kills the dev server with EBUSY, so cats/chess/arcade art is left unwatched —
-// drop in new files and refresh the browser.
-const UNWATCHED_ART = ['/public/cats/', '/public/chess/', '/public/arcade/']
+// kills the dev server with EBUSY, so cats/chess/arcade/tokon art is left
+// unwatched — drop in new files and refresh the browser.
+const UNWATCHED_ART = [
+  '/public/cats/',
+  '/public/chess/',
+  '/public/arcade/',
+  '/public/tokon/',
+]
 
 const CATS_ROOT = path.resolve(import.meta.dirname, 'public/cats')
 const CHESS_ROOT = path.resolve(import.meta.dirname, 'public/chess')
 const ARCADE_ROOT = path.resolve(import.meta.dirname, 'public/arcade')
+const TOKON_ROOT = path.resolve(import.meta.dirname, 'public/tokon')
 
 /**
  * Vite indexes `public/` once at startup and depends on the watcher to notice
@@ -89,7 +95,7 @@ firebase.messaging();
   }
 }
 
-function serveArcadeArt(): Plugin {
+function serveDropInArt(urlPrefix: '/arcade' | '/tokon', diskRoot: string): Plugin {
   const mime: Record<string, string> = {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
@@ -98,18 +104,18 @@ function serveArcadeArt(): Plugin {
     '.gif': 'image/gif',
   }
   return {
-    name: 'serve-arcade-art',
+    name: `serve-${urlPrefix.slice(1)}-art`,
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0]
-        if (!url?.startsWith('/arcade/')) return next()
+        if (!url?.startsWith(`${urlPrefix}/`)) return next()
 
         const ext = path.extname(url).toLowerCase()
         const type = mime[ext]
         if (!type) return next()
 
-        const file = path.resolve(ARCADE_ROOT, `.${url.slice('/arcade'.length)}`)
-        if (!isInsideRoot(ARCADE_ROOT, file)) return next()
+        const file = path.resolve(diskRoot, `.${url.slice(urlPrefix.length)}`)
+        if (!isInsideRoot(diskRoot, file)) return next()
 
         void stat(file).then(
           (info) => {
@@ -204,7 +210,8 @@ export default defineConfig({
     tailwindcss(),
     servePngTree('/cats', CATS_ROOT),
     servePngTree('/chess', CHESS_ROOT),
-    serveArcadeArt(),
+    serveDropInArt('/arcade', ARCADE_ROOT),
+    serveDropInArt('/tokon', TOKON_ROOT),
     firebaseMessagingSwPlugin(),
   ],
   server: {

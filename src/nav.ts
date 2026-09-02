@@ -8,6 +8,7 @@ export const NAV_LINKS = [
   { to: '/shopping', label: 'Shopping', end: false },
   { to: '/wheel', label: 'Wheel', end: false },
   { to: '/tracker', label: 'Tracker', end: false },
+  { to: '/tokon', label: 'Tokon', end: false },
 ] as const
 
 export type NavLinkDef = (typeof NAV_LINKS)[number]
