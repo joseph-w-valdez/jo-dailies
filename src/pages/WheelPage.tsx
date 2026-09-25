@@ -26,7 +26,10 @@ import {
   saveWheelAgentPreset,
   setActiveWheelTab,
   setValorantRoleEnabled,
+  recolorWheelEntries,
   shuffleWheelEntries,
+  wheelUprightLabelMaxChars,
+  wrapWheelLabel,
   valorantRoleFilterState,
   wheelAgentPresetSaved,
   wheelIconPose,
@@ -780,21 +783,43 @@ export function WheelPage() {
                           seg.startDeg,
                           seg.endDeg,
                         )
+                        const labelRadiusFactor =
+                          showIcon && showLabel ? 0.52 : 0.62
+                        const isWinnerSlice =
+                          Boolean(winnerId) &&
+                          announce &&
+                          !spinning &&
+                          seg.entry.id === winnerId
                         const labelPose = wheelLabelPose(
                           CX,
                           CY,
                           RADIUS,
                           seg.startDeg,
                           seg.endDeg,
-                          showIcon && showLabel ? 0.52 : undefined,
+                          labelRadiusFactor,
+                        )
+                        const labelFontSize = isWinnerSlice
+                          ? span > 40
+                            ? 15
+                            : 13
+                          : span > 40
+                            ? 13
+                            : 11
+                        const labelMaxChars = wheelUprightLabelMaxChars(
+                          RADIUS,
+                          labelRadiusFactor,
+                          seg.startDeg,
+                          seg.endDeg,
+                          rotation,
+                          labelFontSize,
+                        )
+                        const labelLines = wrapWheelLabel(
+                          seg.entry.label,
+                          labelMaxChars,
                         )
                         const iconSize =
                           span > 40 ? 30 : span > 20 ? 24 : span > 12 ? 20 : 16
-                        const isWinner =
-                          Boolean(winnerId) &&
-                          announce &&
-                          !spinning &&
-                          seg.entry.id === winnerId
+                        const isWinner = isWinnerSlice
                         const dimOthers =
                           Boolean(winnerId) && announce && !spinning && !isWinner
                         return (
@@ -835,30 +860,36 @@ export function WheelPage() {
                                 x={labelPose.x}
                                 y={labelPose.y}
                                 fill="white"
-                                fontSize={
-                                  isWinner
-                                    ? span > 40
-                                      ? 15
-                                      : 13
-                                    : span > 40
-                                      ? 13
-                                      : 11
-                                }
+                                fontSize={labelFontSize}
                                 fontWeight={700}
                                 textAnchor="middle"
                                 dominantBaseline="middle"
-                                transform={`rotate(${labelPose.angle}, ${labelPose.x}, ${labelPose.y})`}
                                 style={{
                                   paintOrder: 'stroke',
                                   stroke: isWinner
                                     ? 'rgba(0,0,0,0.65)'
                                     : 'rgba(0,0,0,0.45)',
                                   strokeWidth: isWinner ? 4 : 3,
+                                  transform: `rotate(${-rotation}deg)`,
+                                  transformOrigin: `${labelPose.x}px ${labelPose.y}px`,
+                                  transition: spinning
+                                    ? `transform ${SPIN_MS}ms cubic-bezier(0.12, 0.75, 0.12, 1)`
+                                    : undefined,
                                 }}
                               >
-                                {seg.entry.label.length > 18
-                                  ? `${seg.entry.label.slice(0, 16)}…`
-                                  : seg.entry.label}
+                                {labelLines.map((line, i) => (
+                                  <tspan
+                                    key={i}
+                                    x={labelPose.x}
+                                    dy={
+                                      i === 0
+                                        ? `${-((labelLines.length - 1) * 1.1) / 2}em`
+                                        : '1.1em'
+                                    }
+                                  >
+                                    {line}
+                                  </tspan>
+                                ))}
                               </text>
                             ) : null}
                           </g>
@@ -948,6 +979,19 @@ export function WheelPage() {
                   >
                     Shuffle
                   </button>
+                  {!agentsTab ? (
+                    <button
+                      type="button"
+                      disabled={spinning || entries.length === 0}
+                      onClick={() => {
+                        setEntries((prev) => recolorWheelEntries(prev))
+                      }}
+                      className="text-[11px] text-muted hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Give every option a fresh, distinct color"
+                    >
+                      Recolor
+                    </button>
+                  ) : null}
                   {!agentsTab ? (
                     <button
                       type="button"

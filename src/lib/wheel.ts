@@ -196,6 +196,44 @@ export function pickWheelColor(existingColors: readonly string[]): string {
   return best
 }
 
+/**
+ * Fresh random colors for every slice: palette spread evenly, and each slice
+ * kept distinct from its neighbors (including the wrap-around pair).
+ */
+export function recolorWheelEntries(
+  entries: readonly WheelEntry[],
+  random: () => number = Math.random,
+): WheelEntry[] {
+  const palette: string[] = [...WHEEL_COLORS]
+  for (let i = palette.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1))
+    const a = palette[i]!
+    palette[i] = palette[j]!
+    palette[j] = a
+  }
+  const counts = new Map(palette.map((c) => [c, 0]))
+  const out: WheelEntry[] = []
+  entries.forEach((entry, i) => {
+    const neighbors = [out[i - 1]?.color]
+    if (i === entries.length - 1 && i > 1) neighbors.push(out[0]!.color)
+    let best = palette[0]!
+    let bestScore = -Infinity
+    for (const candidate of palette) {
+      let score = -(counts.get(candidate) ?? 0) * 1000
+      for (const n of neighbors) {
+        if (n) score += Math.min(wheelColorDistance(candidate, n), 120)
+      }
+      if (score > bestScore) {
+        bestScore = score
+        best = candidate
+      }
+    }
+    counts.set(best, (counts.get(best) ?? 0) + 1)
+    out.push({ ...entry, color: best })
+  })
+  return out
+}
+
 function newId(prefix = 'w'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
@@ -1114,6 +1152,59 @@ export function wheelLabelPose(
     y: cy + r * Math.sin(toRad(mid)),
     angle,
   }
+}
+
+/**
+ * Max characters for a screen-horizontal label so it doesn't run into its
+ * neighbors. Room depends on where the slice sits on screen: near 12/6 o'clock
+ * neighbors are side by side, near 3/9 o'clock they stack vertically.
+ */
+export function wheelUprightLabelMaxChars(
+  radius: number,
+  radiusFactor: number,
+  startDeg: number,
+  endDeg: number,
+  wheelRotation: number,
+  fontSize: number,
+): number {
+  const span = endDeg - startDeg
+  const maxWidth = radius * 0.72
+  let width = maxWidth
+  if (span < 359.99) {
+    const r = radius * radiusFactor
+    const gap = 2 * r * Math.sin(((span / 2) * Math.PI) / 180)
+    const theta = ((startDeg + endDeg) / 2 + wheelRotation) * (Math.PI / 180)
+    const dy = Math.abs(gap * Math.sin(theta))
+    if (dy < fontSize * 1.15) width = Math.min(maxWidth, gap * 0.95)
+  }
+  return Math.max(3, Math.floor(width / (fontSize * 0.6)))
+}
+
+/**
+ * Break a label into lines at word boundaries, each within `maxChars` when
+ * possible. Single long words stay whole; past `maxLines` the rest is elided.
+ */
+export function wrapWheelLabel(
+  label: string,
+  maxChars: number,
+  maxLines = 3,
+): string[] {
+  const words = label.trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  for (const word of words) {
+    const last = lines[lines.length - 1]
+    if (last !== undefined && last.length + 1 + word.length <= maxChars) {
+      lines[lines.length - 1] = `${last} ${word}`
+    } else {
+      lines.push(word)
+    }
+  }
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines)
+    kept[maxLines - 1] = `${kept[maxLines - 1]}…`
+    return kept
+  }
+  return lines
 }
 
 /**

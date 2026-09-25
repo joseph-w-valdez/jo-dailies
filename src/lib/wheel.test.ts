@@ -33,6 +33,51 @@ import {
   WHEEL_VALORANT_TAB_NAME,
   addWheelTab,
 } from './wheel'
+import {
+  createWheelEntry as makeEntry,
+  recolorWheelEntries,
+  WHEEL_COLORS as PALETTE,
+  wheelUprightLabelMaxChars,
+  wrapWheelLabel,
+} from './wheel'
+
+describe('wheel label + recolor', () => {
+  it('wraps labels at word boundaries without cutting words', () => {
+    expect(wrapWheelLabel('Until Dawn', 6)).toEqual(['Until', 'Dawn'])
+    expect(wrapWheelLabel('The Gorge', 20)).toEqual(['The Gorge'])
+    expect(wrapWheelLabel('Housemaid', 4)).toEqual(['Housemaid'])
+    expect(wrapWheelLabel('a b c d', 1, 3)).toEqual(['a', 'b', 'c…'])
+  })
+
+  it('gives upright labels more room where neighbors stack vertically', () => {
+    // 16 slices: a slice at 12 o'clock has side-by-side neighbors…
+    const top = wheelUprightLabelMaxChars(150, 0.62, 348.75, 371.25, 0, 11)
+    // …the same slice turned to 3 o'clock has neighbors above/below.
+    const side = wheelUprightLabelMaxChars(150, 0.62, 348.75, 371.25, 90, 11)
+    expect(side).toBeGreaterThan(top)
+    expect(top).toBeGreaterThanOrEqual(3)
+  })
+
+  it('recolors up to the palette size with all-unique colors', () => {
+    const entries = Array.from({ length: PALETTE.length }, (_, i) =>
+      makeEntry(`opt ${i}`, { color: PALETTE[0] }),
+    )
+    const out = recolorWheelEntries(entries)
+    expect(new Set(out.map((e) => e.color)).size).toBe(PALETTE.length)
+    expect(out.map((e) => e.id)).toEqual(entries.map((e) => e.id))
+  })
+
+  it('never repeats a color on neighboring slices when wrapping the palette', () => {
+    const entries = Array.from({ length: 13 }, (_, i) => makeEntry(`o${i}`))
+    for (let run = 0; run < 20; run += 1) {
+      const out = recolorWheelEntries(entries)
+      out.forEach((e, i) => {
+        const next = out[(i + 1) % out.length]!
+        expect(e.color).not.toBe(next.color)
+      })
+    }
+  })
+})
 
 describe('wheel', () => {
   it('builds weighted segments that sum to 360', () => {
