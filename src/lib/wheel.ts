@@ -1128,83 +1128,55 @@ export function wheelSlicePath(
   return `M ${cx} ${cy} L ${x0} ${y0} A ${radius} ${radius} 0 ${large} 1 ${x1} ${y1} Z`
 }
 
-export function wheelLabelPose(
+/**
+ * Label laid along the slice's center line (hub → rim). Labels that land on
+ * the left half of the screen are flipped so none read upside-down.
+ */
+export function wheelRadialLabel(
   cx: number,
   cy: number,
   radius: number,
   startDeg: number,
   endDeg: number,
-  /** Fraction of radius for label center (default mid-slice). */
-  radiusFactor = 0.62,
-): { x: number; y: number; angle: number } {
+  opts: {
+    label: string
+    fontSize: number
+    /** Current wheel rotation, so the flip is judged in screen space. */
+    wheelRotation?: number
+    /** Radius fractions the text may occupy (default: clear of the hub to near the rim). */
+    innerFrac?: number
+    outerFrac?: number
+  },
+): { x: number; y: number; angle: number; fontSize: number; text: string } {
   const span = endDeg - startDeg
-  // One full-circle slice: sit the label upright toward the 3 o'clock pointer.
-  if (span >= 359.99) {
-    return { x: cx + radius * 0.55, y: cy, angle: 0 }
-  }
-  const mid = (startDeg + endDeg) / 2
+  const mid = span >= 359.99 ? 90 : (startDeg + endDeg) / 2
+  const inner = radius * (opts.innerFrac ?? 0.2)
+  const outer = radius * (opts.outerFrac ?? 0.93)
+  const r = (inner + outer) / 2
   const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180
-  const r = radius * radiusFactor
-  // Flip lower-half labels so they aren't upside-down.
-  const angle = mid > 90 && mid < 270 ? mid + 180 : mid
+
+  // Keep the glyph height inside the slice at the text's innermost point.
+  let fontSize = opts.fontSize
+  if (span < 359.99) {
+    const chord = 2 * (inner + (outer - inner) * 0.25) * Math.sin(((span / 2) * Math.PI) / 180)
+    fontSize = Math.max(8, Math.min(fontSize, chord * 0.8))
+  }
+
+  const maxChars = Math.max(3, Math.floor((outer - inner) / (fontSize * 0.6)))
+  const label = opts.label.trim()
+  const text =
+    label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label
+
+  const screen = (((mid + (opts.wheelRotation ?? 0)) % 360) + 360) % 360
+  const angle = screen > 180 ? mid + 90 : mid - 90
+
   return {
     x: cx + r * Math.cos(toRad(mid)),
     y: cy + r * Math.sin(toRad(mid)),
     angle,
+    fontSize,
+    text,
   }
-}
-
-/**
- * Max characters for a screen-horizontal label so it doesn't run into its
- * neighbors. Room depends on where the slice sits on screen: near 12/6 o'clock
- * neighbors are side by side, near 3/9 o'clock they stack vertically.
- */
-export function wheelUprightLabelMaxChars(
-  radius: number,
-  radiusFactor: number,
-  startDeg: number,
-  endDeg: number,
-  wheelRotation: number,
-  fontSize: number,
-): number {
-  const span = endDeg - startDeg
-  const maxWidth = radius * 0.72
-  let width = maxWidth
-  if (span < 359.99) {
-    const r = radius * radiusFactor
-    const gap = 2 * r * Math.sin(((span / 2) * Math.PI) / 180)
-    const theta = ((startDeg + endDeg) / 2 + wheelRotation) * (Math.PI / 180)
-    const dy = Math.abs(gap * Math.sin(theta))
-    if (dy < fontSize * 1.15) width = Math.min(maxWidth, gap * 0.95)
-  }
-  return Math.max(3, Math.floor(width / (fontSize * 0.6)))
-}
-
-/**
- * Break a label into lines at word boundaries, each within `maxChars` when
- * possible. Single long words stay whole; past `maxLines` the rest is elided.
- */
-export function wrapWheelLabel(
-  label: string,
-  maxChars: number,
-  maxLines = 3,
-): string[] {
-  const words = label.trim().split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  for (const word of words) {
-    const last = lines[lines.length - 1]
-    if (last !== undefined && last.length + 1 + word.length <= maxChars) {
-      lines[lines.length - 1] = `${last} ${word}`
-    } else {
-      lines.push(word)
-    }
-  }
-  if (lines.length > maxLines) {
-    const kept = lines.slice(0, maxLines)
-    kept[maxLines - 1] = `${kept[maxLines - 1]}…`
-    return kept
-  }
-  return lines
 }
 
 /**

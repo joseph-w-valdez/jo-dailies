@@ -28,12 +28,10 @@ import {
   setValorantRoleEnabled,
   recolorWheelEntries,
   shuffleWheelEntries,
-  wheelUprightLabelMaxChars,
-  wrapWheelLabel,
   valorantRoleFilterState,
   wheelAgentPresetSaved,
   wheelIconPose,
-  wheelLabelPose,
+  wheelRadialLabel,
   wheelOutcomeExpiresAt,
   wheelSlicePath,
   pickWheelColor,
@@ -783,39 +781,30 @@ export function WheelPage() {
                           seg.startDeg,
                           seg.endDeg,
                         )
-                        const labelRadiusFactor =
-                          showIcon && showLabel ? 0.52 : 0.62
                         const isWinnerSlice =
                           Boolean(winnerId) &&
                           announce &&
                           !spinning &&
                           seg.entry.id === winnerId
-                        const labelPose = wheelLabelPose(
+                        const labelPose = wheelRadialLabel(
                           CX,
                           CY,
                           RADIUS,
                           seg.startDeg,
                           seg.endDeg,
-                          labelRadiusFactor,
-                        )
-                        const labelFontSize = isWinnerSlice
-                          ? span > 40
-                            ? 15
-                            : 13
-                          : span > 40
-                            ? 13
-                            : 11
-                        const labelMaxChars = wheelUprightLabelMaxChars(
-                          RADIUS,
-                          labelRadiusFactor,
-                          seg.startDeg,
-                          seg.endDeg,
-                          rotation,
-                          labelFontSize,
-                        )
-                        const labelLines = wrapWheelLabel(
-                          seg.entry.label,
-                          labelMaxChars,
+                          {
+                            label: seg.entry.label,
+                            fontSize: isWinnerSlice
+                              ? span > 40
+                                ? 15
+                                : 13
+                              : span > 40
+                                ? 13
+                                : 12,
+                            wheelRotation: rotation,
+                            // Leave the rim to the icon when both are shown.
+                            outerFrac: showIcon ? 0.64 : undefined,
+                          },
                         )
                         const iconSize =
                           span > 40 ? 30 : span > 20 ? 24 : span > 12 ? 20 : 16
@@ -860,36 +849,20 @@ export function WheelPage() {
                                 x={labelPose.x}
                                 y={labelPose.y}
                                 fill="white"
-                                fontSize={labelFontSize}
+                                fontSize={labelPose.fontSize}
                                 fontWeight={700}
                                 textAnchor="middle"
                                 dominantBaseline="middle"
+                                transform={`rotate(${labelPose.angle}, ${labelPose.x}, ${labelPose.y})`}
                                 style={{
                                   paintOrder: 'stroke',
                                   stroke: isWinner
                                     ? 'rgba(0,0,0,0.65)'
                                     : 'rgba(0,0,0,0.45)',
                                   strokeWidth: isWinner ? 4 : 3,
-                                  transform: `rotate(${-rotation}deg)`,
-                                  transformOrigin: `${labelPose.x}px ${labelPose.y}px`,
-                                  transition: spinning
-                                    ? `transform ${SPIN_MS}ms cubic-bezier(0.12, 0.75, 0.12, 1)`
-                                    : undefined,
                                 }}
                               >
-                                {labelLines.map((line, i) => (
-                                  <tspan
-                                    key={i}
-                                    x={labelPose.x}
-                                    dy={
-                                      i === 0
-                                        ? `${-((labelLines.length - 1) * 1.1) / 2}em`
-                                        : '1.1em'
-                                    }
-                                  >
-                                    {line}
-                                  </tspan>
-                                ))}
+                                {labelPose.text}
                               </text>
                             ) : null}
                           </g>

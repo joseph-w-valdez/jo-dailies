@@ -37,25 +37,31 @@ import {
   createWheelEntry as makeEntry,
   recolorWheelEntries,
   WHEEL_COLORS as PALETTE,
-  wheelUprightLabelMaxChars,
-  wrapWheelLabel,
+  wheelRadialLabel,
 } from './wheel'
 
 describe('wheel label + recolor', () => {
-  it('wraps labels at word boundaries without cutting words', () => {
-    expect(wrapWheelLabel('Until Dawn', 6)).toEqual(['Until', 'Dawn'])
-    expect(wrapWheelLabel('The Gorge', 20)).toEqual(['The Gorge'])
-    expect(wrapWheelLabel('Housemaid', 4)).toEqual(['Housemaid'])
-    expect(wrapWheelLabel('a b c d', 1, 3)).toEqual(['a', 'b', 'c…'])
+  it('lays labels along the slice center line, flipped on the left half', () => {
+    const opts = { label: 'Boleyn', fontSize: 12 }
+    // Slice centered at 3 o'clock reads outward, left to right.
+    expect(wheelRadialLabel(0, 0, 100, 80, 100, opts).angle).toBe(0)
+    // Slice centered at 9 o'clock would read upside-down, so it flips.
+    expect(wheelRadialLabel(0, 0, 100, 260, 280, opts).angle).toBe(360)
+    // Flip follows the wheel's rotation: 3 o'clock slice spun half a turn.
+    expect(
+      wheelRadialLabel(0, 0, 100, 80, 100, { ...opts, wheelRotation: 180 }).angle,
+    ).toBe(180)
   })
 
-  it('gives upright labels more room where neighbors stack vertically', () => {
-    // 16 slices: a slice at 12 o'clock has side-by-side neighbors…
-    const top = wheelUprightLabelMaxChars(150, 0.62, 348.75, 371.25, 0, 11)
-    // …the same slice turned to 3 o'clock has neighbors above/below.
-    const side = wheelUprightLabelMaxChars(150, 0.62, 348.75, 371.25, 90, 11)
-    expect(side).toBeGreaterThan(top)
-    expect(top).toBeGreaterThanOrEqual(3)
+  it('shrinks and trims radial labels to fit the slice', () => {
+    const narrow = wheelRadialLabel(0, 0, 148, 0, 10, {
+      label: 'An extremely long option name here',
+      fontSize: 13,
+    })
+    expect(narrow.fontSize).toBeLessThan(13)
+    expect(narrow.text.endsWith('…')).toBe(true)
+    const wide = wheelRadialLabel(0, 0, 148, 0, 90, { label: 'Us', fontSize: 13 })
+    expect(wide).toMatchObject({ fontSize: 13, text: 'Us' })
   })
 
   it('recolors up to the palette size with all-unique colors', () => {
