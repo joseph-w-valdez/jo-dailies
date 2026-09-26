@@ -7,20 +7,17 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // Art tools / Explorer save-in-place hold Windows file locks. Watching those
-// kills the dev server with EBUSY, so cats/chess/arcade/tokon art is left
+// kills the dev server with EBUSY, so cats/chess/arcade art is left
 // unwatched — drop in new files and refresh the browser.
 const UNWATCHED_ART = [
   '/public/cats/',
   '/public/chess/',
   '/public/arcade/',
-  '/public/tokon/',
 ]
 
 const CATS_ROOT = path.resolve(import.meta.dirname, 'public/cats')
 const CHESS_ROOT = path.resolve(import.meta.dirname, 'public/chess')
 const ARCADE_ROOT = path.resolve(import.meta.dirname, 'public/arcade')
-const TOKON_ROOT = path.resolve(import.meta.dirname, 'public/tokon')
-
 /**
  * Vite indexes `public/` once at startup and depends on the watcher to notice
  * later additions. The art is deliberately unwatched, so a newly drawn PNG
@@ -95,7 +92,7 @@ firebase.messaging();
   }
 }
 
-function serveDropInArt(urlPrefix: '/arcade' | '/tokon', diskRoot: string): Plugin {
+function serveDropInArt(urlPrefix: '/arcade', diskRoot: string): Plugin {
   const mime: Record<string, string> = {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
@@ -211,7 +208,6 @@ export default defineConfig({
     servePngTree('/cats', CATS_ROOT),
     servePngTree('/chess', CHESS_ROOT),
     serveDropInArt('/arcade', ARCADE_ROOT),
-    serveDropInArt('/tokon', TOKON_ROOT),
     firebaseMessagingSwPlugin(),
   ],
   server: {
