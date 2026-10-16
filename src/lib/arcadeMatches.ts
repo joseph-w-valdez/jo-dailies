@@ -13,7 +13,7 @@ import { agentById } from './valorantAgents'
 
 export type MatchHistoryGameId = Exclude<
   ArcadeGameId,
-  'suika' | 'globle' | 'notes'
+  'suika' | 'globle' | 'notes' | 'krillion'
 >
 
 export type ArcadeMatchResult = 'win' | 'draw' | 'loss' | 'collapsed'

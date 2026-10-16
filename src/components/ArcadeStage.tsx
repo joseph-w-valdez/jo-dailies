@@ -75,6 +75,8 @@ interface ArcadeStageProps {
   onClose: () => void
   /** Optional status / brick count on the right of the title. */
   meta?: ReactNode
+  /** Open in theater on mount (still respects Exit theater / shared pref after). */
+  startInTheater?: boolean
   children: (ctx: ArcadeStageContext) => ReactNode
 }
 
@@ -84,9 +86,12 @@ export function ArcadeStage({
   ariaLabel,
   onClose,
   meta,
+  startInTheater = false,
   children,
 }: ArcadeStageProps) {
-  const [theater, setTheater] = useState(readTheaterPref)
+  const [theater, setTheater] = useState(
+    () => startInTheater || readTheaterPref(),
+  )
   const [fullscreen, setFullscreen] = useState(false)
   const frameRef = useRef<HTMLElement>(null)
   const immersive = theater || fullscreen
@@ -96,6 +101,10 @@ export function ArcadeStage({
     setTheater(on)
     writeTheaterPref(on)
   }
+
+  useEffect(() => {
+    if (startInTheater) writeTheaterPref(true)
+  }, [startInTheater])
 
   useEffect(() => {
     const onFullscreenChange = () => {
