@@ -16,6 +16,7 @@ export type ArcadeGameId =
   | 'spike'
   | 'abcrelax'
   | 'krillion'
+  | 'pictionary'
 
 export type ArcadeTileAccent =
   | 'amber'
@@ -233,6 +234,13 @@ export const ARCADE_TILES: ArcadeTile[] = [
     wide: true,
     accent: 'cyan',
   },
+  {
+    id: 'pictionary',
+    title: 'Pictionary',
+    blurb: 'Draw & guess',
+    wide: true,
+    accent: 'rose',
+  },
 ]
 
 type GameProps = { onClose: () => void }
@@ -272,6 +280,10 @@ export const ARCADE_COMPONENTS: Record<
   spike: lazyNamed(() => import('./components/CatSpike'), 'CatSpike'),
   abcrelax: lazyNamed(() => import('./components/CatAbcrelax'), 'CatAbcrelax'),
   krillion: lazyNamed(() => import('./components/Krillion'), 'Krillion'),
+  pictionary: lazyNamed(
+    () => import('./components/CatPictionary'),
+    'CatPictionary',
+  ),
 }
 
 export function isArcadeWide(id: ArcadeGameId | null): boolean {

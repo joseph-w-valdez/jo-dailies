@@ -72,7 +72,7 @@ Init: `src/lib/firebase.ts` → `auth`, `db`, `storage`, `rtdb` (null without `V
 /{document=**}                       // deny
 ```
 
-RTDB: `rooms/jo-and-friend/wbLive/{uid}` and `jengaLive/{uid}` — read if allowed, write own uid only.
+RTDB: `rooms/jo-and-friend/wbLive/{uid}` and `jengaLive/{uid}` — read if allowed, write own uid only. `pictionaryLive/` — both UIDs read; `strokes/{roundKey}/{strokeId}` writable by both, `draft/{uid}` and `presence/{uid}` own uid only.
 
 Storage: [`storage.rules`](./storage.rules) (publish in the Firebase console; [`firebase.json`](./firebase.json) wires CLI deploys). Allows `scrapbook/**` (existing snapshots) and `rooms/jo-and-friend/**` (future recipe images). Same two UIDs as Firestore.
 
@@ -87,7 +87,7 @@ rooms/{syncRoomId}/
   pet/current                    // PetKennel
   whiteboardStrokes/{strokeId}
   whiteboard/current             // legacy blob, migrated away
-  jenga|connect4|battleship|scrabble|chess|wordle|hangman|codenames|guesswho|spike/current
+  jenga|connect4|battleship|scrabble|chess|wordle|hangman|codenames|guesswho|spike|abcrelax|pictionary/current
   suika/best                     // high score only; bowl is in-memory
   arcadeMatches/{id}             // append-only finished 2P matches (not Suika)
 ```
@@ -130,6 +130,7 @@ Typical hook:
 | `useSharedJenga` | `jenga/current` + RTDB `jengaLive` | versioned doc + ghosts |
 | `useSharedConnect4` / Battleship / Scrabble | `*/current` | versioned doc |
 | `useSharedSuika` | `suika/best` | high score only |
+| `useSharedPictionary` + `usePictionaryLive` | `pictionary/current` + RTDB `pictionaryLive` | versioned doc (word, scores, custom cards) + live strokes / drafts / presence; timer uses RTDB server time |
 | `useArcadeMatches` | `arcadeMatches` | collection (finished 2P games) |
 | `src/lib/scrapbook.ts` | top-level `scrapbook` | collection + Storage |
 

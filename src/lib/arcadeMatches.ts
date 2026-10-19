@@ -9,6 +9,7 @@ import type { ArcadeGameId } from '../arcade'
 import { db, syncRoomId, toFirestoreData } from './firebase'
 import { householdName } from './household'
 import { JENGA_PLAYER_UIDS } from './jenga'
+import { isPictionaryDeckId, pictionaryDeckLabel } from './pictionaryDeck'
 import { agentById } from './valorantAgents'
 
 export type MatchHistoryGameId = Exclude<
@@ -89,6 +90,7 @@ const HISTORY_GAME_IDS = new Set<MatchHistoryGameId>([
   'guesswho',
   'spike',
   'abcrelax',
+  'pictionary',
 ])
 
 export function isMatchHistoryGameId(
@@ -140,6 +142,8 @@ function isTerminal(collectionId: MatchHistoryGameId, state: LooseGame): boolean
       return phase === 'match_over'
     case 'abcrelax':
       return phase === 'finished' || status === 'won' || status === 'draw'
+    case 'pictionary':
+      return phase === 'finished'
     default:
       return false
   }
@@ -218,6 +222,17 @@ function detailFor(collectionId: MatchHistoryGameId, state: LooseGame): string |
           ? state.theme.trim()
           : null
       return theme ?? undefined
+    }
+    case 'pictionary': {
+      const scores = state.scores
+      if (!scores || typeof scores !== 'object') return undefined
+      const sa = Number((scores as Record<string, unknown>)[JENGA_PLAYER_UIDS[0]!] ?? 0)
+      const sb = Number((scores as Record<string, unknown>)[JENGA_PLAYER_UIDS[1]!] ?? 0)
+      const deck = isPictionaryDeckId(state.deck) ? pictionaryDeckLabel(state.deck) : null
+      if (typeof state.surrenderUid === 'string' && state.surrenderUid) {
+        return deck ? `Surrender · ${deck}` : 'Surrender'
+      }
+      return deck ? `${sa}–${sb} · ${deck}` : `${sa}–${sb}`
     }
     default:
       return undefined
@@ -604,6 +619,8 @@ export function arcadeGameTitle(gameId: MatchHistoryGameId): string {
       return 'Spike'
     case 'abcrelax':
       return 'Abcrelax'
+    case 'pictionary':
+      return 'Pictionary'
   }
 }
 

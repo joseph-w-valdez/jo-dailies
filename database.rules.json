@@ -13,6 +13,22 @@
             ".read": "auth != null && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')",
             ".write": "auth != null && auth.uid == $uid && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')"
           }
+        },
+        "pictionaryLive": {
+          ".read": "auth != null && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')",
+          "strokes": {
+            ".write": "auth != null && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')"
+          },
+          "draft": {
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')"
+            }
+          },
+          "presence": {
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid && (auth.uid == 'cBSmIOeTysM7hzi5Xnm7rkmsUFW2' || auth.uid == 'PLxEvRfAjSbj7kQumrbQ5xHF4S03')"
+            }
+          }
         }
       }
     }
