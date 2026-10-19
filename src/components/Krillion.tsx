@@ -4,9 +4,84 @@ import { ArcadeStage } from './ArcadeStage'
 const KRILLION_URL = 'https://playdaily.org/krillion'
 
 /**
- * Playdaily Krillion Unlimited in Arcade theater.
- * Site chrome is hidden by the local Tampermonkey "Krillion Theater Mode"
- * script (runs inside the iframe). This wrapper stays full-bleed.
+ * Playdaily Krillion Unlimited in Arcade theater (parked — the tile opens
+ * Playdaily in a new tab instead; see `externalUrl` in src/arcade.ts).
+ *
+ * This wrapper stays full-bleed. Playdaily's site chrome can't be hidden from
+ * here (cross-origin iframe), so it relies on the userscript below. It must be
+ * installed in a userscript extension (Tampermonkey, Violentmonkey, …) on
+ * each browser — it does nothing as part of this app. With it installed it
+ * applies both inside this iframe and when Krillion is opened directly.
+ *
+ * ```js
+ * // ==UserScript==
+ * // @name         Krillion Theater Mode
+ * // @namespace    http://tampermonkey.net/
+ * // @version      1.3
+ * // @description  Expand Krillion to fill the browser viewport
+ * // @match        https://playdaily.org/krillion*
+ * // @run-at       document-idle
+ * // @grant        none
+ * // ==/UserScript==
+ *
+ * (function () {
+ *   "use strict";
+ *
+ *   const css = `
+ *     html, body {
+ *       margin: 0 !important;
+ *       overflow: hidden !important;
+ *       background: #091b30 !important;
+ *     }
+ *
+ *     [data-game-viewport] {
+ *       position: fixed !important;
+ *       inset: 0 !important;
+ *       z-index: 2147483647 !important;
+ *       width: 100vw !important;
+ *       height: 100dvh !important;
+ *       max-width: none !important;
+ *       max-height: none !important;
+ *       margin: 0 !important;
+ *       padding: 0 !important;
+ *       display: flex !important;
+ *       flex-direction: column !important;
+ *       overflow: hidden !important;
+ *       background: #091b30 !important;
+ *     }
+ *
+ *     [data-game-viewport] > header {
+ *       display: none !important;
+ *     }
+ *
+ *     [data-game-viewport] > div {
+ *       width: 100% !important;
+ *       max-width: none !important;
+ *       height: 100% !important;
+ *       min-height: 0 !important;
+ *       margin: 0 !important;
+ *       padding: 0 !important;
+ *       flex: 1 1 0% !important;
+ *       display: flex !important;
+ *       flex-direction: column !important;
+ *     }
+ *
+ *     [data-game-viewport] .unlimited.krillion {
+ *       width: 100% !important;
+ *       max-width: none !important;
+ *       height: 100% !important;
+ *       min-height: 0 !important;
+ *       flex: 1 1 0% !important;
+ *       border-radius: 0 !important;
+ *     }
+ *   `;
+ *
+ *   const style = document.createElement("style");
+ *   style.id = "krillion-theater-styles";
+ *   style.textContent = css;
+ *   (document.head || document.documentElement).appendChild(style);
+ * })();
+ * ```
  */
 export function Krillion({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true)

@@ -41,6 +41,10 @@ export type ArcadeTile = {
   wide?: boolean
   /** Soft wash + left rail color for the picker tile. */
   accent: ArcadeTileAccent
+  /** Opens this URL in a new tab instead of mounting the in-app game. */
+  externalUrl?: string
+  /** Fixed 0-based slot in the lobby grid; other tiles sort around it. */
+  pinnedIndex?: number
 }
 
 /** Candidate cover URLs for `public/arcade/{id}.{ext}` (no Vite glob — avoids Windows watch crashes). */
@@ -230,9 +234,13 @@ export const ARCADE_TILES: ArcadeTile[] = [
   {
     id: 'krillion',
     title: 'Krillion',
-    blurb: 'Rarest answer dive',
+    blurb: 'Rarest answer dive ↗',
     wide: true,
     accent: 'cyan',
+    // In-app theater embed (components/Krillion.tsx) is parked for now. Its
+    // doc comment has the Tampermonkey userscript that makes it full-screen.
+    externalUrl: 'https://playdaily.org/krillion',
+    pinnedIndex: 3,
   },
   {
     id: 'pictionary',

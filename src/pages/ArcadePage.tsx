@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   ARCADE_COMPONENTS,
@@ -18,6 +18,12 @@ import { TurnPushToggle } from '../components/TurnPushToggle'
 import { useArcadeMatches } from '../hooks/useArcadeMatches'
 import { useArcadeTileImage } from '../hooks/useArcadeTileImage'
 import {
+  loadArcadeOpens,
+  placePinned,
+  recordArcadeOpen,
+  sortByFrecency,
+} from '../lib/arcadeOrder'
+import {
   arcadeGameTitle,
   isMatchHistoryGameId,
   type MatchHistoryGameId,
@@ -32,17 +38,14 @@ function ArcadeGameTile({
 }) {
   const accent = ARCADE_TILE_ACCENTS[tile.accent]
   const image = useArcadeTileImage(tile.id)
+  const className = [
+    'relative overflow-hidden rounded-xl border border-border px-3 py-4 text-center transition',
+    image ? 'bg-surface' : accent.wash,
+    accent.hoverBorder,
+  ].join(' ')
 
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(tile.id)}
-      className={[
-        'relative overflow-hidden rounded-xl border border-border px-3 py-8 text-center transition',
-        image ? 'bg-surface' : accent.wash,
-        accent.hoverBorder,
-      ].join(' ')}
-    >
+  const body = (
+    <>
       {image ? (
         <img
           src={image}
@@ -75,13 +78,34 @@ function ArcadeGameTile({
           {tile.blurb}
         </span>
       </span>
+    </>
+  )
+
+  if (tile.externalUrl) {
+    return (
+      <a
+        href={tile.externalUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={`block ${className}`}
+        aria-label={`${tile.title} (opens in a new tab)`}
+      >
+        {body}
+      </a>
+    )
+  }
+
+  return (
+    <button type="button" onClick={() => onOpen(tile.id)} className={className}>
+      {body}
     </button>
   )
 }
 
+/** In-app games only — external tiles (e.g. Krillion) can't be opened via ?game=. */
 function parseArcadeGame(raw: string | null): ArcadeGameId | null {
   if (!raw) return null
-  return ARCADE_TILES.some((tile) => tile.id === raw)
+  return ARCADE_TILES.some((tile) => tile.id === raw && !tile.externalUrl)
     ? (raw as ArcadeGameId)
     : null
 }
@@ -101,6 +125,19 @@ export function ArcadePage() {
     : null
   const onLobby = !active
   const { allMatches, matches: gameMatches } = useArcadeMatches(historyGameId)
+  const [opens, setOpens] = useState(loadArcadeOpens)
+  // Finished matches drive the order; device opens stand in for games that
+  // don't record matches (Suika, Globle, Notes, Krillion).
+  const sortedTiles = useMemo(
+    () =>
+      placePinned(
+        sortByFrecency(ARCADE_TILES, [
+          ...allMatches.map((m) => ({ gameId: m.gameId, at: m.endedAt })),
+          ...opens.filter((o) => !isMatchHistoryGameId(o.gameId)),
+        ]),
+      ),
+    [allMatches, opens],
+  )
   const wide = isArcadeWide(active)
   const gameMaxClass = wide ? 'max-w-5xl' : 'max-w-3xl'
   // Equal 1fr gutters keep the game page-centered; side panels center in leftover.
@@ -120,6 +157,7 @@ export function ArcadePage() {
   const openGame = (id: ArcadeGameId | null) => {
     setActive(id)
     if (id) {
+      setOpens(recordArcadeOpen(id))
       setSearchParams({ game: id }, { replace: true })
     } else {
       setSearchParams({}, { replace: true })
@@ -175,7 +213,7 @@ export function ArcadePage() {
                   <TurnPushToggle />
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {ARCADE_TILES.map((tile) => (
+                  {sortedTiles.map((tile) => (
                     <ArcadeGameTile
                       key={tile.id}
                       tile={tile}
