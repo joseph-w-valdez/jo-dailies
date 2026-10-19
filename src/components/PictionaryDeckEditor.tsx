@@ -61,16 +61,16 @@ export function PictionaryDeckEditor({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-white">Custom cards</h3>
+          <h3 className="text-sm font-semibold text-app-text">Custom cards</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-xs text-muted hover:text-white"
+            className="rounded-md px-2 py-1 text-xs text-app-text/80 hover:text-app-text"
           >
             Done
           </button>
         </div>
-        <p className="mt-1 text-[11px] text-muted">
+        <p className="mt-1 text-xs text-app-text/80">
           Shared between you two. They show up as the Custom deck and get mixed
           into All themes.
         </p>
@@ -82,14 +82,14 @@ export function PictionaryDeckEditor({
             add()
           }}
         >
-          <label className="min-w-[12rem] flex-1 text-xs text-muted">
+          <label className="min-w-[12rem] flex-1 text-xs text-app-text/80">
             Word or phrase
             <input
               value={word}
               onChange={(e) => setWord(e.target.value)}
               maxLength={60}
               placeholder="our first apartment…"
-              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-white outline-none focus:border-sky-400/60"
+              className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-app-text outline-none focus:border-sky-400/60"
             />
           </label>
           <div className="flex overflow-hidden rounded-lg border border-border">
@@ -102,8 +102,8 @@ export function PictionaryDeckEditor({
                 className={[
                   'px-2.5 py-2 text-xs font-medium',
                   difficulty === d
-                    ? 'bg-sky-500/25 text-white'
-                    : 'bg-surface text-muted hover:text-white',
+                    ? 'bg-sky-500/25 text-app-text'
+                    : 'bg-surface text-app-text/80 hover:text-app-text',
                 ].join(' ')}
               >
                 {PICTIONARY_DIFFICULTY_LABEL[d]}
@@ -113,18 +113,18 @@ export function PictionaryDeckEditor({
           <button
             type="submit"
             disabled={!canAdd}
-            className="rounded-lg border border-sky-400/40 bg-sky-500/20 px-3 py-2 text-sm font-medium text-sky-50 enabled:hover:bg-sky-500/30 disabled:opacity-40"
+            className="rounded-lg border border-sky-500/55 bg-sky-500/20 px-3 py-2 text-sm font-medium text-app-text enabled:hover:bg-sky-500/30 disabled:opacity-40"
           >
             Add
           </button>
         </form>
         {duplicate ? (
-          <p className="mt-1 text-[11px] text-amber-200">Already in the deck.</p>
+          <p className="mt-1 text-xs text-amber-500">Already in the deck.</p>
         ) : null}
 
         <div className="jo-scroll mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
           {cards.length === 0 ? (
-            <p className="py-6 text-center text-xs text-muted">No custom cards yet.</p>
+            <p className="py-6 text-center text-xs text-app-text/80">No custom cards yet.</p>
           ) : (
             <ul className="space-y-1.5">
               {cards.map((card) => (
@@ -132,16 +132,16 @@ export function PictionaryDeckEditor({
                   key={card.id}
                   className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2"
                 >
-                  <span className="min-w-0 truncate text-sm text-white">{card.word}</span>
+                  <span className="min-w-0 truncate text-sm text-app-text">{card.word}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-[11px] text-muted">
+                    <span className="text-xs text-app-text/80">
                       {PICTIONARY_DIFFICULTY_LABEL[card.difficulty]}
                     </span>
                     <button
                       type="button"
                       onClick={() => onRemove(card.id)}
                       aria-label={`Remove ${card.word}`}
-                      className="rounded-md px-1.5 text-sm text-muted hover:text-rose-200"
+                      className="rounded-md px-1.5 text-sm text-app-text/80 hover:text-rose-500"
                     >
                       ×
                     </button>

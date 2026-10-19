@@ -67,6 +67,8 @@ export function usePictionaryLive(opts: {
   const [drafts, setDrafts] = useState<Record<string, WhiteboardStroke | null>>({})
   const [presence, setPresence] = useState<Record<string, boolean>>({})
   const [serverOffset, setServerOffset] = useState(0)
+  /** Set when RTDB rejects a write (usually unpublished rules). */
+  const [writeBlocked, setWriteBlocked] = useState(false)
   const offsetRef = useRef(0)
   const lastDraftWriteRef = useRef(0)
   const currentKey = pictionaryRoundKey(opts.roundId, opts.roundIndex)
@@ -156,7 +158,12 @@ export function usePictionaryLive(opts: {
       void set(
         rtdbRef(rtdb, `${LIVE_ROOT}/strokes/${key}/${stroke.id}`),
         compactStroke(stroke),
-      ).catch((error: unknown) => console.error('pictionary stroke', error))
+      )
+        .then(() => setWriteBlocked(false))
+        .catch((error: unknown) => {
+          console.error('pictionary stroke', error)
+          setWriteBlocked(true)
+        })
       lastDraftWriteRef.current = 0
       void set(rtdbRef(rtdb, `${LIVE_ROOT}/draft/${uid}`), null).catch(() => {})
     },
@@ -197,6 +204,7 @@ export function usePictionaryLive(opts: {
 
   return {
     liveEnabled: Boolean(rtdb),
+    writeBlocked,
     serverOffset,
     serverNow,
     currentStrokes,

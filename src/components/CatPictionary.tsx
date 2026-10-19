@@ -60,15 +60,15 @@ const BRUSHES = [
 ] as const
 
 const DIFF_STYLE: Record<PictionaryDifficulty, string> = {
-  easy: 'border-emerald-400/50 bg-emerald-500/15 text-emerald-50 hover:bg-emerald-500/25',
-  medium: 'border-amber-400/50 bg-amber-500/15 text-amber-50 hover:bg-amber-500/25',
-  hard: 'border-rose-400/50 bg-rose-500/15 text-rose-50 hover:bg-rose-500/25',
+  easy: 'border-emerald-500/55 bg-emerald-500/20 text-app-text hover:bg-emerald-500/30',
+  medium: 'border-amber-500/55 bg-amber-500/20 text-app-text hover:bg-amber-500/30',
+  hard: 'border-rose-500/55 bg-rose-500/20 text-app-text hover:bg-rose-500/30',
 }
 
 const chip =
-  'inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-white'
+  'inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-app-text'
 const smallBtn =
-  'rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-white hover:border-muted disabled:opacity-40'
+  'rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-app-text hover:border-muted disabled:opacity-40'
 
 function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
@@ -106,7 +106,7 @@ function TimerRing({ msLeft, totalMs }: { msLeft: number; totalMs: number }) {
       <span
         className={[
           'absolute inset-0 flex items-center justify-center text-4xl font-bold tabular-nums',
-          danger ? 'text-rose-100' : 'text-white',
+          danger ? 'text-rose-500' : 'text-app-text',
         ].join(' ')}
       >
         {Math.ceil(msLeft / 1000)}
@@ -117,9 +117,9 @@ function TimerRing({ msLeft, totalMs }: { msLeft: number; totalMs: number }) {
 
 function ModifierBanner({ modifier }: { modifier: PictionaryModifier }) {
   return (
-    <div className="rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/15 px-3 py-2 text-sm text-fuchsia-50">
+    <div className="rounded-xl border border-fuchsia-500/55 bg-fuchsia-500/20 px-3 py-2 text-sm text-app-text">
       <span className="font-semibold">🎴 {modifier.label}</span>
-      <span className="text-fuchsia-100/80"> — {modifier.blurb}</span>
+      <span className="text-app-text/80"> — {modifier.blurb}</span>
     </div>
   )
 }
@@ -137,7 +137,7 @@ function ScoreChip({ game, seat }: { game: PictionaryState; seat: string }) {
     >
       {drawing ? '✏️ ' : ''}
       {householdName(seat)}
-      <span className="tabular-nums text-sky-200">{game.scores[seat] ?? 0}</span>
+      <span className="tabular-nums text-sky-500">{game.scores[seat] ?? 0}</span>
     </span>
   )
 }
@@ -145,7 +145,7 @@ function ScoreChip({ game, seat }: { game: PictionaryState; seat: string }) {
 function WordMask({ word, hintIndex }: { word: string; hintIndex: number | null }) {
   const cells = pictionaryWordMask(word, hintIndex)
   return (
-    <div className="flex flex-wrap justify-center gap-x-1 gap-y-2 font-mono text-2xl font-bold text-white">
+    <div className="flex flex-wrap justify-center gap-x-1 gap-y-2 font-mono text-2xl font-bold text-app-text">
       {cells.map((cell, i) =>
         cell.ch === ' ' ? (
           <span key={i} className="w-3" />
@@ -154,7 +154,7 @@ function WordMask({ word, hintIndex }: { word: string; hintIndex: number | null 
             key={i}
             className={[
               'inline-flex h-9 min-w-[1.25rem] items-end justify-center',
-              cell.hidden ? 'border-b-2 border-white/70' : '',
+              cell.hidden ? 'border-b-2 border-current' : '',
             ].join(' ')}
           >
             {cell.hidden ? '' : cell.ch}
@@ -324,7 +324,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
         <div className={immersive ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-4'}>
           {immersive ? null : (
             <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">
-              <p className="text-sm leading-relaxed text-muted">
+              <p className="text-sm leading-relaxed text-app-text/80">
                 Take turns: one draws, one guesses. The guesser scores more the
                 faster they get it; the drawer earns half. 60 seconds a round,
                 10 rounds.
@@ -398,8 +398,14 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
           />
 
           {!live.liveEnabled ? (
-            <p className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            <p className="rounded-xl border border-amber-500/55 bg-amber-500/20 px-3 py-2 text-sm text-app-text">
               Live drawing needs the Realtime Database (VITE_FIREBASE_DATABASE_URL).
+            </p>
+          ) : null}
+          {live.writeBlocked ? (
+            <p className="rounded-xl border border-rose-500/55 bg-rose-500/20 px-3 py-2 text-sm text-app-text">
+              Drawings aren’t saving — the Realtime Database rejected them. Publish
+              database.rules.json in the Firebase console (Realtime Database → Rules).
             </p>
           ) : null}
 
@@ -426,7 +432,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
               {modifier ? <ModifierBanner modifier={modifier} /> : null}
               {isDrawer ? (
                 <>
-                  <p className="text-center text-lg font-semibold text-white">
+                  <p className="text-center text-lg font-semibold text-app-text">
                     {game.hotseat ? `${householdName(game.drawerUid)}, pick` : 'Pick'} a card
                     to draw
                   </p>
@@ -445,15 +451,15 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                           DIFF_STYLE[card.difficulty],
                         ].join(' ')}
                       >
-                        <span className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                        <span className="text-xs font-bold uppercase tracking-wide text-app-text/85">
                           {PICTIONARY_DIFFICULTY_LABEL[card.difficulty]} · up to{' '}
                           {PICTIONARY_DIFFICULTY_POINTS[card.difficulty] *
                             (modifier?.pointsMultiplier ?? 1)}
                         </span>
-                        <span className="text-2xl font-bold leading-tight text-white">
+                        <span className="text-2xl font-bold leading-tight text-app-text">
                           {card.word}
                         </span>
-                        <span className="text-xs opacity-80">
+                        <span className="text-sm font-medium text-app-text/85">
                           {pictionaryThemeEmoji(card.theme)} {pictionaryThemeLabel(card.theme)}
                         </span>
                       </button>
@@ -471,7 +477,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   </div>
                 </>
               ) : (
-                <p className="py-10 text-center text-lg text-muted">
+                <p className="py-10 text-center text-lg text-app-text/80">
                   {householdName(game.drawerUid)} is picking a card…
                 </p>
               )}
@@ -481,7 +487,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
           {drawing || game.phase === 'reveal' ? (
             <div
               className={[
-                'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]',
+                'grid gap-4 md:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_20rem]',
                 immersive ? 'min-h-0 flex-1' : '',
               ].join(' ')}
             >
@@ -506,7 +512,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   {game.phase === 'reveal' && lastRound ? (
                     <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 p-4">
                       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-5 text-center shadow-xl">
-                        <p className="text-sm font-medium text-muted">
+                        <p className="text-sm font-medium text-app-text/80">
                           {lastRound.guessed
                             ? `${householdName(lastRound.guesserUid)} got it${
                                 lastRound.guessMs != null
@@ -515,9 +521,9 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                               }!`
                             : 'Time’s up!'}
                         </p>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-muted">It was</p>
-                        <p className="text-3xl font-bold text-white">{lastRound.card.word}</p>
-                        <p className="mt-3 text-sm text-sky-100">
+                        <p className="mt-1 text-xs uppercase tracking-wide text-app-text/80">It was</p>
+                        <p className="text-3xl font-bold text-app-text">{lastRound.card.word}</p>
+                        <p className="mt-3 text-sm font-medium text-app-text">
                           {lastRound.guessed
                             ? `+${lastRound.guesserPoints} ${householdName(lastRound.guesserUid)} · +${lastRound.drawerPoints} ${householdName(lastRound.drawerUid)}`
                             : 'No points this round'}
@@ -526,7 +532,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                         <button
                           type="button"
                           onClick={() => act((prev) => nextPictionaryRound(prev))}
-                          className="mt-4 w-full rounded-xl border border-sky-400/40 bg-sky-500/20 px-4 py-2.5 text-base font-semibold text-sky-50 hover:bg-sky-500/30"
+                          className="mt-4 w-full rounded-xl border border-sky-500/55 bg-sky-500/20 px-4 py-2.5 text-base font-semibold text-app-text hover:bg-sky-500/30"
                         >
                           {game.roundIndex + 1 >= game.totalRounds ? 'See results' : 'Next round'}
                         </button>
@@ -553,7 +559,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                           aria-pressed={activeTool === id}
                           className={[
                             'px-3 py-1.5 text-sm font-medium disabled:opacity-30',
-                            activeTool === id ? 'bg-sky-500/25 text-white' : 'bg-surface text-muted hover:text-white',
+                            activeTool === id ? 'bg-sky-500/25 text-app-text' : 'bg-surface text-app-text/80 hover:text-app-text',
                           ].join(' ')}
                         >
                           {label}
@@ -571,7 +577,9 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                           aria-pressed={activeColor === c}
                           className={[
                             'h-6 w-6 rounded-full border-2 disabled:opacity-20',
-                            activeColor === c ? 'border-white' : 'border-white/20',
+                            activeColor === c
+                              ? 'border-sky-500 ring-2 ring-sky-500/40'
+                              : 'border-border',
                           ].join(' ')}
                           style={{ backgroundColor: c }}
                         />
@@ -587,7 +595,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                           aria-pressed={activeWidth === b.width}
                           className={[
                             'px-2.5 py-1.5 text-xs font-semibold disabled:opacity-30',
-                            activeWidth === b.width ? 'bg-sky-500/25 text-white' : 'bg-surface text-muted hover:text-white',
+                            activeWidth === b.width ? 'bg-sky-500/25 text-app-text' : 'bg-surface text-app-text/80 hover:text-app-text',
                           ].join(' ')}
                         >
                           {b.id}
@@ -610,6 +618,18 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                     >
                       Clear
                     </button>
+                    {modifier?.locks ? (
+                      <span className="rounded-lg border border-fuchsia-500/55 bg-fuchsia-500/20 px-2.5 py-1.5 text-xs font-medium text-app-text">
+                        🔒 {modifier.label}:{' '}
+                        {[
+                          locks?.eraser ? 'no eraser, undo or clear' : null,
+                          locks?.color ? 'one color' : null,
+                          locks?.size != null ? 'thin brush only' : null,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -618,22 +638,22 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                 {drawing && msLeft != null ? <TimerRing msLeft={msLeft} totalMs={turnMs} /> : null}
 
                 {drawing && game.card ? (
-                  <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-center">
-                    <p className="text-xs uppercase tracking-wide text-sky-200/80">
+                  <div className="rounded-2xl border border-sky-500/55 bg-sky-500/20 px-4 py-3 text-center">
+                    <p className="text-xs uppercase tracking-wide text-app-text/80">
                       {pictionaryThemeEmoji(game.card.theme)} {pictionaryThemeLabel(game.card.theme)}
                     </p>
                     {isDrawer && !game.hotseat ? (
                       <>
-                        <p className="mt-1 text-xs text-muted">Draw this</p>
-                        <p className="text-2xl font-bold text-white">{game.card.word}</p>
-                        <p className="mt-1 text-xs text-muted">
+                        <p className="mt-1 text-xs text-app-text/80">Draw this</p>
+                        <p className="text-2xl font-bold text-app-text">{game.card.word}</p>
+                        <p className="mt-1 text-xs text-app-text/80">
                           {PICTIONARY_DIFFICULTY_LABEL[game.card.difficulty]}
                         </p>
                       </>
                     ) : (
                       <div className="mt-2">
                         <WordMask word={game.card.word} hintIndex={game.hintIndex} />
-                        <p className="mt-2 text-xs text-muted">
+                        <p className="mt-2 text-xs text-app-text/80">
                           {game.card.word
                             .split(/\s+/)
                             .map((w) => w.replace(/[^\p{L}\p{N}]/gu, '').length)
@@ -648,7 +668,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                 {drawing && modifier ? <ModifierBanner modifier={modifier} /> : null}
 
                 {otherOffline && drawing ? (
-                  <p className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  <p className="rounded-xl border border-amber-500/55 bg-amber-500/20 px-3 py-2 text-sm text-app-text">
                     {householdName(otherUid)} looks offline.
                   </p>
                 ) : null}
@@ -661,19 +681,19 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   ].join(' ')}
                 >
                   {game.guesses.length === 0 ? (
-                    <p className="text-center text-xs text-muted">Guesses show up here.</p>
+                    <p className="text-center text-xs text-app-text/80">Guesses show up here.</p>
                   ) : (
                     game.guesses.map((g, i) => (
                       <p
                         key={`${g.at}-${i}`}
                         className={[
                           'text-sm',
-                          g.correct ? 'font-semibold text-emerald-200' : 'text-white',
+                          g.correct ? 'font-semibold text-emerald-500' : 'text-app-text',
                         ].join(' ')}
                       >
-                        <span className="text-muted">{householdName(g.uid)}:</span> {g.text}
+                        <span className="text-app-text/80">{householdName(g.uid)}:</span> {g.text}
                         {g.correct ? ' ✓' : g.close ? (
-                          <span className="ml-1 rounded bg-amber-500/20 px-1.5 text-[11px] text-amber-100">
+                          <span className="ml-1 rounded border border-amber-500/55 bg-amber-500/20 px-1.5 text-xs text-app-text">
                             close!
                           </span>
                         ) : null}
@@ -698,12 +718,12 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                         autoFocus
                         placeholder="Type a guess…"
                         disabled={msLeft === 0}
-                        className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-white outline-none focus:border-sky-400/60"
+                        className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-app-text outline-none focus:border-sky-400/60"
                       />
                       <button
                         type="submit"
                         disabled={!guessDraft.trim() || msLeft === 0}
-                        className="rounded-xl border border-emerald-400/50 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-50 enabled:hover:bg-emerald-500/30 disabled:opacity-40"
+                        className="rounded-xl border border-emerald-500/55 bg-emerald-500/20 px-4 text-sm font-semibold text-app-text enabled:hover:bg-emerald-500/30 disabled:opacity-40"
                       >
                         Guess
                       </button>
@@ -729,7 +749,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   <button
                     type="button"
                     onClick={() => setGotItOpen(true)}
-                    className="rounded-2xl border border-emerald-400/50 bg-emerald-500/20 px-4 py-3 text-base font-semibold text-emerald-50 hover:bg-emerald-500/30"
+                    className="rounded-2xl border border-emerald-500/55 bg-emerald-500/20 px-4 py-3 text-base font-semibold text-app-text hover:bg-emerald-500/30"
                   >
                     They said it! ✓
                   </button>
@@ -776,16 +796,16 @@ function DeckPicker({
   return (
     <div className={immersive ? 'flex min-h-0 flex-1 flex-col gap-4' : 'space-y-4'}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <p className="text-lg font-semibold text-white">
+        <p className="text-lg font-semibold text-app-text">
           Choose a deck{' '}
-          <span className="text-sm font-normal text-muted">
+          <span className="text-sm font-normal text-app-text/80">
             · {householdName(game.firstUid)} draws first
           </span>
         </p>
         <button
           type="button"
           onClick={onRandom}
-          className="rounded-xl border border-violet-400/40 bg-violet-500/15 px-4 py-2.5 text-sm font-medium text-violet-100 hover:bg-violet-500/25"
+          className="rounded-xl border border-violet-500/55 bg-violet-500/20 px-4 py-2.5 text-sm font-medium text-app-text hover:bg-violet-500/30"
         >
           Random theme
         </button>
@@ -801,15 +821,15 @@ function DeckPicker({
           onClick={() => onPick('all')}
           className="col-span-2 flex flex-col items-start gap-1 rounded-xl border border-sky-400/50 bg-sky-500/15 px-4 py-3 text-left hover:bg-sky-500/25"
         >
-          <span className="text-lg font-semibold text-white">🎲 All themes</span>
-          <span className="text-xs text-sky-100/80">{allCount} cards, every theme mixed</span>
+          <span className="text-lg font-semibold text-app-text">🎲 All themes</span>
+          <span className="text-xs text-app-text/80">{allCount} cards, every theme mixed</span>
         </button>
         {PICTIONARY_THEMES.map((theme) => (
           <button key={theme.id} type="button" onClick={() => onPick(theme.id)} className={tile}>
-            <span className="text-base font-semibold text-white">
+            <span className="text-base font-semibold text-app-text">
               {theme.emoji} {theme.label}
             </span>
-            <span className="text-xs text-muted">{theme.cards.length} cards</span>
+            <span className="text-xs text-app-text/80">{theme.cards.length} cards</span>
           </button>
         ))}
         <button
@@ -817,8 +837,8 @@ function DeckPicker({
           onClick={() => (customCount > 0 ? onPick('custom') : onEditCustom())}
           className={tile}
         >
-          <span className="text-base font-semibold text-white">✏️ Custom</span>
-          <span className="text-xs text-muted">
+          <span className="text-base font-semibold text-app-text">✏️ Custom</span>
+          <span className="text-xs text-app-text/80">
             {customCount > 0 ? `${customCount} cards` : 'Add your own cards'}
           </span>
         </button>
@@ -855,9 +875,9 @@ function Recap({
   return (
     <div className={immersive ? 'flex min-h-0 flex-1 flex-col gap-4' : 'space-y-4'}>
       <div className="shrink-0 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-4 text-center">
-        <p className="text-2xl font-bold text-white">{headline}</p>
+        <p className="text-2xl font-bold text-app-text">{headline}</p>
         {game.surrenderUid ? (
-          <p className="mt-1 text-sm text-muted">{householdName(game.surrenderUid)} surrendered</p>
+          <p className="mt-1 text-sm text-app-text/80">{householdName(game.surrenderUid)} surrendered</p>
         ) : null}
         <div className="mt-3 flex flex-wrap justify-center gap-3">
           {JENGA_PLAYER_UIDS.map((seat) => {
@@ -865,9 +885,9 @@ function Recap({
             const asGuesser = game.rounds.filter((r) => r.guesserUid === seat).length
             return (
               <div key={seat} className="min-w-[9rem] rounded-xl border border-border bg-surface px-4 py-2">
-                <p className="text-sm text-muted">{householdName(seat)}</p>
-                <p className="text-2xl font-bold tabular-nums text-white">{game.scores[seat] ?? 0}</p>
-                <p className="text-xs text-muted">
+                <p className="text-sm text-app-text/80">{householdName(seat)}</p>
+                <p className="text-2xl font-bold tabular-nums text-app-text">{game.scores[seat] ?? 0}</p>
+                <p className="text-xs text-app-text/80">
                   guessed {guessed}/{asGuesser}
                 </p>
               </div>
@@ -879,7 +899,7 @@ function Recap({
             <button
               type="button"
               onClick={onPlayAgain}
-              className="rounded-xl border border-sky-400/40 bg-sky-500/20 px-4 py-2.5 text-sm font-semibold text-sky-50 hover:bg-sky-500/30"
+              className="rounded-xl border border-sky-500/55 bg-sky-500/20 px-4 py-2.5 text-sm font-semibold text-app-text hover:bg-sky-500/30"
             >
               Play again · {pictionaryDeckLabel(game.deck)}
             </button>
@@ -906,8 +926,8 @@ function Recap({
               >
                 <PictionaryCanvas className="h-36 w-full" strokes={strokesForRound(round.index)} />
                 <div className="px-1">
-                  <p className="truncate text-sm font-semibold text-white">{round.card.word}</p>
-                  <p className="text-[11px] text-muted">
+                  <p className="truncate text-sm font-semibold text-app-text">{round.card.word}</p>
+                  <p className="text-xs text-app-text/80">
                     {householdName(round.drawerUid)} drew ·{' '}
                     {round.guessed
                       ? `+${round.guesserPoints} / +${round.drawerPoints}${
@@ -920,7 +940,7 @@ function Recap({
                   type="button"
                   disabled={state === 'saving' || state === 'saved'}
                   onClick={() => onSave(round.index, round.card.word, round.drawerUid)}
-                  className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-medium text-white hover:border-muted disabled:opacity-50"
+                  className="rounded-lg border border-border bg-surface px-2 py-1 text-xs font-medium text-app-text hover:border-muted disabled:opacity-50"
                 >
                   {state === 'saved'
                     ? 'Saved to Scrapbook'
