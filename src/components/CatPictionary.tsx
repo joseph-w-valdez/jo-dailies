@@ -31,11 +31,15 @@ import {
   pictionaryDeckLabel,
   pictionaryDeckPool,
   pictionaryModifier,
+  pictionaryModifierMultiplier,
   pictionaryThemeEmoji,
   pictionaryThemeLabel,
   PICTIONARY_DIFFICULTY_LABEL,
   PICTIONARY_DIFFICULTY_POINTS,
   PICTIONARY_THEMES,
+  PICTIONARY_TIER_LABEL,
+  PICTIONARY_TIER_MULTIPLIER,
+  type PictionaryChallengeTier,
   type PictionaryDeckId,
   type PictionaryDifficulty,
   type PictionaryModifier,
@@ -51,7 +55,15 @@ import { PictionaryCanvas, type PictionaryTool } from './PictionaryCanvas'
 import { PictionaryDeckEditor } from './PictionaryDeckEditor'
 import { SurrenderButton } from './SurrenderButton'
 
-const COLORS = [...WHITEBOARD_COLORS, '#ffffff'] as const
+/** Whiteboard palette plus brown, three skin tones, and white. */
+const COLORS: readonly string[] = [
+  ...WHITEBOARD_COLORS,
+  '#8b5a2b',
+  '#f3d2b3',
+  '#c68e5a',
+  '#6b3f22',
+  '#ffffff',
+]
 const BRUSHES = [
   { id: 'S', width: 3 },
   { id: 'M', width: 6 },
@@ -115,10 +127,23 @@ function TimerRing({ msLeft, totalMs }: { msLeft: number; totalMs: number }) {
   )
 }
 
+const TIER_STYLE: Record<PictionaryChallengeTier, string> = {
+  mild: 'border-sky-500/55 bg-sky-500/20',
+  spicy: 'border-amber-500/55 bg-amber-500/20',
+  wild: 'border-fuchsia-500/55 bg-fuchsia-500/20',
+}
+
 function ModifierBanner({ modifier }: { modifier: PictionaryModifier }) {
   return (
-    <div className="rounded-xl border border-fuchsia-500/55 bg-fuchsia-500/20 px-3 py-2 text-sm text-app-text">
-      <span className="font-semibold">🎴 {modifier.label}</span>
+    <div
+      className={[
+        'rounded-xl border px-3 py-2 text-sm text-app-text',
+        TIER_STYLE[modifier.tier],
+      ].join(' ')}
+    >
+      <span className="font-semibold">
+        🎴 {modifier.label} · ×{PICTIONARY_TIER_MULTIPLIER[modifier.tier]}
+      </span>
       <span className="text-app-text/80"> — {modifier.blurb}</span>
     </div>
   )
@@ -179,6 +204,8 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
   const [color, setColor] = useState<string>('#111827')
   const [brush, setBrush] = useState(6)
   const [guessDraft, setGuessDraft] = useState('')
+  /** Drawer's opt-in challenge while picking a card — always starts off. */
+  const [challengePick, setChallengePick] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [saved, setSaved] = useState<Record<number, 'saving' | 'saved' | 'error'>>({})
   const feedRef = useRef<HTMLDivElement>(null)
@@ -237,6 +264,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setTool('pen')
     setGuessDraft('')
+    setChallengePick(null)
   }, [game.roundId, game.roundIndex])
 
   useEffect(() => {
@@ -246,10 +274,21 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
 
   const locks = modifier?.locks
   const eraserLocked = Boolean(locks?.eraser)
-  const activeTool: PictionaryTool = eraserLocked && tool === 'erase' ? 'pen' : tool
+  const fillLocked = Boolean(locks?.fill)
+  const activeTool: PictionaryTool =
+    (eraserLocked && tool === 'erase') || (fillLocked && tool === 'fill') ? 'pen' : tool
   const activeColor = locks?.color ?? color
   const activeWidth = locks?.size ?? brush
-  const canDrawNow = isDrawer && drawing && signedIn && live.liveEnabled
+  const strokesLeft =
+    locks?.maxStrokes != null
+      ? Math.max(0, locks.maxStrokes - live.currentStrokes.length)
+      : null
+  const blindDrawer = Boolean(modifier?.blind) && isDrawer && !game.hotseat
+  const canDrawNow =
+    isDrawer && drawing && signedIn && live.liveEnabled && strokesLeft !== 0
+  const pickMultiplier = challengePick
+    ? PICTIONARY_TIER_MULTIPLIER[pictionaryModifier(challengePick)?.tier ?? 'mild']
+    : 1
   const peerDraft =
     !game.hotseat && game.drawerUid !== uid ? (live.drafts[game.drawerUid] ?? null) : null
 
@@ -429,7 +468,6 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
 
           {game.phase === 'pickCard' ? (
             <div className="mx-auto w-full max-w-3xl space-y-4">
-              {modifier ? <ModifierBanner modifier={modifier} /> : null}
               {isDrawer ? (
                 <>
                   <p className="text-center text-lg font-semibold text-app-text">
@@ -443,7 +481,13 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                         type="button"
                         onClick={() =>
                           act((prev) =>
-                            pickPictionaryCard(prev, drawerActor, card.id, live.serverNow()),
+                            pickPictionaryCard(
+                              prev,
+                              drawerActor,
+                              card.id,
+                              live.serverNow(),
+                              challengePick,
+                            ),
                           )
                         }
                         className={[
@@ -453,8 +497,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                       >
                         <span className="text-xs font-bold uppercase tracking-wide text-app-text/85">
                           {PICTIONARY_DIFFICULTY_LABEL[card.difficulty]} · up to{' '}
-                          {PICTIONARY_DIFFICULTY_POINTS[card.difficulty] *
-                            (modifier?.pointsMultiplier ?? 1)}
+                          {Math.round(PICTIONARY_DIFFICULTY_POINTS[card.difficulty] * pickMultiplier)}
                         </span>
                         <span className="text-2xl font-bold leading-tight text-app-text">
                           {card.word}
@@ -465,6 +508,44 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                       </button>
                     ))}
                   </div>
+                  {game.challengeOffers.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-center text-sm font-medium text-app-text/80">
+                        Optional challenge for bonus points — pick one before your card, or skip it
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {game.challengeOffers.map((id) => {
+                          const offer = pictionaryModifier(id)
+                          if (!offer) return null
+                          const on = challengePick === id
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => setChallengePick(on ? null : id)}
+                              className={[
+                                'flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition',
+                                on
+                                  ? `${TIER_STYLE[offer.tier]} ring-2 ring-sky-500/50`
+                                  : 'border-border bg-surface hover:border-muted',
+                              ].join(' ')}
+                            >
+                              <span className="text-xs font-bold uppercase tracking-wide text-app-text/85">
+                                {PICTIONARY_TIER_LABEL[offer.tier]} · ×
+                                {PICTIONARY_TIER_MULTIPLIER[offer.tier]} points
+                              </span>
+                              <span className="text-sm font-semibold text-app-text">
+                                {on ? '✓ ' : ''}
+                                {offer.label}
+                              </span>
+                              <span className="text-xs text-app-text/80">{offer.blurb}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex justify-center">
                     <button
                       type="button"
@@ -508,7 +589,15 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                     width={activeWidth}
                     onStroke={live.addStroke}
                     onDraft={live.publishDraft}
+                    hideInk={blindDrawer && drawing}
                   />
+                  {blindDrawer && drawing ? (
+                    <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+                      <span className="rounded-full border border-fuchsia-500/55 bg-fuchsia-500/20 px-3 py-1 text-xs font-semibold text-app-text">
+                        🙈 Blindfold — only {householdName(guesserUid)} can see this
+                      </span>
+                    </div>
+                  ) : null}
                   {game.phase === 'reveal' && lastRound ? (
                     <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 p-4">
                       <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-5 text-center shadow-xl">
@@ -528,6 +617,9 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                             ? `+${lastRound.guesserPoints} ${householdName(lastRound.guesserUid)} · +${lastRound.drawerPoints} ${householdName(lastRound.drawerUid)}`
                             : 'No points this round'}
                           {lastRound.hintUsed ? ' · hint used' : ''}
+                          {pictionaryModifier(lastRound.modifierId)
+                            ? ` · ${pictionaryModifier(lastRound.modifierId)!.label} ×${pictionaryModifierMultiplier(lastRound.modifierId)}`
+                            : ''}
                         </p>
                         <button
                           type="button"
@@ -554,7 +646,7 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                         <button
                           key={id}
                           type="button"
-                          disabled={id === 'erase' && eraserLocked}
+                          disabled={(id === 'erase' && eraserLocked) || (id === 'fill' && fillLocked)}
                           onClick={() => setTool(id)}
                           aria-pressed={activeTool === id}
                           className={[
@@ -584,6 +676,30 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                           style={{ backgroundColor: c }}
                         />
                       ))}
+                      <label
+                        title="Custom color"
+                        className={[
+                          'relative h-6 w-6 overflow-hidden rounded-full border-2',
+                          locks?.color ? 'opacity-20' : 'cursor-pointer',
+                          !COLORS.includes(activeColor)
+                            ? 'border-sky-500 ring-2 ring-sky-500/40'
+                            : 'border-border',
+                        ].join(' ')}
+                        style={{
+                          background: COLORS.includes(activeColor)
+                            ? 'conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ec4899, #ef4444)'
+                            : activeColor,
+                        }}
+                      >
+                        <input
+                          type="color"
+                          aria-label="Custom color"
+                          value={activeColor}
+                          disabled={Boolean(locks?.color)}
+                          onChange={(e) => setColor(e.target.value)}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                        />
+                      </label>
                     </div>
                     <div className="flex overflow-hidden rounded-lg border border-border">
                       {BRUSHES.map((b) => (
@@ -618,16 +734,17 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                     >
                       Clear
                     </button>
-                    {modifier?.locks ? (
-                      <span className="rounded-lg border border-fuchsia-500/55 bg-fuchsia-500/20 px-2.5 py-1.5 text-xs font-medium text-app-text">
-                        🔒 {modifier.label}:{' '}
-                        {[
-                          locks?.eraser ? 'no eraser, undo or clear' : null,
-                          locks?.color ? 'one color' : null,
-                          locks?.size != null ? 'thin brush only' : null,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
+                    {modifier ? (
+                      <span
+                        className={[
+                          'rounded-lg border px-2.5 py-1.5 text-xs font-medium text-app-text',
+                          TIER_STYLE[modifier.tier],
+                        ].join(' ')}
+                      >
+                        🔒 {modifier.label}
+                        {strokesLeft != null
+                          ? ` · ${strokesLeft} stroke${strokesLeft === 1 ? '' : 's'} left`
+                          : ''}
                       </span>
                     ) : null}
                   </div>

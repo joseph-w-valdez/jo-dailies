@@ -4,6 +4,8 @@ import {
   pictionaryCardSlug,
   pictionaryDeckPool,
   pictionaryModifier,
+  pictionaryModifierMultiplier,
+  PICTIONARY_CHALLENGE_TIERS,
   PICTIONARY_CUSTOM_THEME,
   PICTIONARY_DIFFICULTIES,
   PICTIONARY_DIFFICULTY_POINTS,
@@ -20,7 +22,6 @@ export const PICTIONARY_TURN_MS = 60_000
 /** 5 draws each. */
 export const PICTIONARY_TOTAL_ROUNDS = 10
 export const PICTIONARY_SKIPS_PER_PLAYER = 1
-export const PICTIONARY_MODIFIER_CHANCE = 0.25
 /** Guesser loses this share of their points after taking a hint. */
 export const PICTIONARY_HINT_PENALTY = 0.25
 /**
@@ -81,7 +82,10 @@ export interface PictionaryState {
   drawerUid: string
   /** Drawer's three options while picking. */
   choices: PictionaryCard[]
+  /** One opt-in challenge per tier, offered while picking. */
+  challengeOffers: string[]
   card: PictionaryCard | null
+  /** Challenge the drawer opted into for this round (null = none). */
   modifierId: string | null
   /** Realtime Database server time (ms). */
   drawStartedAt: number | null
@@ -261,16 +265,26 @@ export function dealPictionaryChoices(
   return picked
 }
 
-function dealModifier(rand: Rand): string | null {
-  if (rand() >= PICTIONARY_MODIFIER_CHANCE) return null
-  return pickOne(PICTIONARY_MODIFIERS, rand)?.id ?? null
+/** One challenge per tier — a random rule family, then a random variant of it. */
+export function dealPictionaryChallenges(rand: Rand = Math.random): string[] {
+  const offers: string[] = []
+  for (const tier of PICTIONARY_CHALLENGE_TIERS) {
+    const inTier = PICTIONARY_MODIFIERS.filter((m) => m.tier === tier)
+    const family = pickOne([...new Set(inTier.map((m) => m.family))], rand)
+    const variant = pickOne(
+      inTier.filter((m) => m.family === family),
+      rand,
+    )
+    if (variant) offers.push(variant.id)
+  }
+  return offers
 }
 
 function dealFor(
   state: PictionaryState,
   deck: PictionaryDeckId,
   rand: Rand,
-): Pick<PictionaryState, 'choices' | 'modifierId'> {
+): Pick<PictionaryState, 'choices' | 'challengeOffers' | 'modifierId'> {
   return {
     choices: dealPictionaryChoices(
       deck,
@@ -281,7 +295,8 @@ function dealFor(
       },
       rand,
     ),
-    modifierId: dealModifier(rand),
+    challengeOffers: dealPictionaryChallenges(rand),
+    modifierId: null,
   }
 }
 
@@ -322,6 +337,7 @@ export function createInitialPictionary(
     totalRounds: PICTIONARY_TOTAL_ROUNDS,
     drawerUid: starter,
     choices: [],
+    challengeOffers: [],
     modifierId: null,
     ...clearRound(),
     rounds: [],
@@ -447,21 +463,26 @@ export function skipPictionaryChoices(
   })
 }
 
+/** Lock in a card, plus an optional challenge from this round's offers. */
 export function pickPictionaryCard(
   state: PictionaryState,
   uid: string,
   cardId: string,
   serverNow: number,
+  challengeId: string | null = null,
 ): PictionaryState | null {
   if (state.phase !== 'pickCard' || !canDraw(state, uid)) return null
   const card = state.choices.find((c) => c.id === cardId)
   if (!card) return null
+  if (challengeId != null && !state.challengeOffers.includes(challengeId)) return null
   return bump(state, {
     phase: 'drawing',
     card,
     choices: [],
+    challengeOffers: [],
+    modifierId: challengeId,
     drawStartedAt: serverNow,
-    drawEndsAt: serverNow + pictionaryTurnMs(state.modifierId),
+    drawEndsAt: serverNow + pictionaryTurnMs(challengeId),
     hintIndex: null,
     guesses: [],
     usedCardIds: [...state.usedCardIds, card.id],
@@ -484,7 +505,7 @@ function resolveRound(
         elapsedMs: elapsed,
         turnMs,
         hintUsed,
-        multiplier: pictionaryModifier(state.modifierId)?.pointsMultiplier,
+        multiplier: pictionaryModifierMultiplier(state.modifierId),
       })
     : { guesser: 0, drawer: 0 }
   const guesserUid = pictionaryGuesserUid(state)
@@ -603,6 +624,7 @@ function finishPictionary(state: PictionaryState): PictionaryState {
     status: winnerUid ? 'won' : 'draw',
     winnerUid,
     choices: [],
+    challengeOffers: [],
     modifierId: null,
     ...clearRound(),
     recentCardIds: mergeRecent(state),
@@ -640,6 +662,7 @@ export function surrenderPictionary(
     winnerUid: otherPlayerUid(uid),
     surrenderUid: uid,
     choices: [],
+    challengeOffers: [],
     ...clearRound(),
     recentCardIds: mergeRecent(state),
   })
@@ -829,6 +852,11 @@ export function normalizePictionary(raw: unknown, uid: string): PictionaryState 
         ? s.drawerUid
         : firstUid ?? fallback.drawerUid,
     choices: normalizeCards(s.choices, 3),
+    challengeOffers: Array.isArray(s.challengeOffers)
+      ? s.challengeOffers
+          .filter((id): id is string => typeof id === 'string' && pictionaryModifier(id) != null)
+          .slice(0, 3)
+      : [],
     card,
     modifierId: pictionaryModifier(s.modifierId as string)?.id ?? null,
     drawStartedAt: optionalNum(s.drawStartedAt),

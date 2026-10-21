@@ -32,6 +32,7 @@ export function PictionaryCanvas({
   width = 6,
   onStroke,
   onDraft,
+  hideInk = false,
   className,
 }: {
   strokes: WhiteboardStroke[]
@@ -43,6 +44,8 @@ export function PictionaryCanvas({
   width?: number
   onStroke?: (stroke: WhiteboardStroke) => void
   onDraft?: (stroke: WhiteboardStroke | null) => void
+  /** Draw normally but show a blank board (blindfold challenge). */
+  hideInk?: boolean
   className?: string
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -56,6 +59,8 @@ export function PictionaryCanvas({
   peerRef.current = peerDraft ?? null
   const onDraftRef = useRef(onDraft)
   onDraftRef.current = onDraft
+  const hideInkRef = useRef(hideInk)
+  hideInkRef.current = hideInk
 
   const paint = () => {
     const canvas = canvasRef.current
@@ -64,6 +69,10 @@ export function PictionaryCanvas({
     if (!canvas || !ctx || cssW <= 0 || cssH <= 0) return
     const dpr = window.devicePixelRatio || 1
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    if (hideInkRef.current) {
+      redrawWhiteboard(ctx, [], cssW, cssH)
+      return
+    }
     redrawWhiteboard(ctx, strokesRef.current, cssW, cssH)
     if (peerRef.current) paintWhiteboardStroke(ctx, peerRef.current, cssW, cssH)
     if (draftRef.current) paintWhiteboardStroke(ctx, draftRef.current, cssW, cssH)
@@ -91,7 +100,7 @@ export function PictionaryCanvas({
 
   useEffect(() => {
     paint()
-  }, [strokes, peerDraft, size])
+  }, [strokes, peerDraft, size, hideInk])
 
   // Drop an in-progress stroke if drawing gets locked mid-gesture.
   useEffect(() => {

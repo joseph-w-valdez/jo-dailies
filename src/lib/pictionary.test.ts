@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addPictionaryCustomCard,
   createInitialPictionary,
+  dealPictionaryChallenges,
   dealPictionaryChoices,
   markPictionaryGotIt,
   nextPictionaryRound,
@@ -24,7 +25,7 @@ import {
   PICTIONARY_TURN_MS,
   type PictionaryState,
 } from './pictionary'
-import { PICTIONARY_THEMES, pictionaryDeckPool } from './pictionaryDeck'
+import { PICTIONARY_THEMES, pictionaryDeckPool, pictionaryModifier } from './pictionaryDeck'
 import { JENGA_PLAYER_UIDS } from './jenga'
 
 const [A, B] = JENGA_PLAYER_UIDS
@@ -43,10 +44,13 @@ function startRound(deck: 'animals' | 'all' = 'animals'): PictionaryState {
 }
 
 describe('pictionary deck', () => {
-  it('has every theme with 20 cards per difficulty and no duplicate ids', () => {
+  it('has every theme at 100 cards (33 / 33 / 34) with no duplicate ids', () => {
+    const expected = { easy: 33, medium: 33, hard: 34 } as const
     for (const theme of PICTIONARY_THEMES) {
       for (const d of ['easy', 'medium', 'hard'] as const) {
-        expect(theme.cards.filter((c) => c.difficulty === d).length, `${theme.id} ${d}`).toBe(20)
+        expect(theme.cards.filter((c) => c.difficulty === d).length, `${theme.id} ${d}`).toBe(
+          expected[d],
+        )
       }
     }
     for (const classic of ['objects', 'people', 'actions', 'animals', 'places', 'difficult']) {
@@ -215,13 +219,53 @@ describe('pictionary flow', () => {
     expect(again.scores[A]).toBe(0)
   })
 
-  it('applies speed-round timing from the modifier', () => {
+})
+
+describe('pictionary challenges', () => {
+  function dealt() {
     const seated = selectPictionaryFirst(createInitialPictionary(A), A)!
-    // rand: first < chance (modifier on), then index into modifiers → last (speed).
-    const dealt = pickPictionaryDeck(seated, 'animals', seq(0, 0, 0, 0.1, 0.999))!
-    expect(dealt.modifierId).toBe('speed')
-    const drawing = pickPictionaryCard(dealt, A, dealt.choices[0]!.id, 0)!
+    return pickPictionaryDeck(seated, 'animals', noMod)!
+  }
+
+  it('offers one enforced challenge per tier, never pre-selected', () => {
+    const state = dealt()
+    expect(state.modifierId).toBeNull()
+    expect(state.challengeOffers.map((id) => pictionaryModifier(id)!.tier)).toEqual([
+      'mild',
+      'spicy',
+      'wild',
+    ])
+  })
+
+  it('plays without a challenge unless the drawer opts in', () => {
+    const state = dealt()
+    const plain = pickPictionaryCard(state, A, state.choices[0]!.id, 0)!
+    expect(plain.modifierId).toBeNull()
+    expect(plain.drawEndsAt).toBe(PICTIONARY_TURN_MS)
+    // Only this round's offers can be chosen.
+    expect(pickPictionaryCard(state, A, state.choices[0]!.id, 0, 'not-offered')).toBeNull()
+  })
+
+  it('pays the tier multiplier to both players', () => {
+    const state = { ...dealt(), challengeOffers: ['noeraser', 'bigbrush', 'blind'] }
+    const card = state.choices.find((c) => c.difficulty === 'hard')!
+    const wild = pickPictionaryCard(state, A, card.id, 0, 'blind')!
+    const done = markPictionaryGotIt(wild, A, 0)!
+    expect(done.rounds[0]!.guesserPoints).toBe(600)
+    expect(done.rounds[0]!.drawerPoints).toBe(300)
+  })
+
+  it('applies speed-round timing', () => {
+    const state = { ...dealt(), challengeOffers: ['tiny', 'speed', 'oneline'] }
+    const drawing = pickPictionaryCard(state, A, state.choices[0]!.id, 0, 'speed')!
     expect(drawing.drawEndsAt).toBe(30_000)
+  })
+
+  it('deals a different rule family set across rolls', () => {
+    const offers = new Set(
+      Array.from({ length: 40 }, (_, i) => dealPictionaryChallenges(seq(i / 40, (i * 7) % 40 / 40))[0]),
+    )
+    expect(offers.size).toBeGreaterThan(1)
   })
 })
 

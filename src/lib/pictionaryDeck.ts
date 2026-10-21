@@ -1,4 +1,5 @@
 /** Pictionary word cards, themes, and round modifiers. */
+import { PICTIONARY_MORE_WORDS } from './pictionaryDeckMore'
 
 export type PictionaryDifficulty = 'easy' | 'medium' | 'hard'
 
@@ -45,6 +46,24 @@ export type PictionaryThemeId =
   | 'disney'
   | 'internet'
   | 'compound'
+  | 'superheroes'
+  | 'toys'
+  | 'spooky'
+  | 'countries'
+  | 'school'
+  | 'anime'
+  | 'datenight'
+  | 'rooms'
+  | 'brands'
+  | 'emojis'
+  | 'fastfood'
+  | 'desserts'
+  | 'breakfast'
+  | 'medieval'
+  | 'pets'
+  | 'farm'
+  | 'travel'
+  | 'hobbies'
   | 'movies'
   | 'holidays'
   | 'cats'
@@ -307,6 +326,186 @@ const THEMES: readonly ThemeDef[] = [
     },
   },
   {
+    id: 'superheroes',
+    label: 'Superheroes',
+    emoji: '🦸',
+    words: {
+      easy: ['Superman', 'Batman', 'Spider-Man', 'Wonder Woman', 'Hulk', 'Iron Man', 'Captain America', 'Thor', 'the Flash', 'Aquaman', 'Black Panther', 'Robin', 'Joker', 'cape', 'mask', 'shield', 'utility belt', 'Bat-Signal', 'spider web', 'laser eyes', 'super strength', 'flying', 'invisibility', 'villain', 'sidekick', 'superhero landing', 'secret identity', 'phone booth', 'kryptonite', 'evil lair', 'hero pose', 'Supergirl', 'Green Lantern'],
+      medium: ['Wolverine', 'Deadpool', 'Black Widow', 'Hawkeye', 'Doctor Strange', 'Ant-Man', 'Scarlet Witch', 'Groot', 'Rocket Raccoon', 'Thanos', 'Venom', 'Magneto', 'Storm', 'Professor X', 'Harley Quinn', 'the Riddler', 'Lex Luthor', 'Green Goblin', 'Doctor Octopus', 'Batcave', 'the Avengers', 'Justice League', 'X-Men', 'Fantastic Four', 'shrink ray', 'freeze ray', 'force field', 'telekinesis', 'x-ray vision', 'mind control', 'Captain Marvel', 'Loki', 'Ms. Marvel'],
+      hard: ['Infinity Gauntlet', 'Mjolnir', 'vibranium shield', 'arc reactor', 'Spider-Verse', 'Bane', 'Two-Face', 'Poison Ivy', 'Mr. Freeze', 'Ultron', 'Galactus', 'Silver Surfer', 'Moon Knight', 'Daredevil', 'Nightcrawler', 'Mystique', 'Shazam', 'Mr. Incredible', 'Invincible', 'Homelander', 'Watchmen', 'multiverse', 'origin story', 'post-credits scene', 'with great power comes great responsibility', 'I am Iron Man', 'Wakanda Forever', 'the Thanos snap', 'Hulk smash', 'Avengers assemble', 'Gotham City', 'Daily Bugle', 'Stark Tower', 'Fortress of Solitude'],
+    },
+  },
+  {
+    id: 'toys',
+    label: 'Toys & Board Games',
+    emoji: '🧸',
+    words: {
+      easy: ['yo-yo', 'doll', 'toy car', 'building blocks', 'Lego', 'Play-Doh', 'bubbles', 'marbles', 'spinning top', 'rubber duck', 'water gun', 'toy train', 'dollhouse', 'slime', 'jigsaw puzzle', 'crayons', 'action figure', 'deck of cards', 'dominoes', 'checkers', 'Uno', 'toy robot', 'stuffed animal', 'bouncy ball', 'swing set', 'slide', 'seesaw', 'sidewalk chalk', 'coloring book', 'toy box', 'toy soldier', 'bubble wand', 'paper doll'],
+      medium: ['Monopoly', 'Scrabble', 'Jenga', 'Twister', 'Connect Four', 'Battleship', 'Clue', 'Candy Land', 'Chutes and Ladders', 'Operation', 'Guess Who', 'Hungry Hungry Hippos', 'Mouse Trap', 'Lite-Brite', 'Hot Wheels', 'Nerf gun', 'Furby', 'Beanie Babies', 'Barbie Dreamhouse', 'View-Master', 'remote control car', 'Magna-Tiles', 'Lincoln Logs', 'Tonka truck', 'Easy-Bake Oven', "Slip 'N Slide", 'Bop It', 'Simon', 'Spirograph', 'Pogs', 'trading cards', 'Pictionary', 'Uno reverse card'],
+      hard: ['Catan', 'Ticket to Ride', 'Dungeons & Dragons', 'Codenames', 'Exploding Kittens', 'Risk', 'Trivial Pursuit', 'Boggle', 'Yahtzee', 'Stratego', 'Sorry!', 'Apples to Apples', 'Pandemic', 'Carcassonne', 'Magic: The Gathering', 'Pokémon cards', 'Tickle Me Elmo', 'Cabbage Patch Kids', 'Polly Pocket', 'Teddy Ruxpin', 'Stretch Armstrong', 'Ouija board', "Rock 'Em Sock 'Em Robots", 'KerPlunk', 'Perfection', "Don't Break the Ice", 'Pie Face', 'Hedbanz', 'Throw Throw Burrito', 'go directly to jail', 'Mancala', 'backgammon', 'Bingo', 'you sank my battleship'],
+    },
+  },
+  {
+    id: 'spooky',
+    label: 'Spooky & Halloween',
+    emoji: '🎃',
+    words: {
+      easy: ['ghost', 'witch', 'bat', 'skeleton', 'mummy', 'vampire', 'zombie', 'monster', 'pumpkin', 'black cat', 'spider', 'cobweb', 'haunted house', 'graveyard', 'tombstone', 'coffin', 'broom', 'cauldron', 'candy corn', 'trick-or-treat bag', 'costume', 'scary mask', 'owl', 'scarecrow', 'werewolf', 'eyeball', 'fangs', 'skull', 'crow', 'full moon', 'flashlight', 'candle', 'ghost story'],
+      medium: ["jack-o'-lantern", "Frankenstein's monster", "Dracula's castle", 'creepy doll', 'séance', 'haunted mirror', 'monster under the bed', 'bobbing for apples', 'hayride', 'costume contest', 'zombie apocalypse', "witch's brew", 'Headless Horseman', 'Grim Reaper', 'creaky door', 'secret passage', 'ghost town', 'tarot cards', 'voodoo doll', 'slasher movie', 'fog machine', 'fake blood', 'glow sticks', 'candy apple', 'skeleton dance', 'poltergeist', 'spooky forest', 'ghost hunter', 'jump scare', 'boogeyman', 'chainsaw', 'scream', 'bloody handprint'],
+      hard: ['The Exorcist', 'The Conjuring', 'Ghostface', 'Michael Myers', 'Freddy Krueger', 'Jason Voorhees', 'Chucky', 'Annabelle', 'Pennywise', 'The Ring', 'Saw', 'Hocus Pocus', 'The Nightmare Before Christmas', 'Beetlejuice', 'The Addams Family', 'Casper the Friendly Ghost', 'Salem witch trials', 'Bloody Mary', 'Sleepy Hollow', 'Count Dracula', 'Transylvania', 'zombie walk', 'graveyard shift', 'skeleton key', 'Edgar Allan Poe', 'The Raven', 'the Upside Down', 'werewolf transformation', 'Monster Mash', 'trick or treat smell my feet', 'haunted asylum', 'vampire hunter', 'Halloweentown', 'Coraline'],
+    },
+  },
+  {
+    id: 'countries',
+    label: 'Countries & Landmarks',
+    emoji: '🌍',
+    words: {
+      easy: ['USA', 'Canada', 'Mexico', 'Japan', 'China', 'France', 'Italy', 'Egypt', 'Australia', 'Brazil', 'India', 'England', 'Germany', 'Spain', 'Russia', 'Greece', 'Hawaii', 'Africa', 'Alaska', 'Ireland', 'Philippines', 'South Korea', 'Jamaica', 'Switzerland', 'Netherlands', 'Scotland', 'Peru', 'Thailand', 'Vietnam', 'Kenya', 'Iceland', 'Cuba', 'Argentina'],
+      medium: ['Mount Kilimanjaro', 'Arc de Triomphe', 'Brandenburg Gate', 'Neuschwanstein Castle', 'Sagrada Família', 'Acropolis', 'Petronas Towers', 'Burj Khalifa', 'CN Tower', 'Space Needle', 'Gateway Arch', 'Angkor Wat', 'Chichén Itzá', 'Forbidden City', 'the Kremlin', 'Tower Bridge', 'Buckingham Palace', 'Edinburgh Castle', 'Cliffs of Moher', 'Table Mountain', 'Victoria Falls', 'Ha Long Bay', 'Uluru', 'Santorini', 'Dubrovnik', 'Bali', 'Galápagos Islands', 'Amsterdam canals', 'Swiss Alps', 'Kyoto temple', 'Red Square', 'Great Sphinx of Giza', 'Grand Bazaar'],
+      hard: ['Union Jack', 'Japanese flag', 'Canadian flag', 'Brazilian flag', 'South Korean flag', 'Greek flag', 'Mexican flag', 'Mongolia', 'Nepal', 'New Zealand', 'Norwegian fjords', 'Finland', 'Morocco', 'Turkey', 'Portugal', 'Poland', 'Ukraine', 'Sweden', 'Denmark', 'Belgium', 'Chile', 'Colombia', 'Venezuela', 'Nigeria', 'South Africa', 'Ethiopia', 'Saudi Arabia', 'Israel', 'Pakistan', 'Indonesia', 'Singapore', 'Taiwan', 'Monaco', 'Vatican City'],
+    },
+  },
+  {
+    id: 'school',
+    label: 'School',
+    emoji: '🏫',
+    words: {
+      easy: ['chalkboard', 'homework', 'pencil sharpener', 'glue stick', 'crayon box', 'notebook', 'textbook', 'recess', 'school bell', 'hall pass', 'report card', 'spelling bee', 'art class', 'gym class', 'cafeteria', 'locker', 'library book', 'field trip', 'class pet', 'apple for the teacher', 'pop quiz', 'science fair', 'show and tell', 'nap time', 'snack time', 'school play', 'principal', 'lunch lady', 'raise your hand', 'gold star', 'school uniform', 'ABCs', 'times tables'],
+      medium: ['detention', 'yearbook', 'prom', 'homecoming', 'class clown', "teacher's pet", 'substitute teacher', 'cheat sheet', 'study group', 'summer vacation', 'snow day', 'fire drill', 'permission slip', 'dissecting a frog', 'chemistry lab', 'volcano project', 'book report', 'parent-teacher conference', 'school dance', 'kindergarten', 'valedictorian', 'dorm room', 'college', 'diploma', 'pencil case', 'lab goggles', 'algebra', 'geography', 'homeschool', 'school nurse', 'student council', 'the dog ate my homework', 'honor roll'],
+      hard: ['Pythagorean theorem', 'periodic table', 'E = mc²', 'standardized test', 'SATs', 'final exam', 'student loans', 'senior prank', 'class reunion', 'spirit week', 'pep rally', 'debate club', 'exchange student', 'freshman', 'sorority', 'fraternity', 'commencement speech', 'scholarship', 'tuition', "dean's list", 'plagiarism', 'essay deadline', 'shop class', 'home economics', 'theater kid', 'lab partner', 'lost and found', 'The Magic School Bus', 'long division', 'cursive writing', 'Bunsen burner', 'school spirit', 'class president', 'back to school'],
+    },
+  },
+  {
+    id: 'anime',
+    label: 'Anime',
+    emoji: '🌸',
+    words: {
+      easy: ['Naruto', 'Goku', 'Sailor Moon', 'Totoro', 'Doraemon', 'Luffy', 'Ash Ketchum', 'Astro Boy', 'ninja headband', 'Dragon Balls', 'Catbus', 'giant robot', 'katana', 'cherry blossom', 'sailor uniform', 'bento box', 'onigiri', 'anime eyes', 'big sweat drop', 'chibi', 'magical girl', 'mecha', 'samurai', 'kitsune mask', 'Pikachu', 'Studio Ghibli', 'No-Face', "Kiki's Delivery Service", 'Ponyo', 'Jigglypuff', 'Charmander', 'Squirtle', 'Bulbasaur'],
+      medium: ['One Piece', 'Dragon Ball Z', 'Attack on Titan', 'Demon Slayer', 'My Hero Academia', 'Death Note', 'Naruto run', 'Super Saiyan', 'Kamehameha', 'Sharingan', 'Rasengan', 'Spirit Bomb', 'Colossal Titan', 'Straw Hat Pirates', 'Pokédex', 'Team Rocket', 'Vegeta', 'Sasuke', 'Kakashi', 'All Might', 'Deku', 'Tanjiro', 'Nezuko', 'Gojo', 'Jujutsu Kaisen', 'Spy x Family', 'Chainsaw Man', 'Tuxedo Mask', "Howl's Moving Castle", 'Princess Mononoke', 'Calcifer', 'Light Yagami', 'Haku the dragon'],
+      hard: ['Neon Genesis Evangelion', 'Cowboy Bebop', 'Fullmetal Alchemist', 'Hunter x Hunter', 'Sword Art Online', 'Tokyo Ghoul', 'One Punch Man', 'Mob Psycho 100', 'Haikyuu!!', 'Fruits Basket', 'Ouran High School Host Club', 'Bleach', 'Inuyasha', 'Yu-Gi-Oh!', 'Digimon', 'Cardcaptor Sakura', 'Akira', 'Ghost in the Shell', 'Your Name', 'Frieren', 'Bocchi the Rock!', 'Lelouch', 'Zoro', 'Itachi', 'Levi Ackerman', 'Ryuk', 'isekai', 'tsundere', 'power of friendship', 'beach episode', 'transformation sequence', 'Weathering with You', 'Kaguya-sama', 'Senku'],
+    },
+  },
+  {
+    id: 'datenight',
+    label: 'Date Night',
+    emoji: '💕',
+    words: {
+      easy: ['rose', 'holding hands', 'love letter', 'box of chocolates', 'picnic', 'movie night', 'engagement ring', 'bouquet', 'couple selfie', 'pizza night', 'cuddle', 'blanket fort', 'slow dance', 'sunset walk', 'ice cream date', 'cooking together', 'game night', 'photo booth', 'coffee date', 'breakfast in bed', 'Ferris wheel', 'bubble bath', 'puppy love', 'heart eyes', 'xoxo', 'kissy face', 'lovebirds', 'first kiss', 'wedding cake', "Cupid's arrow", 'spooning', 'pillow talk', 'handwritten note'],
+      medium: ['candlelit dinner', 'first date', 'double date', 'blind date', 'long-distance call', 'road trip', 'drive-in movie', 'karaoke duet', 'cooking class', 'paint and sip', 'wine tasting', 'dinner reservation', 'anniversary', 'love lock bridge', 'serenade', 'proposal', 'bouquet toss', 'first dance', 'takeout on the couch', 'Netflix and chill', 'matching tattoos', 'love language', 'couples costume', 'spa day', 'dancing in the rain', 'hot air balloon ride', 'mixtape', 'rom-com marathon', 'love note in a lunchbox', 'airport reunion', 'meeting the parents', 'sharing dessert', 'playing footsie'],
+      hard: ['love at first sight', 'head over heels', 'third wheel', 'friend zone', 'soulmate', 'honeymoon phase', 'Romeo and Juliet', 'love triangle', 'meet-cute', 'PDA', 'red flag', 'green flag', 'situationship', 'love bombing', 'pick-up line', 'wingman', 'vow renewal', 'eloping', 'Vegas wedding', 'promise ring', 'couple goals', 'our song', 'inside joke', 'pinky promise', 'secret admirer', 'long walks on the beach', 'Bonnie and Clyde', 'Jack and Rose', 'Mr. and Mrs. Smith', 'the one that got away', 'good morning text', 'staying up all night talking', 'falling asleep on the phone', "first 'I love you'"],
+    },
+  },
+  {
+    id: 'rooms',
+    label: 'Rooms of the House',
+    emoji: '🚪',
+    words: {
+      easy: ['kitchen', 'bathroom', 'bedroom', 'garage', 'living room', 'attic', 'basement', 'closet', 'shower', 'toilet paper', 'bath mat', 'nightstand', 'bedside lamp', 'bed sheets', 'fridge magnet', 'cookie jar', 'dish soap', 'oven mitt', 'spatula', 'frying pan', 'garden hose', 'lawn mower', 'tool bench', 'porch', 'front door', 'laundry room', 'dining table', 'kitchen sink', 'bath towel', 'rubber ducky', 'hallway', 'backyard', 'patio'],
+      medium: ['walk-in closet', 'home office', 'game room', 'mudroom', 'pantry', 'guest room', 'nursery', 'man cave', 'laundry pile', 'unmade bed', 'messy room', 'dirty dishes', 'shower cap', 'loofah', 'bathroom scale', 'medicine cabinet', 'clogged toilet', 'leaky faucet', 'squeaky floorboard', 'creaky stairs', 'workbench', 'pegboard', 'paint cans', 'storage boxes', 'garage sale', 'kitchen island', 'breakfast nook', 'toaster oven', 'fogged-up mirror', 'shoe rack', 'coat closet', 'laundry chute', 'playroom'],
+      hard: ['she shed', 'panic room', 'wine cellar', 'home theater', 'sunroom', "butler's pantry", 'secret bookcase door', 'dumbwaiter', 'crawl space', 'boiler room', 'open floor plan', 'spiral staircase', 'loft bed', 'heated floors', 'rain shower head', 'jacuzzi tub', 'double vanity', 'smart fridge', 'garage band', 'junk room', 'home gym', 'craft room', 'reading nook', 'window seat', 'midnight snack raid', 'singing in the shower', 'folding a fitted sheet', 'loading the dishwasher', 'garage door opener', 'fridge light', 'toilet seat left up', 'dust bunnies', 'lint trap', 'morning bathroom line'],
+    },
+  },
+  {
+    id: 'brands',
+    label: 'Brands & Logos',
+    emoji: '🏷️',
+    words: {
+      easy: ['Apple logo', 'Nike swoosh', 'golden arches', 'Starbucks', 'Coca-Cola', 'Pepsi', 'Target', 'Amazon', 'Disney castle logo', 'IKEA', 'Walmart', 'Burger King', 'Subway', 'Pizza Hut', 'KFC', 'Taco Bell', "Domino's", "Dunkin'", 'Twitter bird', "M&M's", 'Skittles', 'Oreo', 'Doritos', 'Cheetos', 'Pringles', 'Kit Kat', "Hershey's Kiss", 'Toyota', 'Tesla', 'Ford', "Lay's", 'Cheerios', 'Spotify'],
+      medium: ['Michelin Man', 'Pillsbury Doughboy', 'Mr. Peanut', 'Kool-Aid Man', 'Tony the Tiger', 'Energizer Bunny', 'Geico gecko', 'Colonel Sanders', 'Ronald McDonald', 'Jolly Green Giant', 'Mr. Clean', 'Chester Cheetah', 'Trix rabbit', 'Lucky Charms leprechaun', "Wendy's", 'Red Bull', 'Mercedes logo', 'Ferrari horse', 'Lamborghini bull', 'Adidas stripes', 'Shell logo', 'Olympic rings', 'PlayStation logo', 'Mastercard circles', 'Chick-fil-A cows', 'Duolingo owl', 'Jumpman logo', 'Puma', 'Monster Energy', 'Quaker Oats man', 'Mr. Monopoly', 'Gerber baby', 'Pringles man'],
+      hard: ['Volkswagen logo', 'Audi rings', 'BMW logo', 'Mitsubishi logo', 'Airbnb', 'Uber', 'DoorDash', 'Shake Shack', 'In-N-Out', "Trader Joe's", 'Costco', 'Lululemon', 'Patagonia', 'The North Face', 'Supreme', 'Gucci', 'Louis Vuitton', 'Chanel', 'Rolex crown', 'Tiffany blue box', 'Vans', 'Converse', 'Dr Pepper', 'Mountain Dew', 'Gatorade', 'Pinterest', 'LinkedIn', 'Slack', 'Discord', 'WhatsApp', 'Tinder flame', 'Firefox', 'Chrome', 'Peloton'],
+    },
+  },
+  {
+    id: 'emojis',
+    label: 'Emojis',
+    emoji: '😀',
+    words: {
+      easy: ['grinning face', 'winking face', 'crying face', 'angry face', 'sleeping face', 'thumbs down', 'red heart', 'broken heart', 'fire emoji', 'poop emoji', 'skull emoji', '100', 'peace sign', 'OK hand', 'clapping hands', 'praying hands', 'waving hand', 'flexed biceps', 'eyes emoji', 'sunglasses face', 'sparkles', 'star-struck', 'crown emoji', 'rocket emoji', 'sun with face', 'pizza slice', 'cat face', 'dog face', 'see-no-evil monkey', 'kiss mark', 'sweat smile', 'tongue out', 'upside-down face'],
+      medium: ['facepalm', 'shrug', 'eye roll', 'zipper-mouth face', 'nerd face', 'cowboy face', 'clown face', 'robot face', 'alien emoji', 'money-mouth face', 'mind blown', 'hugging face', 'thinking face', 'shushing face', 'nauseated face', 'sneezing face', 'hot face', 'cold face', 'woozy face', 'pleading face', 'smirking face', 'raised eyebrow', 'melting face', 'saluting face', 'nail polish emoji', 'dancing woman', 'lightning bolt emoji', 'sweat droplets', 'zzz', 'speech bubble', 'face with tears of joy', 'rolling on the floor laughing', 'handshake emoji'],
+      hard: ["chef's kiss", 'side eye', 'pinched fingers', 'face holding back tears', 'dotted line face', 'face with spiral eyes', 'flushed face', 'grimacing face', 'expressionless face', 'face with monocle', 'lying face', 'smiling imp', 'two hearts', 'GOAT emoji', 'cap emoji', 'heart hands', 'writing hand', 'call me hand', 'Vulcan salute', 'crossed fingers', 'bowing person', 'person tipping hand', 'zombie emoji', 'genie emoji', 'ninja emoji', 'moai', 'face exhaling', 'shaking face', 'face with hand over mouth', 'partying face', 'disguised face', 'steam from nose', 'drooling face', 'face without mouth'],
+    },
+  },
+  {
+    id: 'fastfood',
+    label: 'Fast Food & Restaurants',
+    emoji: '🍔',
+    words: {
+      easy: ['cheeseburger', 'drive-thru', 'Happy Meal', 'chicken wings', 'soda cup', 'ketchup', 'mustard', 'drinking straw', 'pizza box', 'hot dog stand', 'menu', 'waiter tray', 'tip jar', "kids' menu", 'ice cream cone', 'Slurpee', 'burrito bowl', 'sub sandwich', 'salad bar', 'buffet', 'chopsticks', 'takeout box', 'booth', 'high chair', 'the check', 'breadsticks', 'corn dog', 'chili dog', 'fish and chips', 'chicken sandwich', 'combo meal', 'toy prize', 'paper hat'],
+      medium: ['Big Mac', 'Whopper', 'Frosty', 'Crunchwrap', 'McFlurry', 'Blizzard', 'animal style fries', 'dipping sauce', 'secret menu', 'value menu', 'Taco Tuesday', 'all-you-can-eat', 'sushi conveyor belt', 'hibachi chef', 'onion volcano', 'pizza delivery', 'food court', 'diner', 'five-star restaurant', "maître d'", 'sommelier', 'tasting menu', 'birthday song at a restaurant', 'tableside guacamole', 'soda fountain', 'ball pit', 'Baconator', 'drive-thru speaker', 'wrong order', 'dine and dash', 'McRib', 'Doritos Locos Taco', 'Shamrock Shake'],
+      hard: ['Michelin star', "Hell's Kitchen", 'food critic', 'farm-to-table', 'molecular gastronomy', 'omakase', 'pop-up restaurant', 'speakeasy', 'Waffle House', 'Cracker Barrel', 'Olive Garden', 'Red Lobster', "Applebee's", 'Chuck E. Cheese', 'Rainforest Cafe', 'Medieval Times', "Denny's", 'Five Guys', 'Chipotle', 'Panda Express', 'Sonic Drive-In', 'Jack in the Box', "Raising Cane's", 'Popeyes', 'White Castle', "Arby's", 'Dairy Queen', 'Cold Stone', 'Benihana', 'Wingstop', 'Panera', 'Jollibee', 'Kitchen Nightmares', "Steak 'n Shake"],
+    },
+  },
+  {
+    id: 'desserts',
+    label: 'Desserts & Sweets',
+    emoji: '🍰',
+    words: {
+      easy: ['brownie', 'chocolate chip cookie', 'cupcake', 'sprinkle donut', 'swirly lollipop', 'candy bar', 'gummy worm', 'cotton candy', 'popsicle', 'ice cream sandwich', 'sundae', 'cherry on top', 'sprinkles', 'whipped cream', 'chocolate bar', 'marshmallow', 'jelly beans', 'candy cane', 'gumball machine', 'bubble gum', 'licorice', 'pudding', 'Jell-O', 'cinnamon roll', 'apple pie', 'layer cake', 'cheesecake', 'muffin', 'banana split', 'caramel', 'hot fudge', 'frosting', 'cake slice'],
+      medium: ['flan', 'baklava', 'cannoli', 'éclair', 'mochi', 'gelato', 'rocky road', 'peanut brittle', 'fudge', 'chocolate truffle', 'pavlova', 'trifle', 'Boston cream pie', 'red velvet cake', 'carrot cake', 'key lime pie', 'pecan pie', 'peach cobbler', 'apple strudel', 'profiteroles', 'sorbet', 'frozen yogurt', 'chocolate fountain', 'rock candy', 'saltwater taffy', 'gingerbread cookie', 'Pop Rocks', 'Twinkie', 'Pop-Tart', 'Rice Krispies treat', 'funnel cake', 'snow cone', 'affogato'],
+      hard: ['croquembouche', 'mille-feuille', 'Black Forest cake', 'Sachertorte', 'tres leches cake', 'halo-halo', 'dango', 'taiyaki', 'bingsu', 'kulfi', 'gulab jamun', 'panna cotta', 'soufflé', 'opera cake', 'Swiss roll', 'kouign-amann', 'beignets', 'zeppole', 'sfogliatella', 'Basque cheesecake', 'Dubai chocolate bar', 'smash cake', 'piñata cake', 'drip cake', 'chocolate lava cake', 'ice cream cake', 'Neapolitan ice cream', 'candy necklace', 'Nerds Rope', 'Ring Pop', 'Fun Dip', 'Warheads', 'Pixy Stix', "Dippin' Dots"],
+    },
+  },
+  {
+    id: 'breakfast',
+    label: 'Breakfast',
+    emoji: '🥞',
+    words: {
+      easy: ['pancakes', 'waffles', 'fried egg', 'bacon', 'buttered toast', 'cereal bowl', 'orange juice', 'coffee', 'blueberry muffin', 'bagel with cream cheese', 'glazed donut', 'oatmeal', 'yogurt', 'sliced banana', 'syrup', 'butter', 'jam', 'sausage', 'hash browns', 'omelet', 'scrambled eggs', 'glass of milk', 'croissant', 'toaster', 'cup of tea', 'morning alarm', 'breakfast tray', 'fruit bowl', 'grapefruit', 'strawberries', 'honey drizzle', 'peanut butter toast', 'pancake stack'],
+      medium: ['breakfast burrito', 'huevos rancheros', 'biscuits and gravy', 'steak and eggs', 'granola', 'smoothie bowl', 'açaí bowl', 'latte art', 'cappuccino', 'espresso shot', 'chai latte', 'iced coffee', 'cold brew', 'mimosa', 'brunch', 'continental breakfast', 'breakfast buffet', 'room service', 'drive-thru coffee', 'cinnamon toast', 'Belgian waffle', 'crêpes', 'quiche', 'frittata', 'breakfast sandwich', 'Egg McMuffin', 'toaster strudel', 'cereal mascot', 'milk mustache', 'burnt toast', 'sunny-side up', 'soft-boiled egg', 'egg cup'],
+      hard: ['full English breakfast', 'shakshuka', 'congee', 'dim sum', 'chilaquiles', 'kaya toast', 'tamagoyaki', 'khachapuri', 'Dutch baby pancake', 'pain au chocolat', 'IHOP', 'Grand Slam breakfast', 'Lucky Charms', 'Froot Loops', 'Frosted Flakes', "Cap'n Crunch", 'Cinnamon Toast Crunch', 'Count Chocula', 'breakfast of champions', 'most important meal of the day', 'rise and shine', 'early bird special', 'bottomless mimosas', 'eggs over easy', 'pancake flip', 'Wheaties box', 'toast landing butter-side down', 'natto', 'menemen', 'Turkish breakfast', 'loco moco', 'Spam and eggs', 'huevos divorciados', 'pancake art'],
+    },
+  },
+  {
+    id: 'medieval',
+    label: 'Medieval & Knights',
+    emoji: '⚔️',
+    words: {
+      easy: ['knight', 'castle', 'shield', 'crown', 'king', 'queen', 'princess', 'prince', 'horse', 'armor', 'helmet', 'catapult', 'drawbridge', 'moat', 'castle tower', 'throne', 'jester', 'royal banner', 'torch', 'goblet', 'scroll', 'royal feast', 'battle axe', 'spear', 'lance', 'castle gate', 'dungeon', 'chain mail', 'sword', 'bow and arrow', 'dragon', 'wizard', 'peasant'],
+      medium: ['jousting', 'trebuchet', 'battering ram', 'knighting ceremony', 'round table', 'archer', 'blacksmith', 'anvil', 'executioner', 'guillotine', 'stocks', 'castle siege', 'tournament', 'squire', 'minstrel', 'lute', 'friar', 'town crier', 'plague doctor', 'village market', 'tavern', 'mead', 'royal decree', 'wax seal', 'coat of arms', 'turkey leg', 'crusade', 'longbow', 'crossbow', 'mace', 'morning star', 'flail', 'secret tunnel'],
+      hard: ['Magna Carta', 'Black Death', 'Richard the Lionheart', 'William the Conqueror', 'Battle of Hastings', 'Bayeux Tapestry', 'Knights Templar', 'Holy Roman Empire', 'Vikings', 'Genghis Khan', 'feudalism', 'serfs', 'lord of the manor', 'chivalry', 'damsel in distress', 'trial by combat', 'Renaissance faire', 'illuminated manuscript', 'stained glass window', 'Gothic cathedral', 'Notre-Dame', 'Canterbury Tales', 'Beowulf', 'Marco Polo', 'Gutenberg press', "Hundred Years' War", 'witch hunt', 'alchemist', 'castle keep', 'portcullis', 'arrow slit', 'murder holes', 'siege tower', 'Monty Python'],
+    },
+  },
+  {
+    id: 'pets',
+    label: 'Pets',
+    emoji: '🐶',
+    words: {
+      easy: ['dog', 'cat', 'puppy', 'hamster', 'bunny', 'guinea pig', 'goldfish', 'parrot', 'pet turtle', 'pet mouse', 'dog bone', 'leash', 'dog collar', 'dog bowl', 'fish tank', 'bird cage', 'kennel', 'chew toy', 'tennis ball', 'pet bed', 'dog treat', 'muddy paws', 'wagging tail', 'fetch', 'belly rub', 'bath time', 'dog walk', 'vet', 'pet store', 'adopt a pet', 'puppy eyes', 'sit', 'roll over'],
+      medium: ['dog park', 'dog groomer', 'pet sitter', 'dog walker with many dogs', 'hamster wheel', 'hamster ball', 'ferret', 'hedgehog', 'chinchilla', 'gecko', 'bearded dragon', 'axolotl', 'hermit crab', 'cockatiel', 'budgie', 'canary', 'betta fish', 'pet rock', 'Chihuahua', 'pug', 'poodle', 'golden retriever', 'dachshund', 'corgi', 'husky', 'German shepherd', 'Dalmatian', 'bulldog', 'beagle', 'dog sweater', 'shake paw', 'dog bark', 'squeaky toy'],
+      hard: ['service dog', 'therapy dog', 'police dog', 'guide dog', 'herding sheepdog', 'dog show', 'Best in Show', 'agility course', 'puppy training class', 'litter of puppies', 'pet insurance', 'microchip', 'doggy daycare', 'pet portrait', 'dog birthday party', 'dog that looks like its owner', 'Lassie', 'Clifford the Big Red Dog', 'Air Bud', 'Marley & Me', 'Hachiko', 'Balto', 'Toto', 'Old Yeller', 'Odie', 'Gromit', 'Brian Griffin', 'Bolt', 'dog shaking off water', "who's a good boy", 'pet tax', 'Shiba Inu', 'Bernese mountain dog', 'Cavalier King Charles spaniel'],
+    },
+  },
+  {
+    id: 'farm',
+    label: 'Farm',
+    emoji: '🚜',
+    words: {
+      easy: ['cow', 'pig', 'chicken', 'horse', 'sheep', 'goat', 'duck', 'rooster', 'barn', 'tractor', 'hay bale', 'farmer', 'scarecrow', 'chicken egg', 'corn field', 'milk pail', 'fence', 'pitchfork', 'farmhouse', 'silo', 'windmill', 'apple tree', 'carrot patch', 'lamb', 'piglet', 'calf', 'baby chick', 'pony', 'donkey', 'cowbell', 'barn door', 'pig in mud', 'vegetable garden'],
+      medium: ['milking a cow', 'sheep shearing', 'egg basket', 'chicken coop', 'pig pen', 'horse stable', 'horse saddle', 'combine harvester', 'sprinkler', 'crop duster', 'weather vane', 'hay loft', 'corn maze', "farmers' market", 'beehive', 'orchard', 'vineyard', 'rice paddy', 'wheat field', 'sunflower field', 'strawberry picking', 'petting zoo', 'county fair', 'blue ribbon', 'tractor pull', 'goat yoga', 'alpaca', 'border collie', 'barn owl', 'plow', 'wheelbarrow', 'rooster crowing at dawn', 'cow tipping'],
+      hard: ['crop rotation', 'Animal Farm', "Charlotte's Web", 'Babe the pig', 'Shaun the Sheep', 'Chicken Run', 'Green Acres', 'American Gothic', 'organic produce', 'free-range chickens', 'harvest festival', 'planting season', 'the farmer in the dell', 'barn raising', '4-H club', 'rodeo', 'bull riding', 'lasso', 'branding iron', 'cattle drive', 'counting sheep', 'cow jumping over the moon', 'FarmVille', 'Harvest Moon', 'John Deere', 'crows on a scarecrow', 'fresh eggs sign', 'pick your own pumpkins', 'mechanical bull', 'pig race', 'chicken dance', 'hay fever', 'early to bed, early to rise', 'till the cows come home'],
+    },
+  },
+  {
+    id: 'travel',
+    label: 'Travel & Vacation',
+    emoji: '✈️',
+    words: {
+      easy: ['suitcase', 'passport', 'plane ticket', 'hotel room', 'beach vacation', 'sunglasses', 'sunscreen', 'postcard', 'souvenir', 'backpacking', 'camping trip', 'road trip', 'airport security', 'boarding pass', 'luggage cart', 'carry-on', 'tour bus', 'cruise', 'tropical island', 'snorkeling', 'hammock', 'room key', 'do not disturb sign', 'travel pillow', 'packing', 'vacation selfie', 'snow globe', 'map pin', 'train ride', 'airplane window', 'seatbelt sign', 'luggage tag', 'vacation'],
+      medium: ['lost luggage', 'layover', 'delayed flight', 'window seat', 'middle seat', 'turbulence', 'baggage claim', 'passport stamp', 'customs', 'currency exchange', 'hostel', 'all-inclusive resort', 'ski trip', 'safari jeep', 'hiking trail', 'national park', 'theme park', 'water park', 'road trip snacks', 'carsick', 'are we there yet', 'travel itinerary', 'overpacking', 'duty free', 'first class', 'economy class', 'red-eye flight', 'staycation', 'time zone', 'tourist trap', 'foreign language', 'hotel breakfast', 'tan lines'],
+      hard: ['bucket list', 'wanderlust', 'culture shock', 'frequent flyer miles', 'TSA PreCheck', 'passport photo', 'International Date Line', 'backpacking through Europe', 'gap year', 'digital nomad', 'glamping', 'van life', 'cruise buffet', 'travel influencer', 'Eurail pass', 'Grand Tour', 'Orient Express', 'Around the World in 80 Days', 'Cloud Gate', 'gondola ride in Venice', 'Bondi Beach', 'Vegas Strip', 'Serengeti', 'Iceland road trip', 'cherry blossom season', 'hot springs', 'Inca Trail', 'Camino de Santiago', 'spring break', 'senior trip', 'lost in translation', 'jet-setter', 'hotel minibar', 'airport sprint'],
+    },
+  },
+  {
+    id: 'hobbies',
+    label: 'Hobbies & Crafts',
+    emoji: '🎨',
+    words: {
+      easy: ['painting', 'drawing', 'knitting', 'reading a book', 'gardening', 'baking', 'cooking', 'fishing', 'hiking', 'camping', 'photography', 'doing puzzles', 'gaming', 'singing', 'dancing', 'sewing', 'crochet', 'pottery', 'origami', 'coloring', 'scrapbooking', 'bird watching', 'stamp collecting', 'coin collecting', 'Lego building', 'chess club', 'yoga', 'journaling', 'writing poetry', 'playing guitar', 'bike riding', 'skateboarding', 'kite flying'],
+      medium: ['candle making', 'soap making', 'woodworking', 'embroidery', 'cross-stitch', 'quilting', 'calligraphy', 'beadwork', 'jewelry making', 'glassblowing', 'metal detecting', 'geocaching', 'cosplay', 'model trains', 'model airplanes', 'ham radio', 'amateur astronomy', 'beekeeping', 'bonsai', 'terrarium', 'flower arranging', 'home brewing', 'bread baking', 'podcasting', 'vlogging', 'stand-up comedy', 'improv', 'magic tricks', 'card tricks', 'rock collecting', 'fly fishing', 'sailing', 'pottery wheel'],
+      hard: ['taxidermy', 'blacksmithing', 'leather crafting', 'macramé', 'needle felting', 'paint by numbers', 'diamond painting', 'resin art', 'decoupage', 'papier-mâché', 'pyrography', 'lockpicking', 'speedcubing', 'competitive eating', 'extreme ironing', 'LARPing', 'tabletop gaming', 'trainspotting', 'urban exploring', 'storm chasing', 'cloud watching', 'escape rooms', 'axe throwing', 'falconry', 'ballroom dancing', 'tap dancing', 'ventriloquism', 'puppetry', 'sourdough starter', 'cake decorating', 'coffee roasting', 'wine making', 'crossword puzzles', 'sudoku'],
+    },
+  },
+  {
     id: 'movies',
     label: 'Movies & TV',
     emoji: '🎬',
@@ -370,14 +569,17 @@ export function pictionaryCardSlug(word: string): string {
 
 function buildCards(theme: ThemeDef): PictionaryCard[] {
   const out: PictionaryCard[] = []
+  const seen = new Set<string>()
   for (const difficulty of PICTIONARY_DIFFICULTIES) {
-    for (const word of theme.words[difficulty]) {
-      out.push({
-        id: `${theme.id}:${pictionaryCardSlug(word)}`,
-        word,
-        difficulty,
-        theme: theme.id,
-      })
+    const words = [
+      ...theme.words[difficulty],
+      ...PICTIONARY_MORE_WORDS[theme.id][difficulty],
+    ]
+    for (const word of words) {
+      const id = `${theme.id}:${pictionaryCardSlug(word)}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push({ id, word, difficulty, theme: theme.id })
     }
   }
   return out
@@ -437,37 +639,86 @@ export function pictionaryDeckPool(
   return [...(THEME_BY_ID.get(deck)?.cards ?? [])]
 }
 
-export type PictionaryModifierId =
-  | 'offhand'
-  | 'oneline'
-  | 'noeraser'
-  | 'mono'
-  | 'tiny'
-  | 'shapes'
-  | 'eyesclosed'
-  | 'speed'
+/**
+ * Opt-in drawer challenges. Every rule here is enforced by the canvas — no
+ * honor-system rules — and each tier pays a points multiplier for both players.
+ */
+export type PictionaryChallengeTier = 'mild' | 'spicy' | 'wild'
 
-export type PictionaryModifier = {
-  id: PictionaryModifierId
-  label: string
-  blurb: string
-  /** Tools the canvas locks while this modifier is active. */
-  locks?: { eraser?: boolean; color?: string; size?: number }
-  /** Round length override (ms). */
-  turnMs?: number
-  /** Multiplier on both players' points. */
-  pointsMultiplier?: number
+export const PICTIONARY_CHALLENGE_TIERS: readonly PictionaryChallengeTier[] = [
+  'mild',
+  'spicy',
+  'wild',
+]
+
+export const PICTIONARY_TIER_MULTIPLIER: Record<PictionaryChallengeTier, number> = {
+  mild: 1.25,
+  spicy: 1.5,
+  wild: 2,
 }
 
+export const PICTIONARY_TIER_LABEL: Record<PictionaryChallengeTier, string> = {
+  mild: 'Mild',
+  spicy: 'Spicy',
+  wild: 'Wild',
+}
+
+export type PictionaryModifier = {
+  id: string
+  /** Variants of one rule (e.g. each one-color ink) share a family; dealing picks a family first. */
+  family: string
+  tier: PictionaryChallengeTier
+  label: string
+  blurb: string
+  /** Tools the canvas locks while this challenge is active. */
+  locks?: {
+    eraser?: boolean
+    fill?: boolean
+    color?: string
+    size?: number
+    /** Strokes (including fills) allowed for the whole round. */
+    maxStrokes?: number
+  }
+  /** The drawer can't see their own ink. */
+  blind?: boolean
+  /** Round length override (ms). */
+  turnMs?: number
+}
+
+const MONO_INKS: readonly { id: string; name: string; color: string }[] = [
+  { id: 'black', name: 'Black', color: '#111827' },
+  { id: 'red', name: 'Red', color: '#dc2626' },
+  { id: 'blue', name: 'Blue', color: '#2563eb' },
+  { id: 'green', name: 'Green', color: '#16a34a' },
+  { id: 'purple', name: 'Purple', color: '#9333ea' },
+  { id: 'orange', name: 'Orange', color: '#ea580c' },
+  { id: 'brown', name: 'Brown', color: '#8b5a2b' },
+  { id: 'pink', name: 'Pink', color: '#f472b6' },
+]
+
 export const PICTIONARY_MODIFIERS: readonly PictionaryModifier[] = [
-  { id: 'offhand', label: 'Off hand', blurb: 'Draw with your non-dominant hand.' },
-  { id: 'oneline', label: 'One line', blurb: 'Try not to lift the pen — one continuous line.' },
-  { id: 'noeraser', label: 'No eraser', blurb: 'Eraser, undo and clear are locked.', locks: { eraser: true } },
-  { id: 'mono', label: 'Black ink', blurb: 'One color only.', locks: { color: '#111827' } },
-  { id: 'tiny', label: 'Fine tip', blurb: 'Thinnest brush only.', locks: { size: 3 } },
-  { id: 'shapes', label: 'Shapes only', blurb: 'Only circles, squares and straight lines.' },
-  { id: 'eyesclosed', label: 'Eyes closed', blurb: 'Keep your eyes shut for the first 5 seconds.' },
-  { id: 'speed', label: 'Speed round', blurb: 'Half the time, double the points.', turnMs: 30_000, pointsMultiplier: 2 },
+  // Mild ×1.25
+  { id: 'noeraser', family: 'noeraser', tier: 'mild', label: 'No eraser', blurb: 'Eraser, undo and clear are locked.', locks: { eraser: true } },
+  { id: 'nofill', family: 'nofill', tier: 'mild', label: 'No fill', blurb: 'The fill bucket is locked.', locks: { fill: true } },
+  { id: 'tiny', family: 'tiny', tier: 'mild', label: 'Fine tip', blurb: 'Thinnest brush only.', locks: { size: 3 } },
+  ...MONO_INKS.map(
+    (ink): PictionaryModifier => ({
+      id: `mono-${ink.id}`,
+      family: 'mono',
+      tier: 'mild',
+      label: `${ink.name} ink only`,
+      blurb: `One color — ${ink.name.toLowerCase()}.`,
+      locks: { color: ink.color },
+    }),
+  ),
+  // Spicy ×1.5
+  { id: 'speed', family: 'speed', tier: 'spicy', label: 'Speed round', blurb: '30 seconds instead of 60.', turnMs: 30_000 },
+  { id: 'bigbrush', family: 'bigbrush', tier: 'spicy', label: 'Fat marker', blurb: 'Thickest brush only.', locks: { size: 28 } },
+  { id: 'strokes12', family: 'strokes12', tier: 'spicy', label: '12 strokes', blurb: 'Only 12 strokes for the whole drawing — no undo.', locks: { maxStrokes: 12, eraser: true } },
+  // Wild ×2
+  { id: 'oneline', family: 'oneline', tier: 'wild', label: 'One line', blurb: 'A single stroke — once you lift the pen, you’re done.', locks: { maxStrokes: 1, eraser: true } },
+  { id: 'blind', family: 'blind', tier: 'wild', label: 'Blindfold', blurb: 'You can’t see your own drawing. The guesser can.', blind: true },
+  { id: 'strokes5', family: 'strokes5', tier: 'wild', label: '5 strokes', blurb: 'Only 5 strokes for the whole drawing — no undo.', locks: { maxStrokes: 5, eraser: true } },
 ]
 
 const MODIFIER_BY_ID = new Map(PICTIONARY_MODIFIERS.map((m) => [m.id, m]))
@@ -476,5 +727,10 @@ export function pictionaryModifier(
   id: string | null | undefined,
 ): PictionaryModifier | null {
   if (!id) return null
-  return MODIFIER_BY_ID.get(id as PictionaryModifierId) ?? null
+  return MODIFIER_BY_ID.get(id) ?? null
+}
+
+export function pictionaryModifierMultiplier(id: string | null | undefined): number {
+  const modifier = pictionaryModifier(id)
+  return modifier ? PICTIONARY_TIER_MULTIPLIER[modifier.tier] : 1
 }
