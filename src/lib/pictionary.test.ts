@@ -43,11 +43,14 @@ function startRound(deck: 'animals' | 'all' = 'animals'): PictionaryState {
 }
 
 describe('pictionary deck', () => {
-  it('has every theme with all three difficulties and no duplicate ids', () => {
+  it('has every theme with 20 cards per difficulty and no duplicate ids', () => {
     for (const theme of PICTIONARY_THEMES) {
       for (const d of ['easy', 'medium', 'hard'] as const) {
-        expect(theme.cards.filter((c) => c.difficulty === d).length).toBeGreaterThanOrEqual(10)
+        expect(theme.cards.filter((c) => c.difficulty === d).length, `${theme.id} ${d}`).toBe(20)
       }
+    }
+    for (const classic of ['objects', 'people', 'actions', 'animals', 'places', 'difficult']) {
+      expect(PICTIONARY_THEMES.some((t) => t.id === classic)).toBe(true)
     }
     const ids = pictionaryDeckPool('all', []).map((c) => c.id)
     expect(new Set(ids).size).toBe(ids.length)
