@@ -21,7 +21,8 @@ import { isRoomUid, JENGA_PLAYER_UIDS, otherPlayerUid, parseOptionalSeatUid } fr
 export const PICTIONARY_TURN_MS = 60_000
 /** 5 draws each. */
 export const PICTIONARY_TOTAL_ROUNDS = 10
-export const PICTIONARY_SKIPS_PER_PLAYER = 1
+/** Rerolls (fresh cards + fresh challenges) the drawer gets each round. */
+export const PICTIONARY_REROLLS_PER_ROUND = 2
 /** Guesser loses this share of their points after taking a hint. */
 export const PICTIONARY_HINT_PENALTY = 0.25
 /**
@@ -94,7 +95,8 @@ export interface PictionaryState {
   guesses: PictionaryGuess[]
   rounds: PictionaryRound[]
   scores: Record<string, number>
-  skipsUsed: Record<string, number>
+  /** Rerolls spent this round — reset whenever a new hand is dealt. */
+  rerolls: number
   usedCardIds: string[]
   /** Cards from earlier games — skipped while fresh ones remain. */
   recentCardIds: string[]
@@ -284,8 +286,9 @@ function dealFor(
   state: PictionaryState,
   deck: PictionaryDeckId,
   rand: Rand,
-): Pick<PictionaryState, 'choices' | 'challengeOffers' | 'modifierId'> {
+): Pick<PictionaryState, 'choices' | 'challengeOffers' | 'modifierId' | 'rerolls'> {
   return {
+    rerolls: 0,
     choices: dealPictionaryChoices(
       deck,
       {
@@ -342,7 +345,7 @@ export function createInitialPictionary(
     ...clearRound(),
     rounds: [],
     scores: zeroScores(),
-    skipsUsed: {},
+    rerolls: 0,
     usedCardIds: [],
     recentCardIds: opts?.recentCardIds ?? [],
     customCards: opts?.customCards ?? [],
@@ -391,7 +394,6 @@ export function pickPictionaryDeck(
     usedCardIds: [],
     rounds: [],
     scores: zeroScores(),
-    skipsUsed: {},
   }
   const dealt = dealFor(fresh, deck, rand)
   if (dealt.choices.length === 0) return null
@@ -439,27 +441,37 @@ function canGuess(state: PictionaryState, uid: string): boolean {
   return state.hotseat || uid === pictionaryGuesserUid(state)
 }
 
-export function pictionarySkipsLeft(state: PictionaryState, uid: string): number {
-  return Math.max(0, PICTIONARY_SKIPS_PER_PLAYER - (state.skipsUsed[uid] ?? 0))
+export function pictionaryRerollsLeft(state: PictionaryState): number {
+  return Math.max(0, PICTIONARY_REROLLS_PER_ROUND - state.rerolls)
 }
 
-export function skipPictionaryChoices(
+/**
+ * Fresh three cards and fresh challenge offers. Rerolled cards won't come
+ * back this game.
+ */
+export function rerollPictionaryHand(
   state: PictionaryState,
   uid: string,
   rand: Rand = Math.random,
 ): PictionaryState | null {
   if (state.phase !== 'pickCard' || !state.deck || !canDraw(state, uid)) return null
-  const drawer = state.drawerUid
-  if (pictionarySkipsLeft(state, drawer) <= 0) return null
-  const withSkipped: PictionaryState = {
-    ...state,
-    usedCardIds: [...state.usedCardIds, ...state.choices.map((c) => c.id)],
-  }
-  const choices = dealFor(withSkipped, state.deck, rand).choices
+  if (pictionaryRerollsLeft(state) <= 0) return null
+  const usedCardIds = [...state.usedCardIds, ...state.choices.map((c) => c.id)]
+  const choices = dealPictionaryChoices(
+    state.deck,
+    {
+      customCards: state.customCards,
+      usedCardIds,
+      recentCardIds: state.recentCardIds,
+    },
+    rand,
+  )
   if (choices.length === 0) return null
-  return bump(withSkipped, {
+  return bump(state, {
+    usedCardIds,
     choices,
-    skipsUsed: { ...state.skipsUsed, [drawer]: (state.skipsUsed[drawer] ?? 0) + 1 },
+    challengeOffers: dealPictionaryChallenges(rand),
+    rerolls: state.rerolls + 1,
   })
 }
 
@@ -868,7 +880,10 @@ export function normalizePictionary(raw: unknown, uid: string): PictionaryState 
     guesses: normalizeGuesses(s.guesses),
     rounds: normalizeRounds(s.rounds),
     scores: { ...zeroScores(), ...normalizeSeatMap(s.scores) },
-    skipsUsed: normalizeSeatMap(s.skipsUsed),
+    rerolls: Math.min(
+      PICTIONARY_REROLLS_PER_ROUND,
+      Math.max(0, Math.floor(clampNum(s.rerolls, 0))),
+    ),
     usedCardIds: normalizeIds(s.usedCardIds, 200),
     recentCardIds: normalizeIds(s.recentCardIds, MAX_RECENT_CARDS),
     customCards: normalizeCards(s.customCards, MAX_CUSTOM_CARDS),

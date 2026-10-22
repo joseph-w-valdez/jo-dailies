@@ -18,7 +18,8 @@ import {
   resolvePictionaryTimeout,
   revealPictionaryHint,
   selectPictionaryFirst,
-  skipPictionaryChoices,
+  pictionaryRerollsLeft,
+  rerollPictionaryHand,
   submitPictionaryGuess,
   surrenderPictionary,
   PICTIONARY_TOTAL_ROUNDS,
@@ -179,12 +180,21 @@ describe('pictionary flow', () => {
     expect(revealPictionaryHint(hinted, B, half)).toBeNull()
   })
 
-  it('allows one skip per player', () => {
+  it('rerolls cards and challenges together, twice per round', () => {
     const seated = selectPictionaryFirst(createInitialPictionary(A), A)!
     const dealt = pickPictionaryDeck(seated, 'cats', noMod)!
-    const skipped = skipPictionaryChoices(dealt, A, noMod)!
-    expect(skipped.choices.some((c) => dealt.choices.some((d) => d.id === c.id))).toBe(false)
-    expect(skipPictionaryChoices(skipped, A, noMod)).toBeNull()
+    expect(rerollPictionaryHand(dealt, B, noMod)).toBeNull()
+    const once = rerollPictionaryHand(dealt, A, noMod)!
+    expect(once.choices.some((c) => dealt.choices.some((d) => d.id === c.id))).toBe(false)
+    expect(once.challengeOffers).toHaveLength(3)
+    expect(pictionaryRerollsLeft(once)).toBe(1)
+    const twice = rerollPictionaryHand(once, A, noMod)!
+    expect(rerollPictionaryHand(twice, A, noMod)).toBeNull()
+
+    // Resets on the next round's deal.
+    const drawing = pickPictionaryCard(twice, A, twice.choices[0]!.id, 0)!
+    const next = nextPictionaryRound(resolvePictionaryTimeout(drawing, drawing.drawEndsAt!)!, noMod)!
+    expect(pictionaryRerollsLeft(next)).toBe(2)
   })
 
   it('alternates drawers and finishes after all rounds with a winner', () => {

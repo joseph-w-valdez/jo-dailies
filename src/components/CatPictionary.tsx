@@ -12,7 +12,7 @@ import {
   pickPictionaryDeckRandom,
   pictionaryGuesserUid,
   pictionaryHintAvailableAt,
-  pictionarySkipsLeft,
+  pictionaryRerollsLeft,
   pictionaryTurnMs,
   pictionaryWordMask,
   playPictionaryAgain,
@@ -20,7 +20,7 @@ import {
   resolvePictionaryTimeout,
   revealPictionaryHint,
   selectPictionaryFirst,
-  skipPictionaryChoices,
+  rerollPictionaryHand,
   submitPictionaryGuess,
   surrenderPictionary,
   PICTIONARY_HINT_PENALTY,
@@ -266,6 +266,12 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
     setGuessDraft('')
     setChallengePick(null)
   }, [game.roundId, game.roundIndex])
+
+  // A rerolled offer set may no longer contain the picked challenge.
+  const offersKey = game.challengeOffers.join('|')
+  useEffect(() => {
+    setChallengePick(null)
+  }, [offersKey])
 
   useEffect(() => {
     const el = feedRef.current
@@ -549,11 +555,16 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   <div className="flex justify-center">
                     <button
                       type="button"
-                      disabled={pictionarySkipsLeft(game, game.drawerUid) <= 0}
-                      onClick={() => act((prev) => skipPictionaryChoices(prev, drawerActor))}
+                      disabled={pictionaryRerollsLeft(game) <= 0}
+                      onClick={() => act((prev) => rerollPictionaryHand(prev, drawerActor))}
+                      title="New cards and new challenges"
                       className={smallBtn}
                     >
-                      New cards ({pictionarySkipsLeft(game, game.drawerUid)} skip left)
+                      🎲 Reroll (
+                      {pictionaryRerollsLeft(game) > 0
+                        ? `${pictionaryRerollsLeft(game)} reroll${pictionaryRerollsLeft(game) === 1 ? '' : 's'} left`
+                        : 'no rerolls left'}
+                      )
                     </button>
                   </div>
                 </>
@@ -600,34 +611,43 @@ export function CatPictionary({ onClose }: { onClose: () => void }) {
                   ) : null}
                   {game.phase === 'reveal' && lastRound ? (
                     <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 p-4">
-                      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface-raised/95 p-5 text-center shadow-xl">
-                        <p className="text-sm font-medium text-app-text/80">
-                          {lastRound.guessed
-                            ? `${householdName(lastRound.guesserUid)} got it${
-                                lastRound.guessMs != null
-                                  ? ` in ${formatSeconds(lastRound.guessMs)}`
-                                  : ''
-                              }!`
-                            : 'Time’s up!'}
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-app-text/80">It was</p>
-                        <p className="text-3xl font-bold text-app-text">{lastRound.card.word}</p>
-                        <p className="mt-3 text-sm font-medium text-app-text">
-                          {lastRound.guessed
-                            ? `+${lastRound.guesserPoints} ${householdName(lastRound.guesserUid)} · +${lastRound.drawerPoints} ${householdName(lastRound.drawerUid)}`
-                            : 'No points this round'}
-                          {lastRound.hintUsed ? ' · hint used' : ''}
-                          {pictionaryModifier(lastRound.modifierId)
-                            ? ` · ${pictionaryModifier(lastRound.modifierId)!.label} ×${pictionaryModifierMultiplier(lastRound.modifierId)}`
-                            : ''}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => act((prev) => nextPictionaryRound(prev))}
-                          className="mt-4 w-full rounded-xl border border-sky-500/55 bg-sky-500/20 px-4 py-2.5 text-base font-semibold text-app-text hover:bg-sky-500/30"
+                      <div className="w-full max-w-sm rounded-2xl bg-surface-raised/95 shadow-xl">
+                        <div
+                          className={[
+                            'rounded-2xl border p-5 text-center',
+                            lastRound.guessed
+                              ? 'border-emerald-500/55 bg-emerald-500/20'
+                              : 'border-rose-500/55 bg-rose-500/20',
+                          ].join(' ')}
                         >
-                          {game.roundIndex + 1 >= game.totalRounds ? 'See results' : 'Next round'}
-                        </button>
+                          <p className="text-sm font-medium text-app-text/80">
+                            {lastRound.guessed
+                              ? `${householdName(lastRound.guesserUid)} got it${
+                                  lastRound.guessMs != null
+                                    ? ` in ${formatSeconds(lastRound.guessMs)}`
+                                    : ''
+                                }!`
+                              : 'Time’s up!'}
+                          </p>
+                          <p className="mt-1 text-xs uppercase tracking-wide text-app-text/80">It was</p>
+                          <p className="text-3xl font-bold text-app-text">{lastRound.card.word}</p>
+                          <p className="mt-3 text-sm font-medium text-app-text">
+                            {lastRound.guessed
+                              ? `+${lastRound.guesserPoints} ${householdName(lastRound.guesserUid)} · +${lastRound.drawerPoints} ${householdName(lastRound.drawerUid)}`
+                              : 'No points this round'}
+                            {lastRound.hintUsed ? ' · hint used' : ''}
+                            {pictionaryModifier(lastRound.modifierId)
+                              ? ` · ${pictionaryModifier(lastRound.modifierId)!.label} ×${pictionaryModifierMultiplier(lastRound.modifierId)}`
+                              : ''}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => act((prev) => nextPictionaryRound(prev))}
+                            className="mt-4 w-full rounded-xl border border-sky-500/55 bg-sky-500/20 px-4 py-2.5 text-base font-semibold text-app-text hover:bg-sky-500/30"
+                          >
+                            {game.roundIndex + 1 >= game.totalRounds ? 'See results' : 'Next round'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ) : null}
